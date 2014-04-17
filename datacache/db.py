@@ -1,11 +1,22 @@
 import sqlite3
 from os import remove 
-from os.path import (exists, isdir, splitext)
+from os.path import (exists, isdir, splitext, split)
 
 import numpy as np
+from Bio import SeqIO
 
 from common import build_path
 from download import fetch_fasta_dict, fetch_file, fetch_csv_dataframe
+
+
+def db_table_exists(db, table_name):
+    query = \
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='%s'" % \
+        table_name
+    cursor = db.execute(query)
+    results = cursor.fetchmany()
+    return len(results) > 0
+
 
 _dtype_to_db_type_dict = {
  'int' : 'INT', 
@@ -66,7 +77,7 @@ def create_db(db_path, table_name, col_types, rows):
     Parameters
     ----------
 
-    db_filename : str 
+    db_path : str 
         Name of sqlite3 file to create
 
     col_types : list of (str, str) pairs
@@ -90,7 +101,7 @@ def create_db(db_path, table_name, col_types, rows):
         db.execute(create)
         
         blank_slots = ", ".join("?" for _ in col_types)
-        db.executemany("insert into %s values (%s)" % table_name, rows, blank_slots)
+        db.executemany("insert into %s values (%s)" % (table_name, blank_slots), rows)
         db.commit()
     except:
         db.close()
@@ -100,19 +111,25 @@ def create_db(db_path, table_name, col_types, rows):
 
 def fetch_fasta_db(
         table_name,
-        fasta_filename,
         download_url,
+        fasta_filename = None, 
         key_column = 'id',
         value_column = 'seq',
         subdir = None):
     """
     Download a FASTA file from `download_url` and store it locally as a sqlite3 database. 
     """
-    base_filename = splitext(fasta_filename)[0]
+
+    fasta_path = fetch_file(
+        download_url = download_url, 
+        filename = fasta_filename, 
+        subdir = subdir)
+    fasta_dict = SeqIO.index(fasta_path, 'fasta')
+
+
+    base_filename = split(fasta_path)[1]
     db_filename = "%s.%s.%s.db" % (base_filename, key_column, value_column)
     db_path = build_path(db_filename, subdir)
-
-    fasta_dict = fetch_fasta_dict(fasta_filename, download_url, subdir)
 
     col_types = [(key_column, "TEXT"), (value_column, "TEXT")]
     rows = [
@@ -143,10 +160,14 @@ def db_from_dataframe(base_filename, table_name, df, subdir = None):
     rows = list(tuple(row) for row in df.values)
     return create_db(db_path, table_name, col_types, rows)
 
-def fetch_csv_db(table_name, csv_filename, download_url, subdir = None, **pandas_kwargs):
+def fetch_csv_db(table_name, download_url, csv_filename = None, subdir = None, **pandas_kwargs):
     """
     Download a remote CSV file and create a local sqlite3 database from its contents
     """
-    df = fetch_csv_dataframe(csv_filename, download_url, subdir = subdir, **pandas_kwargs)
+    df = fetch_csv_dataframe(
+        download_url = download_url, 
+        filename = csv_filename, 
+        subdir = subdir, 
+        **pandas_kwargs)
     base_filename = splitext(csv_filename)[0]
     return db_from_dataframe(base_filename, table_name, df, subdir = subdir)

@@ -20,5 +20,5 @@ URL = \
 
 
 def test_download_fasta_db():
-    db = fetch_fasta_db("DNA", FASTA_FILENAME, URL)
+    db = fetch_fasta_db("DNA", URL)
     assert db is not None

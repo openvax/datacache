@@ -18,12 +18,21 @@ FASTA_FILENAME = 'Homo_sapiens.GRCh37.75.dna_rm.chromosome.MT.fa'
 URL = \
 'ftp://ftp.ensembl.org/pub/release-75/fasta/homo_sapiens/dna/Homo_sapiens.GRCh37.75.dna_rm.chromosome.MT.fa.gz'
 
-def test_fetch_file():
-    path = fetch_file(FASTA_FILENAME, URL, subdir = "datacache")
+def test_fetch_decompress():
+    path1 = fetch_file(URL, decompress = True, subdir = "datacache")
+    assert path1.endswith(FASTA_FILENAME)
+
+    path2 = fetch_file(URL, filename = FASTA_FILENAME, subdir = "datacache")
+    assert path2.endswith(FASTA_FILENAME)
+    assert path1 == path2, (path1, path2)
+
+
+def test_fetch_subdirs():
+    path = fetch_file(URL, decompress = True, subdir = "datacache")
     assert path.endswith(FASTA_FILENAME)
 
     # if we change the subdir then data should end up in
     # something like /Users/me/Library/Caches/epitopes_test/
-    other_path = fetch_file(FASTA_FILENAME, URL, subdir = "datacache_test")
+    other_path = fetch_file(URL, decompress = True, subdir = "datacache_test")
     assert other_path.endswith(FASTA_FILENAME)
     assert other_path != path, other_path

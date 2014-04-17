@@ -19,7 +19,10 @@ URL = \
 'ftp://ftp.ensembl.org/pub/release-75/fasta/homo_sapiens/dna/Homo_sapiens.GRCh37.75.dna_rm.chromosome.MT.fa.gz'
 
 def test_download_fasta_dict():
-    d = fetch_fasta_dict(FASTA_FILENAME, URL)
+    d = fetch_fasta_dict(URL)
     assert hasattr(d, 'keys'), d
     assert hasattr(d, 'values'), d
     assert len(d) > 0
+
+    d2 = fetch_fasta_dict(URL, filename = FASTA_FILENAME)
+    assert len(d) == len(d2)
