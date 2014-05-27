@@ -26,7 +26,6 @@ except ImportError:
     from urllib import urlopen
 
 import pandas as pd
-from Bio import SeqIO
 
 from common import build_path
 
@@ -146,14 +145,5 @@ def fetch_csv_dataframe(download_url,
     """
     path = fetch_file(download_url = download_url, filename = filename, decompress = True, subdir = subdir)
     return pd.read_csv(path, **pandas_kwargs)
-
-
-def fetch_fasta_dict(download_url, filename = None, subdir = None):
-    """
-    Download a remote FASTA file from `download_url` and save it locally as `filename`.
-    Load the file using BioPython and return an index mapping from entry keys to their sequence.
-    """
-    fasta_path = fetch_file(download_url = download_url, filename = filename, decompress = True, subdir = subdir)
-    return SeqIO.index(fasta_path, 'fasta')
 
 
