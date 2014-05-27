@@ -13,14 +13,14 @@
 # limitations under the License.
 
 import sqlite3
-from os import remove 
-from os.path import (exists, isdir, splitext, split)
+from os import remove
+from os.path import (splitext, split)
 
 import numpy as np
 from Bio import SeqIO
 
 from common import build_path
-from download import fetch_fasta_dict, fetch_file, fetch_csv_dataframe
+from download import fetch_file, fetch_csv_dataframe
 
 
 def db_table_exists(db, table_name):
@@ -70,7 +70,7 @@ def _dtype_to_db_type(dtype):
 
     # for a dtype like dtype('S3') need to access dtype.type.__name__ to get 'string_' 
     if hasattr(dtype, 'type'):
-        candidate_key.append(dtype.type.__name__)
+        candidates.append(dtype.type.__name__)
 
     # convert Python types by adding their type's name
     if hasattr(dtype, '__name__'):
