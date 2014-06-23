@@ -98,9 +98,8 @@ def fetch_file(download_url, filename = None, decompress = False, subdir = None)
         filename = split(download_url)[1]
 
     # if the url pointed to a directory then just replace all the special chars
-    if not filename:
-        filename = re.sub("/|\\|;|\.|:|\?|=", "_", download_url)
-
+    filename = re.sub("/|\\|;|\.|:|\?|=", "_", download_url)
+    
     if decompress:
         (base, ext) = splitext(filename)
         if ext in (".gz", ".zip"):
