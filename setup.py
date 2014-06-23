@@ -46,7 +46,7 @@ if __name__ == '__main__':
             'Programming Language :: Python',
             'Topic :: Scientific/Engineering :: Bio-Informatics',
              ],
-        requires=['sqlite3', 'pandas', 'appdirs', 'progressbar', 'biopython'],
+        install_requires=['pandas', 'appdirs', 'progressbar', 'biopython'],
         long_description=readme,
         packages=['datacache'],
     )
