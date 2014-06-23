@@ -99,6 +99,7 @@ def fetch_file(download_url, filename = None, decompress = False, subdir = None)
 
     # if the url pointed to a directory then just replace all the special chars
     filename = re.sub("/|\\|;|\.|:|\?|=", "_", download_url)
+    filename = filename[-50:]
     
     if decompress:
         (base, ext) = splitext(filename)
@@ -126,7 +127,7 @@ def fetch_and_transform(
     """
     transformed_path = build_path(transformed_filename, subdir)
     if not exists(transformed_path):
-        source_path = fetch_file(source_filename, source_url, subdir)
+        source_path = fetch_file(source_url, source_filename, subdir)
         result = transformer(source_path, transformed_path)
     else:
         result = loader(transformed_path)
