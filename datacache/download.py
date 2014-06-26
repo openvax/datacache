@@ -96,10 +96,12 @@ def fetch_file(download_url, filename = None, decompress = False, subdir = None)
     # if no filename provided, use the original filename on the server
     if not filename:
         filename = split(download_url)[1]
+        
+
 
     # if the url pointed to a directory then just replace all the special chars
-    filename = re.sub("/|\\|;|\.|:|\?|=", "_", download_url)
-    filename = filename[-50:]
+    filename = re.sub("/|\\|;|:|\?|=", "_", download_url)
+    filename = filename[-80:]
     
     if decompress:
         (base, ext) = splitext(filename)

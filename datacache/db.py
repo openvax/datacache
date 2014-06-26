@@ -137,7 +137,8 @@ def fetch_fasta_db(
     fasta_path = fetch_file(
         download_url = download_url, 
         filename = fasta_filename, 
-        subdir = subdir)
+        subdir = subdir,
+        decompress = True)
     fasta_dict = SeqIO.index(fasta_path, 'fasta')
 
 
