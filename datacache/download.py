@@ -21,6 +21,7 @@ from tempfile import NamedTemporaryFile
 import zipfile
 import logging
 import hashlib
+import urllib2 
 
 import requests 
 import pandas as pd
@@ -35,13 +36,19 @@ def _download(filename, full_path, download_url):
     logging.info("Downloading %s", download_url)
 
     base_name, ext = splitext(filename)
-    response = requests.get(download_url)
-    response.raise_for_status() 
+    if download_url.startswith("http"):
+        response = requests.get(download_url)
+        response.raise_for_status() 
+        data = response.content 
+    else:
+        req = urllib2.Request(download_url)
+        response = urllib2.urlopen(req)
+        data = response.read()
     tmp_file = NamedTemporaryFile(
         suffix='.' + ext,
         prefix = base_name,
         delete = False)
-    tmp_file.write(response.content)
+    tmp_file.write(data)
     tmp_path = tmp_file.name
     tmp_file.close()
 
