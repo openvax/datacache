@@ -20,11 +20,9 @@ from shutil import move, copyfileobj
 from tempfile import NamedTemporaryFile
 import zipfile
 import logging
-try:
-    from urllib2 import urlopen
-except ImportError:
-    from urllib import urlopen
+import hashlib
 
+import requests 
 import pandas as pd
 
 from common import build_path
@@ -37,15 +35,16 @@ def _download(filename, full_path, download_url):
     logging.info("Downloading %s", download_url)
 
     base_name, ext = splitext(filename)
+    response = requests.get(download_url)
+    response.raise_for_status() 
     tmp_file = NamedTemporaryFile(
         suffix='.' + ext,
         prefix = base_name,
         delete = False)
+    tmp_file.write(response.content)
     tmp_path = tmp_file.name
-    in_stream = urlopen(download_url)
-    copyfileobj(in_stream, tmp_file)
-    in_stream.close()
     tmp_file.close()
+
 
     if download_url.endswith("zip") and not filename.endswith("zip"):
         logging.info("Decompressing zip into %s...", filename)
@@ -101,7 +100,9 @@ def fetch_file(download_url, filename = None, decompress = False, subdir = None)
 
     # if the url pointed to a directory then just replace all the special chars
     filename = re.sub("/|\\|;|:|\?|=", "_", download_url)
-    filename = filename[-80:]
+    if len(filename) > 80:
+        prefix = hashlib.md5(filename).hexdigest()
+        filename = prefix + filename[-70:]
     
     if decompress:
         (base, ext) = splitext(filename)
