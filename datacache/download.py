@@ -56,7 +56,19 @@ def _download(filename, full_path, download_url):
     if download_url.endswith("zip") and not filename.endswith("zip"):
         logging.info("Decompressing zip into %s...", filename)
         with zipfile.ZipFile(tmp_path) as z:
-            extract_path = z.extract(filename)
+            names = z.namelist()
+            assert len(names) > 0, "Empty zip archive"
+            if filename in names:
+                chosen_filename = filename 
+            else:
+                # in case zip archive contains multiple files, choose the biggest
+                biggest_size = 0
+                chosen_filename = names[0]
+                for info in z.infolist():
+                    if info.file_size > biggest_size:
+                        chosen_filename = info.filename
+                        biggest_size = info.file_size
+            extract_path = z.extract(chosen_filename)
         move(extract_path, full_path)
         remove(tmp_path)
     elif download_url.endswith("gz") and not filename.endswith("gz"):
@@ -106,7 +118,8 @@ def fetch_file(download_url, filename = None, decompress = False, subdir = None)
 
 
     # if the url pointed to a directory then just replace all the special chars
-    filename = re.sub("/|\\|;|:|\?|=", "_", download_url)
+    filename = re.sub("/|\\|;|:|\?|=", "_", filename)
+
     if len(filename) > 80:
         prefix = hashlib.md5(filename).hexdigest()
         filename = prefix + filename[-70:]
