@@ -1,0 +1,6 @@
+appdirs
+biopython
+nose2
+pandas
+progressbar
+requests
