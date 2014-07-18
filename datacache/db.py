@@ -15,6 +15,7 @@
 import sqlite3
 from os import remove
 from os.path import (splitext, split)
+import logging 
 
 import numpy as np
 from Bio import SeqIO
@@ -84,7 +85,7 @@ def _dtype_to_db_type(dtype):
 
     assert False, "Failed to find sqlite3 column type for %s" % dtype 
 
-def create_db(db_path, table_name, col_types, rows):
+def create_db(db_path, table_name, col_types, rows, primary_key = None):
     """
     Creates a sqlite3 database from the given Python values. 
 
@@ -108,16 +109,27 @@ def create_db(db_path, table_name, col_types, rows):
         # if we've already create the table in the database
         # then assuming it's complete/correct and return it
         if db_table_exists(db, table_name):
+            logging.info("Found existing table in database %s", db_path)
             return db
-        col_type_str = ", ".join("%s %s" % (col_name,t) for col_name, t in col_types)
+        col_decls = []
+        for col_name, t in col_types:
+            decl = "%s %s" % (col_name,t)
+            if col_name == primary_key:
+                decl += " UNIQUE PRIMARY KEY"
+            decl += " NOT NULL"
+            col_decls.append(decl)
+        col_decl_str = ", ".join(col_decls)
         create = \
-            "create table %s (%s)" % (table_name, col_type_str)
+            "create table %s (%s)" % (table_name, col_decl_str)
+        logging.info("Running sqlite query: \"%s\"", create)
         db.execute(create)
         
         blank_slots = ", ".join("?" for _ in col_types)
+        logging.info("Inserting %d rows into table %s of database %s", len(rows), table_name, db_path)
         db.executemany("insert into %s values (%s)" % (table_name, blank_slots), rows)
         db.commit()
     except:
+        logging.warning("Failed to create table %s in database %s", table_name, db_path)
         db.close()
         remove(db_path)
         raise
@@ -139,21 +151,23 @@ def fetch_fasta_db(
         filename = fasta_filename, 
         subdir = subdir,
         decompress = True)
+
     fasta_dict = SeqIO.index(fasta_path, 'fasta')
-
-
+    key_list = list(fasta_dict.keys())
+    key_set = set(key_list)
+    assert len(key_set) == len(key_list), \
+        "FASTA file from %s contains %d non-unique sequence identifiers" % \
+        (download_url, len(key_list) - len(key_set))
     base_filename = split(fasta_path)[1]
     db_filename = "%s.%s.%s.db" % (base_filename, key_column, value_column)
     db_path = build_path(db_filename, subdir)
-
     col_types = [(key_column, "TEXT"), (value_column, "TEXT")]
     rows = [
         (idx, str(record.seq))
         for (idx, record)
         in fasta_dict.iteritems()
     ]
-
-    return create_db(db_path, table_name, col_types, rows)
+    return create_db(db_path, table_name, col_types, rows, primary_key = key_column)
 
 
 def db_from_dataframe(base_filename, table_name, df, subdir = None):

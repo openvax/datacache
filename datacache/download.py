@@ -129,10 +129,12 @@ def fetch_file(download_url, filename = None, decompress = False, subdir = None)
         if ext in (".gz", ".zip"):
             filename = base
 
-    logging.info("Fetching %s from %s", filename, download_url)
     full_path = build_path(filename, subdir)
     if not exists(full_path):
+        logging.info("Fetching %s from URL %s", filename, download_url)
         _download(filename, full_path, download_url)
+    else:
+        logging.info("Cached file %s from URL %s", filename, download_url)
     return full_path
 
 
@@ -151,8 +153,10 @@ def fetch_and_transform(
     transformed_path = build_path(transformed_filename, subdir)
     if not exists(transformed_path):
         source_path = fetch_file(source_url, source_filename, subdir)
+        logging.info("Generating data file %s from %s", transformed_path, source_path)
         result = transformer(source_path, transformed_path)
     else:
+        logging.info("Cached data file: %s", transformed_path)
         result = loader(transformed_path)
     assert exists(transformed_path)
     return result
