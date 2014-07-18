@@ -31,7 +31,7 @@ from setuptools import setup
 if __name__ == '__main__':
     setup(
         name='datacache',
-        version="0.3.4",
+        version="0.3.5",
         description="Helpers for transparently downloading datasets",
         author="Alex Rubinsteyn",
         author_email="alex {dot} rubinsteyn {at} mssm {dot} edu",
