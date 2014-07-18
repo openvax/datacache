@@ -29,6 +29,19 @@ import pandas as pd
 from common import build_path
 
 
+def normalize_filename(filename):
+    """
+    Remove special characters and shorten if name is too long. 
+    """
+    # if the url pointed to a directory then just replace all the special chars
+    filename = re.sub("/|\\|;|:|\?|=", "_", filename)
+
+    if len(filename) > 80:
+        prefix = hashlib.md5(filename).hexdigest()
+        filename = prefix + filename[-70:]
+    
+    return filename 
+
 def _download(filename, full_path, download_url):
     """
     Downloads remote file at `download_url` to local file at `full_path`
@@ -115,14 +128,7 @@ def fetch_file(download_url, filename = None, decompress = False, subdir = None)
     if not filename:
         filename = split(download_url)[1]
         
-
-
-    # if the url pointed to a directory then just replace all the special chars
-    filename = re.sub("/|\\|;|:|\?|=", "_", filename)
-
-    if len(filename) > 80:
-        prefix = hashlib.md5(filename).hexdigest()
-        filename = prefix + filename[-70:]
+    filename = normalize_filename(filename)
     
     if decompress:
         (base, ext) = splitext(filename)

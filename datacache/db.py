@@ -21,7 +21,7 @@ import numpy as np
 from Bio import SeqIO
 
 from common import build_path
-from download import fetch_file, fetch_csv_dataframe
+from download import fetch_file, fetch_csv_dataframe, normalize_filename
 
 
 def db_table_exists(db, table_name):
@@ -85,15 +85,14 @@ def _dtype_to_db_type(dtype):
 
     assert False, "Failed to find sqlite3 column type for %s" % dtype 
 
-def create_db(db_path, table_name, col_types, rows, primary_key = None):
+def create_db(db, table_name, col_types, rows, primary_key = None):
     """
     Creates a sqlite3 database from the given Python values. 
 
     Parameters
     ----------
 
-    db_path : str 
-        Name of sqlite3 file to create
+    db : sqlite3 database  
 
     col_types : list of (str, str) pairs
         First element of each tuple is the column name, second element is the sqlite3 type
@@ -101,38 +100,24 @@ def create_db(db_path, table_name, col_types, rows, primary_key = None):
     rows : list of tuples
         Must have as many elements in each tuple as there were col_types
     """
-    db = sqlite3.connect(db_path)
-
-    # make sure to delete the database file in case anything goes wrong
-    # to avoid leaving behind an empty DB
-    try:
-        # if we've already create the table in the database
-        # then assuming it's complete/correct and return it
-        if db_table_exists(db, table_name):
-            logging.info("Found existing table in database %s", db_path)
-            return db
-        col_decls = []
-        for col_name, t in col_types:
-            decl = "%s %s" % (col_name,t)
-            if col_name == primary_key:
-                decl += " UNIQUE PRIMARY KEY"
-            decl += " NOT NULL"
-            col_decls.append(decl)
-        col_decl_str = ", ".join(col_decls)
-        create = \
-            "create table %s (%s)" % (table_name, col_decl_str)
-        logging.info("Running sqlite query: \"%s\"", create)
-        db.execute(create)
-        
-        blank_slots = ", ".join("?" for _ in col_types)
-        logging.info("Inserting %d rows into table %s of database %s", len(rows), table_name, db_path)
-        db.executemany("insert into %s values (%s)" % (table_name, blank_slots), rows)
-        db.commit()
-    except:
-        logging.warning("Failed to create table %s in database %s", table_name, db_path)
-        db.close()
-        remove(db_path)
-        raise
+   
+    col_decls = []
+    for col_name, t in col_types:
+        decl = "%s %s" % (col_name,t)
+        if col_name == primary_key:
+            decl += " UNIQUE PRIMARY KEY"
+        decl += " NOT NULL"
+        col_decls.append(decl)
+    col_decl_str = ", ".join(col_decls)
+    create = \
+        "create table %s (%s)" % (table_name, col_decl_str)
+    logging.info("Running sqlite query: \"%s\"", create)
+    db.execute(create)
+    
+    blank_slots = ", ".join("?" for _ in col_types)
+    logging.info("Inserting %d rows into table %s", len(rows), table_name)
+    db.executemany("insert into %s values (%s)" % (table_name, blank_slots), rows)
+    db.commit()
     return db
 
 def fetch_fasta_db(
@@ -146,28 +131,51 @@ def fetch_fasta_db(
     Download a FASTA file from `download_url` and store it locally as a sqlite3 database. 
     """
 
-    fasta_path = fetch_file(
-        download_url = download_url, 
-        filename = fasta_filename, 
-        subdir = subdir,
-        decompress = True)
-
-    fasta_dict = SeqIO.index(fasta_path, 'fasta')
-    key_list = list(fasta_dict.keys())
-    key_set = set(key_list)
-    assert len(key_set) == len(key_list), \
-        "FASTA file from %s contains %d non-unique sequence identifiers" % \
-        (download_url, len(key_list) - len(key_set))
-    base_filename = split(fasta_path)[1]
+    base_filename = normalize_filename(split(download_url)[1])
     db_filename = "%s.%s.%s.db" % (base_filename, key_column, value_column)
-    db_path = build_path(db_filename, subdir)
-    col_types = [(key_column, "TEXT"), (value_column, "TEXT")]
-    rows = [
-        (idx, str(record.seq))
-        for (idx, record)
-        in fasta_dict.iteritems()
-    ]
-    return create_db(db_path, table_name, col_types, rows, primary_key = key_column)
+    db_path = build_path(db_filename, subdir)        
+
+    # if we've already create the table in the database
+    # then assuming it's complete/correct and return it
+    db = sqlite3.connect(db_path)
+
+    # make sure to delete the database file in case anything goes wrong
+    # to avoid leaving behind an empty DB
+    try:
+        if db_table_exists(db, table_name):
+            logging.info("Found existing table in database %s", db_path)
+        else:
+            logging.info("Creating database table %s at %s", table_name, db_path)
+            fasta_path = fetch_file(
+                download_url = download_url, 
+                filename = fasta_filename, 
+                subdir = subdir,
+                decompress = True)
+
+            fasta_dict = SeqIO.index(fasta_path, 'fasta')
+            key_list = list(fasta_dict.keys())
+            key_set = set(key_list)
+            assert len(key_set) == len(key_list), \
+                "FASTA file from %s contains %d non-unique sequence identifiers" % \
+                (download_url, len(key_list) - len(key_set))
+            col_types = [(key_column, "TEXT"), (value_column, "TEXT")]
+            rows = [
+                (idx, str(record.seq))
+                for (idx, record)
+                in fasta_dict.iteritems()
+            ]
+            db = create_db(db, table_name, col_types, rows, primary_key = key_column)
+    except:
+        logging.warning("Failed to create table %s in database %s", table_name, db_path)
+        db.close()
+        remove(db_path)
+        raise
+    return db 
+
+    
+    
+
+   
 
 
 def db_from_dataframe(base_filename, table_name, df, subdir = None):
