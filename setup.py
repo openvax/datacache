@@ -15,15 +15,19 @@
 import os
 
 readme_filename = os.path.join(os.path.dirname(__file__), 'README.md')
-with open(readme_filename, 'r') as f:
-  readme = f.read()
 
 try:
-  import pypandoc
-  readme = pypandoc.convert(readme, to='rst', format='md')
+    with open(readme_filename, 'r') as f:
+        readme = f.read()
 except:
-  #print "Conversion of long_description from markdown to reStructuredText failed, skipping..."
-  pass
+    print "Failed to load README file"
+    readme = ""
+
+try:
+    import pypandoc
+    readme = pypandoc.convert(readme, to='rst', format='md')
+except:
+    print "Conversion of long_description from markdown to reStructuredText failed, skipping..."
 
 
 from setuptools import setup
@@ -31,7 +35,7 @@ from setuptools import setup
 if __name__ == '__main__':
     setup(
         name='datacache',
-        version="0.3.5",
+        version="0.3.6",
         description="Helpers for transparently downloading datasets",
         author="Alex Rubinsteyn",
         author_email="alex {dot} rubinsteyn {at} mssm {dot} edu",

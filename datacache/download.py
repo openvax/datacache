@@ -31,7 +31,7 @@ from common import build_path
 
 def normalize_filename(filename):
     """
-    Remove special characters and shorten if name is too long. 
+    Remove special characters and shorten if name is too long
     """
     # if the url pointed to a directory then just replace all the special chars
     filename = re.sub("/|\\|;|:|\?|=", "_", filename)
@@ -129,7 +129,7 @@ def fetch_file(download_url, filename = None, decompress = False, subdir = None)
         filename = split(download_url)[1]
         
     filename = normalize_filename(filename)
-    
+
     if decompress:
         (base, ext) = splitext(filename)
         if ext in (".gz", ".zip"):

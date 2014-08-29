@@ -25,6 +25,9 @@ from download import fetch_file, fetch_csv_dataframe, normalize_filename
 
 
 def db_table_exists(db, table_name):
+    """
+    Does a table named `table_name` exist in the sqlite database `db`?
+    """
     query = \
         "SELECT name FROM sqlite_master WHERE type='table' AND name='%s'" % \
         table_name
@@ -120,19 +123,21 @@ def create_db(db, table_name, col_types, rows, primary_key = None):
     db.commit()
     return db
 
-def fetch_fasta_db(
-        table_name,
-        download_url,
-        fasta_filename = None, 
-        key_column = 'id',
-        value_column = 'seq',
-        subdir = None):
+def create_cached_db(db_filename, table_name, fn, subdir = None):
     """
-    Download a FASTA file from `download_url` and store it locally as a sqlite3 database. 
-    """
+    Either create or retrieve sqlite database. 
 
-    base_filename = normalize_filename(split(download_url)[1])
-    db_filename = "%s.%s.%s.db" % (base_filename, key_column, value_column)
+    Parameters
+    --------
+
+    db_filename : str 
+
+    table_name : str 
+
+    fn : function 
+        Returns (rows, col_types, key_column_name)
+
+    """
     db_path = build_path(db_filename, subdir)        
 
     # if we've already create the table in the database
@@ -146,25 +151,8 @@ def fetch_fasta_db(
             logging.info("Found existing table in database %s", db_path)
         else:
             logging.info("Creating database table %s at %s", table_name, db_path)
-            fasta_path = fetch_file(
-                download_url = download_url, 
-                filename = fasta_filename, 
-                subdir = subdir,
-                decompress = True)
-
-            fasta_dict = SeqIO.index(fasta_path, 'fasta')
-            key_list = list(fasta_dict.keys())
-            key_set = set(key_list)
-            assert len(key_set) == len(key_list), \
-                "FASTA file from %s contains %d non-unique sequence identifiers" % \
-                (download_url, len(key_list) - len(key_set))
-            col_types = [(key_column, "TEXT"), (value_column, "TEXT")]
-            rows = [
-                (idx, str(record.seq))
-                for (idx, record)
-                in fasta_dict.iteritems()
-            ]
-            db = create_db(db, table_name, col_types, rows, primary_key = key_column)
+            col_types, rows, key_column_name = fn()
+            db = create_db(db, table_name, col_types, rows, primary_key = key_column_name)
     except:
         logging.warning("Failed to create table %s in database %s", table_name, db_path)
         db.close()
@@ -173,19 +161,55 @@ def fetch_fasta_db(
     return db 
 
     
-    
-
-   
 
 
-def db_from_dataframe(base_filename, table_name, df, subdir = None):
+def fetch_fasta_db(
+        table_name,
+        download_url,
+        fasta_filename = None, 
+        key_column = 'id',
+        value_column = 'seq',
+        subdir = None):
+    """
+    Download a FASTA file from `download_url` and store it locally as a sqlite3 database. 
+    """
+
+    base_filename = normalize_filename(split(download_url)[1])
+    db_filename = "%s.%s.%s.db" % (base_filename, key_column, value_column)
+
+    def load_data():
+        fasta_path = fetch_file(
+            download_url = download_url, 
+            filename = fasta_filename, 
+            subdir = subdir,
+            decompress = True)
+
+        fasta_dict = SeqIO.index(fasta_path, 'fasta')
+        key_list = list(fasta_dict.keys())
+        key_set = set(key_list)
+        assert len(key_set) == len(key_list), \
+            "FASTA file from %s contains %d non-unique sequence identifiers" % \
+            (download_url, len(key_list) - len(key_set))
+        col_types = [(key_column, "TEXT"), (value_column, "TEXT")]
+        rows = [
+            (idx, str(record.seq))
+            for (idx, record)
+            in fasta_dict.iteritems()
+        ]
+        return col_types, rows, key_column
+
+    return create_cached_db(db_filename, table_name, fn = load_data, subdir = subdir)
+
+
+def db_from_dataframe(base_filename, table_name, df, key_column_name = None, subdir = None):
     """
     Given a dataframe `df`, turn it into a sqlite3 database. 
     Use `base_filename` as the root of the local db filename and store
     values in a table called `table_name`. 
     """
-    db_filename = base_filename
-    col_types = []
+
+    # tag cached database by dataframe's number of rows and columns
+    db_filename = base_filename + ("_nrows%d" % len(df))
     for col_name in df.columns:
         col = df[col_name]
         col_db_type = _dtype_to_db_type(col.dtype) 
@@ -194,8 +218,11 @@ def db_from_dataframe(base_filename, table_name, df, subdir = None):
         db_filename += ".%s_%s" % (col_name, col_db_type)
     db_filename += ".db"
     db_path = build_path(db_filename, subdir)
-    rows = list(tuple(row) for row in df.values)
-    return create_db(db_path, table_name, col_types, rows)
+
+    def create_rows():
+        rows = list(tuple(row) for row in df.values)
+        return col_types, rows, key_column_name
+    return create_cached_db(db_path, table_name, create_rows, subdir = subdir)
 
 def fetch_csv_db(table_name, download_url, csv_filename = None, subdir = None, **pandas_kwargs):
     """
