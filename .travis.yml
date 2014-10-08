@@ -1,0 +1,11 @@
+# What's need to do run tests via Travis https://travis-ci.org/
+language: python
+python:
+# - "2.6"
+  - "2.7"
+# command to install dependencies
+install:
+  - "pip install ."
+  - "pip install -r requirements.txt"
+# command to run tests
+script: cd test && nose2
