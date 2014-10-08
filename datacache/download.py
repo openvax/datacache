@@ -21,9 +21,9 @@ from tempfile import NamedTemporaryFile
 import zipfile
 import logging
 import hashlib
-import urllib2 
+import urllib2
 
-import requests 
+import requests
 import pandas as pd
 
 from common import build_path
@@ -39,8 +39,8 @@ def normalize_filename(filename):
     if len(filename) > 80:
         prefix = hashlib.md5(filename).hexdigest()
         filename = prefix + filename[-70:]
-    
-    return filename 
+
+    return filename
 
 def _download(filename, full_path, download_url):
     """
@@ -51,8 +51,8 @@ def _download(filename, full_path, download_url):
     base_name, ext = splitext(filename)
     if download_url.startswith("http"):
         response = requests.get(download_url)
-        response.raise_for_status() 
-        data = response.content 
+        response.raise_for_status()
+        data = response.content
     else:
         req = urllib2.Request(download_url)
         response = urllib2.urlopen(req)
@@ -72,7 +72,7 @@ def _download(filename, full_path, download_url):
             names = z.namelist()
             assert len(names) > 0, "Empty zip archive"
             if filename in names:
-                chosen_filename = filename 
+                chosen_filename = filename
             else:
                 # in case zip archive contains multiple files, choose the biggest
                 biggest_size = 0
@@ -127,7 +127,7 @@ def fetch_file(download_url, filename = None, decompress = False, subdir = None)
     # if no filename provided, use the original filename on the server
     if not filename:
         filename = split(download_url)[1]
-        
+
     filename = normalize_filename(filename)
 
     if decompress:
@@ -173,7 +173,7 @@ def fetch_csv_dataframe(download_url,
                         subdir = None,
                         **pandas_kwargs):
     """
-    Download a remote file from `download_url` and save it locally as `filename`. 
+    Download a remote file from `download_url` and save it locally as `filename`.
     Load that local file as a CSV into Pandas using extra keyword arguments such as sep='\t'.
     """
     path = fetch_file(download_url = download_url, filename = filename, decompress = True, subdir = subdir)
