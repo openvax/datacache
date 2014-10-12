@@ -20,8 +20,8 @@ import logging
 import numpy as np
 from Bio import SeqIO
 
-from common import build_path
-from download import fetch_file, fetch_csv_dataframe, normalize_filename
+from common import build_path, normalize_filename
+from download import fetch_file, fetch_csv_dataframe
 
 
 def db_table_exists(db, table_name):

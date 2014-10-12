@@ -12,12 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from os import makedirs, remove, environ
-from os.path import (join, exists)
-from shutil import move, rmtree, copyfileobj
-import logging
 
-import appdirs 
+import hashlib
+import logging
+from os import makedirs, remove, environ
+from os.path import (join, exists, split, splitext)
+import re
+from shutil import move, rmtree, copyfileobj
+
+import appdirs
 
 def ensure_dir(path):
     if not exists(path):
@@ -38,3 +41,39 @@ def build_path(filename, subdir = None):
 def clear_cache(subdir = None):
     data_dir = get_data_dir(subdir)
     rmtree(data_dir)
+
+def normalize_filename(filename):
+    """
+    Remove special characters and shorten if name is too long
+    """
+    # if the url pointed to a directory then just replace all the special chars
+    filename = re.sub("/|\\|;|:|\?|=", "_", filename)
+
+    if len(filename) > 150:
+        prefix = hashlib.md5(filename).hexdigest()
+        filename = prefix + filename[-140:]
+
+    return filename
+
+def build_local_filename(download_url=None, filename=None, decompress=False):
+    """
+    Determine which local filename to use based on the file's source URL,
+    an optional desired filename, and whether a compression suffix needs
+    to be removed
+    """
+    assert download_url or filename, "Either filename or URL must be specified"
+
+    # if no filename provided, use the original filename on the server
+    if not filename:
+        digest = hashlib.md5(download_url).hexdigest()
+        parts = split(download_url)
+        filename =  digest + "." + "_".join(parts)
+
+    filename = normalize_filename(filename)
+
+    if decompress:
+        (base, ext) = splitext(filename)
+        if ext in (".gz", ".zip"):
+            filename = base
+
+    return filename

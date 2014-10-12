@@ -13,9 +13,8 @@
 # limitations under the License.
 
 import gzip
-import re
 from os import remove
-from os.path import (exists, splitext, split)
+from os.path import (exists, splitext)
 from shutil import move, copyfileobj
 from tempfile import NamedTemporaryFile
 import zipfile
@@ -26,21 +25,10 @@ import urllib2
 import requests
 import pandas as pd
 
-from common import build_path
+from common import build_path, build_local_filename
 
 
-def normalize_filename(filename):
-    """
-    Remove special characters and shorten if name is too long
-    """
-    # if the url pointed to a directory then just replace all the special chars
-    filename = re.sub("/|\\|;|:|\?|=", "_", filename)
 
-    if len(filename) > 80:
-        prefix = hashlib.md5(filename).hexdigest()
-        filename = prefix + filename[-70:]
-
-    return filename
 
 def _download(filename, full_path, download_url):
     """
@@ -98,8 +86,11 @@ def _download(filename, full_path, download_url):
     else:
         move(tmp_path, full_path)
 
-
-def fetch_file(download_url, filename = None, decompress = False, subdir = None):
+def fetch_file(
+        download_url,
+        filename = None,
+        decompress = False,
+        subdir = None):
     """
     Download a remote file  and store it locally in a cache directory.
 
@@ -123,18 +114,7 @@ def fetch_file(download_url, filename = None, decompress = False, subdir = None)
 
     Returns the full path of the local file.
     """
-    assert download_url, "Invalid URL %s" % download_url
-    # if no filename provided, use the original filename on the server
-    if not filename:
-        filename = split(download_url)[1]
-
-    filename = normalize_filename(filename)
-
-    if decompress:
-        (base, ext) = splitext(filename)
-        if ext in (".gz", ".zip"):
-            filename = base
-
+    filename = build_local_filename(download_url, filename, decompress)
     full_path = build_path(filename, subdir)
     if not exists(full_path):
         logging.info("Fetching %s from URL %s", filename, download_url)
@@ -142,7 +122,6 @@ def fetch_file(download_url, filename = None, decompress = False, subdir = None)
     else:
         logging.info("Cached file %s from URL %s", filename, download_url)
     return full_path
-
 
 def fetch_and_transform(
         transformed_filename,
@@ -168,15 +147,20 @@ def fetch_and_transform(
     return result
 
 
-def fetch_csv_dataframe(download_url,
-                        filename = None,
-                        subdir = None,
-                        **pandas_kwargs):
+def fetch_csv_dataframe(
+        download_url,
+        filename=None,
+        subdir=None,
+        **pandas_kwargs):
     """
     Download a remote file from `download_url` and save it locally as `filename`.
     Load that local file as a CSV into Pandas using extra keyword arguments such as sep='\t'.
     """
-    path = fetch_file(download_url = download_url, filename = filename, decompress = True, subdir = subdir)
+    path = fetch_file(
+        download_url = download_url,
+        filename = filename,
+        decompress = True,
+        subdir = subdir)
     return pd.read_csv(path, **pandas_kwargs)
 
 

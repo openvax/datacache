@@ -12,19 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datacache import fetch_file 
+from datacache import fetch_file
 
 FASTA_FILENAME = 'Homo_sapiens.GRCh37.75.dna_rm.chromosome.MT.fa'
 URL = \
 'ftp://ftp.ensembl.org/pub/release-75/fasta/homo_sapiens/dna/Homo_sapiens.GRCh37.75.dna_rm.chromosome.MT.fa.gz'
 
 def test_fetch_decompress():
-    path1 = fetch_file(URL, decompress = True, subdir = "datacache")
+    path1 = fetch_file(
+        URL,
+        decompress = True, subdir = "datacache")
     assert path1.endswith(FASTA_FILENAME)
 
-    path2 = fetch_file(URL, filename = FASTA_FILENAME, subdir = "datacache")
-    assert path2.endswith(FASTA_FILENAME)
-    assert path1 == path2, (path1, path2)
+    with open(path1,'r') as f1:
+        s1 = f1.read()
+        assert "TCAATTTCGTGCCAG" in s1
 
 
 def test_fetch_subdirs():
