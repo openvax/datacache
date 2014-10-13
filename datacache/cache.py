@@ -11,7 +11,7 @@ class Cache(object):
         common.clear_cache(self.directory_path)
         common.ensure_dir(self.directory_path)
 
-    def filename(self, url, filename=None, decompress=False):
+    def local_filename(self, url=None, filename=None, decompress=False):
         """
         What local filename will we use within the cache directory
         for the given URL/filename/decompress options
@@ -22,7 +22,7 @@ class Cache(object):
         """
         What will the full local path be if we download the given file?
         """
-        filename =  self.filename(url, filename, decompress)
+        filename =  self.local_filename(url, filename, decompress)
         return join(self.directory_path, filename)
 
     def fetch(self, url, filename=None, decompress=False):
