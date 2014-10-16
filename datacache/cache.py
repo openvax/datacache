@@ -1,5 +1,7 @@
 import common
+import db
 import download
+
 
 class Cache(object):
     def __init__(self, subdir="datacache"):
@@ -31,3 +33,16 @@ class Cache(object):
             filename=filename,
             decompress=decompress,
             subdir=self.subdir)
+
+    def db_from_dataframe(
+            self,
+            db_filename,
+            table_name,
+            df,
+            key_column_name = None):
+        return db_from_dataframe(
+            db_filename = db_filename,
+            table_name = table_name,
+            df = df,
+            key_column_name = key_column_name,
+            subdir = self.subdir)

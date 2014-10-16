@@ -34,7 +34,7 @@ def _download(filename, full_path, download_url):
     """
     Downloads remote file at `download_url` to local file at `full_path`
     """
-    logging.info("Downloading %s", download_url)
+    print "Downloading %s to %s" % (download_url, full_path)
 
     base_name, ext = splitext(filename)
     if download_url.startswith("http"):
