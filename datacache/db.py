@@ -44,7 +44,7 @@ def db_has_version(db):
 def db_version(db):
     query =  "SELECT version FROM %s" % METADATA_COLUMN_NAME
     cursor = db.execute(query)
-    return int(cursor.fetchone()[0])
+    return int(cursor.fetchone())
 
 def db_has_min_versoin(db, min_version):
     if not db_has_version(db):
@@ -261,13 +261,13 @@ def create_cached_db(
             indices,
             type(indices)
         )
-    assert isinstance(version, int), \
+    assert isinstance(version, (int, long)), \
         "Expected version to be int, got %s : %s" % (version, type(version))
 
     if min_version is None:
         min_version = version
     else:
-        assert isinstance(min_version, int), \
+        assert isinstance(min_version, (int, long)), \
             "Expected min_version to be int, got %s : %s" % (
                 min_version, type(min_version)
             )
