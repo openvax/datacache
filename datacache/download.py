@@ -53,7 +53,6 @@ def _download(filename, full_path, download_url):
     tmp_path = tmp_file.name
     tmp_file.close()
 
-
     if download_url.endswith("zip") and not filename.endswith("zip"):
         logging.info("Decompressing zip into %s...", filename)
         with zipfile.ZipFile(tmp_path) as z:
