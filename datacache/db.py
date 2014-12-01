@@ -44,7 +44,11 @@ def db_has_version(db):
 def db_version(db):
     query =  "SELECT version FROM %s" % METADATA_COLUMN_NAME
     cursor = db.execute(query)
-    return int(cursor.fetchone())
+    version = cursor.fetchone()
+    if not version:
+        return 0
+    else:
+        return int(version[0])
 
 def db_has_min_versoin(db, min_version):
     if not db_has_version(db):
@@ -151,8 +155,11 @@ def create_table(
             nullable, type(nullable))
 
     create_metadata = \
-        "create table %s (version INT)" % METADATA_COLUMN_NAME
+        "CREATE TABLE %s (version INT)" % METADATA_COLUMN_NAME
     execute_sql(db, create_metadata, commit=False)
+    insert_version = \
+        "INSERT INTO %s VALUES (%s)" % (METADATA_COLUMN_NAME, version)
+    execute_sql(db, insert_version, commit=False)
 
     col_decls = []
     for col_name, t in col_types:
