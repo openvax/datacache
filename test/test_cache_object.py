@@ -5,7 +5,8 @@ from datacache import Cache
 
 def test_cache_object_path():
     cache = Cache("datacache_test")
-    assert cache.directory_path.endswith("datacache_test"), cache.directory_path
+    assert cache.cache_directory_path.endswith("datacache_test"), \
+        cache.cache_directory_path
 
 def test_cache_object_local_filename():
     filename = Cache("datacache_test").local_filename(filename="test")
@@ -16,3 +17,5 @@ def test_cache_fetch_google():
     path = cache.fetch("http://www.google.com", filename="google")
     assert path.endswith("google")
     assert exists(path)
+    assert path == cache.local_path("http://www.google.com", filename="google")
+
