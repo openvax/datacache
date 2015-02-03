@@ -18,7 +18,6 @@ FASTA_FILENAME = 'Homo_sapiens.GRCh37.75.dna_rm.chromosome.MT.fa'
 URL = \
 'ftp://ftp.ensembl.org/pub/release-75/fasta/homo_sapiens/dna/Homo_sapiens.GRCh37.75.dna_rm.chromosome.MT.fa.gz'
 
-
 def test_download_fasta_db():
     db = fetch_fasta_db("DNA", URL)
     assert db is not None
