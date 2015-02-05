@@ -35,21 +35,21 @@ from setuptools import setup
 if __name__ == '__main__':
     setup(
         name='datacache',
-        version="0.4.3",
+        version="0.4.4",
         description="Helpers for transparently downloading datasets",
         author="Alex Rubinsteyn",
         author_email="alex {dot} rubinsteyn {at} mssm {dot} edu",
         url="https://github.com/hammerlab/datacache",
-	      license="http://www.apache.org/licenses/LICENSE-2.0.html",
+        license="http://www.apache.org/licenses/LICENSE-2.0.html",
         classifiers=[
             'Development Status :: 3 - Alpha',
             'Environment :: Console',
             'Operating System :: OS Independent',
             'Intended Audience :: Science/Research',
-	          'License :: OSI Approved :: Apache Software License',
+            'License :: OSI Approved :: Apache Software License',
             'Programming Language :: Python',
             'Topic :: Scientific/Engineering :: Bio-Informatics',
-             ],
+        ],
         install_requires=[
             'pandas',
             'appdirs',

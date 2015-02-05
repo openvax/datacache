@@ -30,9 +30,9 @@ def db_table_exists(db, table_name):
     """
     Does a table named `table_name` exist in the sqlite database `db`?
     """
-    query = \
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='%s'" % \
-        table_name
+    query = """
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name='%s'""" % table_name
     cursor = db.execute(query)
     results = cursor.fetchmany()
     return len(results) > 0
@@ -49,12 +49,6 @@ def db_version(db):
         return 0
     else:
         return int(version[0])
-
-def db_has_min_versoin(db, min_version):
-    if not db_has_version(db):
-        return False
-    version = db_version(db)
-    return version >= min_version
 
 _dtype_to_db_type_dict = {
  'int' : 'INT',
@@ -116,13 +110,32 @@ def execute_sql(db, sql, commit=False):
     if commit:
         db.commit()
 
-def create_table(
+def _set_database_version(db, version):
+    """
+    Create metadata table for database with version number.
+
+    Parameters
+    ----------
+    version : int
+        Tag created database with user-specified version number
+    """
+    if not isinstance(version, int):
+        raise TypeError("Version must be integer, not %s : %s" % (
+            version, type(version)))
+    create_metadata = \
+        "CREATE TABLE %s (version INT)" % METADATA_COLUMN_NAME
+    execute_sql(db, create_metadata)
+    insert_version = \
+        "INSERT INTO %s VALUES (%s)" % (METADATA_COLUMN_NAME, version)
+    execute_sql(db, insert_version)
+
+
+def _create_table(
         db,
         table_name,
         col_types,
         primary_key=None,
-        nullable=[],
-        version=1):
+        nullable=[]):
     """
     Creates a sqlite3 database from the given Python values.
 
@@ -143,23 +156,13 @@ def create_table(
     nullable : set/list, optional
         Any column in this collection can have null values
 
-    version : int
-        Tag created database with user-specified version number
     """
-    assert isinstance(version, int), \
-        "Version must be integer, not %s : %s" % (version, type(version))
-    assert isinstance(table_name, str), \
-        "Table name must be str, not %s : %s" % (table_name, type(table_name))
-    assert isinstance(nullable, (list, tuple, set)), \
-        "Nullable must be a list|tuple|set, not %s : %s" % (
-            nullable, type(nullable))
-
-    create_metadata = \
-        "CREATE TABLE %s (version INT)" % METADATA_COLUMN_NAME
-    execute_sql(db, create_metadata, commit=False)
-    insert_version = \
-        "INSERT INTO %s VALUES (%s)" % (METADATA_COLUMN_NAME, version)
-    execute_sql(db, insert_version, commit=False)
+    if not isinstance(table_name, str):
+        raise TypeError("Table name must be str, not %s : %s" % (
+            table_name, type(table_name)))
+    if not isinstance(nullable, (list, tuple, set)):
+        raise TypeError("Nullable must be a list|tuple|set, not %s : %s" % (
+            nullable, type(nullable)))
 
     col_decls = []
     for col_name, t in col_types:
@@ -172,14 +175,18 @@ def create_table(
     col_decl_str = ", ".join(col_decls)
     create_data_table = \
         "create table %s (%s)" % (table_name, col_decl_str)
-    execute_sql(db, create_data_table, commit=True)
+    execute_sql(db, create_data_table)
 
-def fill_table(db, table_name, rows):
-    assert isinstance(table_name, str), \
-        "Expected table to be str, got %s : %s" % (table_name, type(table_name))
-    assert len(rows) > 0, "Rows must be non-empty sequence"
-    assert db_table_exists(db, table_name), \
-        "Table '%s' does not exist in database" % (table_name,)
+def _fill_table(db, table_name, rows):
+    if not isinstance(table_name, str):
+        raise TypeError(
+            "Expected table to be str, got %s : %s" % (
+                table_name, type(table_name)))
+    if len(rows) == 0:
+        raise ValueError("Rows must be non-empty sequence")
+    if not db_table_exists(db, table_name):
+        raise ValueError(
+            "Table '%s' does not exist in database" % (table_name,))
 
     first_row = rows[0]
 
@@ -189,16 +196,17 @@ def fill_table(db, table_name, rows):
     db.executemany(
         "insert into %s values (%s)" % (table_name, blank_slots),
         rows)
-    db.commit()
 
-def create_db_indices(db, table_name, indices):
-    assert isinstance(table_name, str), \
-        "Expected table_name to be str, got %s : %s" % (table_name, str)
-    assert isinstance(indices, (list, tuple, set)), \
-        "Expected indices to be sequence (list|tuple|set), got %s : %s" % (
-            indices,
-            type(indices)
-        )
+def _create_db_indices(db, table_name, indices):
+    if not isinstance(table_name, str):
+        raise TypeError(
+            "Expected table_name to be str, got %s : %s" % (table_name, str))
+    if not isinstance(indices, (list, tuple, set)):
+        raise TypeError(
+                "Expected indices to be sequence (list|tuple|set), got %s : %s" % (
+                indices,
+                type(indices)))
+
     for i, index_col_set in enumerate(indices):
         logging.info("Creating index on %s (%s)" % (
             table_name,
@@ -209,9 +217,30 @@ def create_db_indices(db, table_name, indices):
             "CREATE INDEX IF NOT EXISTS %s ON %s (%s)" % (
                 index_name,
                 table_name,
-                ", ".join(index_col_set)
-            )
-        )
+                ", ".join(index_col_set)))
+
+def _create_db(
+        db,
+        table_name,
+        col_types,
+        key_column_name,
+        nullable,
+        rows,
+        indices,
+        version):
+    """
+    Do the actual work of creating a table in the database, filling it with
+    values, creating indices, and setting the datacache version metadata.
+    """
+    _create_table(
+        db,
+        table_name,
+        col_types,
+        primary_key=key_column_name,
+        nullable=nullable)
+    _fill_table(db, table_name, rows)
+    _create_db_indices(db, table_name, indices)
+    _set_database_version(db, version)
     db.commit()
 
 def create_cached_db(
@@ -221,8 +250,7 @@ def create_cached_db(
         subdir = None,
         nullable = [],
         indices = [],
-        version=1,
-        min_version=None):
+        version=1):
     """
     Either create or retrieve sqlite database.
 
@@ -244,40 +272,26 @@ def create_cached_db(
 
     version : int
 
-    min_version : int, optional
-        Last previous version acceptable as cached data.
+    version : int, optional
+        Version acceptable as cached data.
 
     """
-    assert isinstance(db_filename, str), \
-        "Expected db_filename to be str, got %s : %s" % (
-            db_filename,
-            type(db_filename)
-        )
-    assert isinstance(table_name, str), \
-        "Expected table_name to be str, got %s : %s" % (
-            table_name,
-            type(table_name),
-        )
-    assert subdir is None or isinstance(subdir, str), \
-        "Expected subdir to be None or str, got %s : %s" % (
-            subdir, type(subdir)
-        )
-
-    assert isinstance(indices, (list, tuple, set)), \
-        "Expected indices to be sequence (list|tuple|set), got %s : %s" % (
-            indices,
-            type(indices)
-        )
-    assert isinstance(version, (int, long)), \
-        "Expected version to be int, got %s : %s" % (version, type(version))
-
-    if min_version is None:
-        min_version = version
-    else:
-        assert isinstance(min_version, (int, long)), \
-            "Expected min_version to be int, got %s : %s" % (
-                min_version, type(min_version)
-            )
+    if not isinstance(db_filename, str):
+        raise TypeError("Expected db_filename to be str, got %s : %s" % (
+            db_filename, type(db_filename)))
+    if not isinstance(table_name, str):
+        raise TypeError("Expected table_name to be str, got %s : %s" % (
+            table_name, type(table_name)))
+    if not (subdir is None or isinstance(subdir, str)):
+        raise TypeError("Expected subdir to be None or str, got %s : %s" % (
+            subdir, type(subdir)))
+    if not isinstance(indices, (list, tuple, set)):
+        raise TypeError(
+            "Expected indices to be sequence (list|tuple|set), got %s : %s" % (
+                indices, type(indices)))
+    if not isinstance(version, (int, long)):
+        raise TypeError("Expected version to be int, got %s : %s" % (
+            version, type(version)))
 
     db_path = build_path(db_filename, subdir)
 
@@ -290,20 +304,22 @@ def create_cached_db(
     try:
         if db_table_exists(db, table_name) and \
            db_has_version(db) and \
-           db_version(db) >= min_version:
+           db_version(db) == version:
             logging.info("Found existing table in database %s", db_path)
         else:
             logging.info(
                 "Creating database table %s at %s", table_name, db_path)
             # col_types is a list of (name, type) pairs
             col_types, rows, key_column_name = fn()
-
-            create_table(
-                db, table_name, col_types,
-                primary_key=key_column_name,
-                nullable=nullable)
-            fill_table(db, table_name, rows)
-            create_db_indices(db, table_name, indices)
+            _create_db(
+                db,
+                table_name,
+                col_types,
+                key_column_name,
+                nullable,
+                rows,
+                indices,
+                version)
     except:
         logging.warning(
             "Failed to create table %s in database %s",
@@ -321,14 +337,10 @@ def fetch_fasta_db(
         key_column = 'id',
         value_column = 'seq',
         subdir = None,
-        version = 1,
-        min_version = None,):
+        version = 1):
     """
     Download a FASTA file from `download_url` and store it locally as a sqlite3 database.
     """
-
-    if min_version is None:
-        min_version = version
 
     base_filename = normalize_filename(split(download_url)[1])
     db_filename = "%s.%s.%s.db" % (base_filename, key_column, value_column)
@@ -359,8 +371,7 @@ def fetch_fasta_db(
         table_name,
         fn=load_data,
         subdir=subdir,
-        version=version,
-        min_version=min_version,)
+        version=version)
 
 def construct_db_filename(base_filename, df):
     """
@@ -381,8 +392,7 @@ def db_from_dataframe(
         subdir = None,
         overwrite = False,
         indices = [],
-        version=1,
-        min_version=None):
+        version=1):
     """
     Given a dataframe `df`, turn it into a sqlite3 database.
     Store values in a table called `table_name`.
@@ -415,8 +425,7 @@ def db_from_dataframe(
         subdir=subdir,
         nullable=nullable,
         indices=indices,
-        version=version,
-        min_version=min_version)
+        version=version)
 
 def fetch_csv_db(
         table_name,
@@ -425,7 +434,6 @@ def fetch_csv_db(
         db_filename=None,
         subdir=None,
         version=1,
-        min_version=None,
         **pandas_kwargs):
     """
     Download a remote CSV file and create a local sqlite3 database from its contents
@@ -443,5 +451,4 @@ def fetch_csv_db(
         table_name,
         df,
         subdir=subdir,
-        version=version,
-        min_version=min_version)
+        version=version)
