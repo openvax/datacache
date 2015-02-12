@@ -65,7 +65,7 @@ def build_local_filename(download_url=None, filename=None, decompress=False):
 
     # if no filename provided, use the original filename on the server
     if not filename:
-        digest = hashlib.md5(download_url).hexdigest()
+        digest = hashlib.md5(download_url.encode('utf-8')).hexdigest()
         parts = split(download_url)
         filename =  digest + "." + "_".join(parts)
 

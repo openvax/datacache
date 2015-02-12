@@ -1,9 +1,9 @@
 from os.path import split, exists, join
 from os import remove
 
-import common
-import db
-import download
+from . import common
+from . import db
+from . import download
 
 
 class Cache(object):
