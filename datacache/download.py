@@ -28,8 +28,6 @@ import pandas as pd
 from common import build_path, build_local_filename
 
 
-
-
 def _download(filename, full_path, download_url):
     """
     Downloads remote file at `download_url` to local file at `full_path`
@@ -85,13 +83,28 @@ def _download(filename, full_path, download_url):
     else:
         move(tmp_path, full_path)
 
+
+def file_exists(download_url,
+                filename = None,
+                decompress = False,
+                subdir = None):
+    """
+    Return True if a local file corresponding to these arguments
+    exists.
+    """
+    filename = build_local_filename(download_url, filename, decompress)
+    full_path = build_path(filename, subdir)
+    return exists(full_path)
+
+
 def fetch_file(
         download_url,
         filename = None,
         decompress = False,
         subdir = None):
     """
-    Download a remote file  and store it locally in a cache directory.
+    Download a remote file and store it locally in a cache directory. Don't
+    download it again if it's already present.
 
     Parameters
     ----------
@@ -121,6 +134,7 @@ def fetch_file(
     else:
         logging.info("Cached file %s from URL %s", filename, download_url)
     return full_path
+
 
 def fetch_and_transform(
         transformed_filename,

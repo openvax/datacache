@@ -26,6 +26,16 @@ class Cache(object):
         common.clear_cache(self.cache_directory_path)
         common.ensure_dir(self.cache_directory_path)
 
+    def exists(self, url, filename=None, decompress=False):
+        """
+        Return True if a local file corresponding to these arguments
+        exists.
+        """
+        return download.file_exists(
+                url,
+                filename=filename,
+                decompress=decompress,
+                subdir=self.subdir)
 
     def fetch(self, url, filename=None, decompress=False):
         """
@@ -66,7 +76,6 @@ class Cache(object):
         else:
             filename =  self.local_filename(url, filename, decompress)
             return join(self.cache_directory_path, filename)
-
 
     def db_from_dataframe(
             self,

@@ -35,7 +35,7 @@ from setuptools import setup
 if __name__ == '__main__':
     setup(
         name='datacache',
-        version="0.4.4",
+        version="0.4.5",
         description="Helpers for transparently downloading datasets",
         author="Alex Rubinsteyn",
         author_email="alex {dot} rubinsteyn {at} mssm {dot} edu",
@@ -51,11 +51,11 @@ if __name__ == '__main__':
             'Topic :: Scientific/Engineering :: Bio-Informatics',
         ],
         install_requires=[
-            'pandas',
-            'appdirs',
-            'progressbar',
-            'biopython',
-            'requests'
+            'pandas>=0.15.2',
+            'appdirs>=1.4.0',
+            'progressbar>=2.2',
+            'biopython>=1.65',
+            'requests>=2.5.1'
         ],
         long_description=readme,
         packages=['datacache'],
