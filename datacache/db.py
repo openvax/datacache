@@ -14,7 +14,7 @@
 
 import sqlite3
 from os import remove
-from os.path import (splitext, split, exists)
+from os.path import splitext, split, exists
 import logging
 
 import numpy as np
@@ -134,7 +134,7 @@ def _create_table(
         table_name,
         col_types,
         primary_key=None,
-        nullable=[]):
+        nullable=()):
     """
     Creates a sqlite3 database from the given Python values.
 
@@ -246,9 +246,9 @@ def create_cached_db(
         db_filename,
         table_name,
         fn,
-        subdir = None,
-        nullable = [],
-        indices = [],
+        subdir=None,
+        nullable=(),
+        indices=(),
         version=1):
     """
     Either create or retrieve sqlite database.
@@ -284,6 +284,9 @@ def create_cached_db(
     if not (subdir is None or isinstance(subdir, str)):
         raise TypeError("Expected subdir to be None or str, got %s : %s" % (
             subdir, type(subdir)))
+    if not isinstance(nullable, (list, tuple, set)):
+        raise TypeError("Nullable must be a list|tuple|set, not %s : %s" % (
+            nullable, type(nullable)))
     if not isinstance(indices, (list, tuple, set)):
         raise TypeError(
             "Expected indices to be sequence (list|tuple|set), got %s : %s" % (
@@ -334,11 +337,11 @@ def create_cached_db(
 def fetch_fasta_db(
         table_name,
         download_url,
-        fasta_filename = None,
-        key_column = 'id',
-        value_column = 'seq',
-        subdir = None,
-        version = 1):
+        fasta_filename=None,
+        key_column='id',
+        value_column='seq',
+        subdir=None,
+        version=1):
     """
     Download a FASTA file from `download_url` and store it locally as a sqlite3 database.
     """
@@ -348,10 +351,10 @@ def fetch_fasta_db(
 
     def load_data():
         fasta_path = fetch_file(
-            download_url = download_url,
-            filename = fasta_filename,
-            subdir = subdir,
-            decompress = True)
+            download_url=download_url,
+            filename=fasta_filename,
+            subdir=subdir,
+            decompress=True)
 
         fasta_dict = SeqIO.index(fasta_path, 'fasta')
         key_list = list(fasta_dict.keys())
@@ -389,10 +392,10 @@ def db_from_dataframe(
         db_filename,
         table_name,
         df,
-        key_column_name = None,
-        subdir = None,
-        overwrite = False,
-        indices = [],
+        key_column_name=None,
+        subdir=None,
+        overwrite=False,
+        indices=(),
         version=1):
     """
     Given a dataframe `df`, turn it into a sqlite3 database.
@@ -440,9 +443,9 @@ def fetch_csv_db(
     Download a remote CSV file and create a local sqlite3 database from its contents
     """
     df = fetch_csv_dataframe(
-        download_url = download_url,
-        filename = csv_filename,
-        subdir = subdir,
+        download_url=download_url,
+        filename=csv_filename,
+        subdir=subdir,
         **pandas_kwargs)
     base_filename = splitext(csv_filename)[0]
     if db_filename is None:
