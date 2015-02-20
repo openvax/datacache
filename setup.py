@@ -20,14 +20,14 @@ try:
     with open(readme_filename, 'r') as f:
         readme = f.read()
 except:
-    print "Failed to load README file"
+    print("Failed to load README file")
     readme = ""
 
 try:
     import pypandoc
     readme = pypandoc.convert(readme, to='rst', format='md')
 except:
-    print "Conversion of long_description from markdown to reStructuredText failed, skipping..."
+    print("Conversion of long_description from markdown to reStructuredText failed, skipping...")
 
 
 from setuptools import setup

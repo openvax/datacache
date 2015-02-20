@@ -20,11 +20,10 @@ import logging
 import numpy as np
 from Bio import SeqIO
 
-from common import build_path, normalize_filename
-from download import fetch_file, fetch_csv_dataframe
+from .common import build_path, normalize_filename
+from .download import fetch_file, fetch_csv_dataframe
 
 METADATA_COLUMN_NAME = "_datacache_metadata"
-
 
 def db_table_exists(db, table_name):
     """
@@ -191,7 +190,7 @@ def _fill_table(db, table_name, rows):
     first_row = rows[0]
 
     n_columns = len(first_row)
-    blank_slots = ", ".join("?" for _ in xrange(n_columns))
+    blank_slots = ", ".join("?" for _ in range(n_columns))
     logging.info("Inserting %d rows into table %s", len(rows), table_name)
     db.executemany(
         "insert into %s values (%s)" % (table_name, blank_slots),
@@ -289,7 +288,9 @@ def create_cached_db(
         raise TypeError(
             "Expected indices to be sequence (list|tuple|set), got %s : %s" % (
                 indices, type(indices)))
-    if not isinstance(version, (int, long)):
+    try:
+        version = int(version)
+    except ValueError:
         raise TypeError("Expected version to be int, got %s : %s" % (
             version, type(version)))
 
@@ -362,7 +363,7 @@ def fetch_fasta_db(
         rows = [
             (idx, str(record.seq))
             for (idx, record)
-            in fasta_dict.iteritems()
+            in fasta_dict.items()
         ]
         return col_types, rows, key_column
 

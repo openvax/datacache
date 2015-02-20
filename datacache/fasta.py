@@ -1,6 +1,6 @@
 from Bio import SeqIO
 
-from download import fetch_file
+from .download import fetch_file
 
 def fetch_fasta_dict(download_url, filename = None, subdir = None):
     """

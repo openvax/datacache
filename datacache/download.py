@@ -20,19 +20,30 @@ from tempfile import NamedTemporaryFile
 import zipfile
 import logging
 import hashlib
-import urllib2
 
 import requests
 import pandas as pd
 
-from common import build_path, build_local_filename
+from .common import build_path, build_local_filename
 
+try:
+    import urllib.request, urllib.error, urllib.parse
+    # Python 3 
+    def urllib_response(url):
+        req = urllib.request.Request(url)
+        return urllib.request.urlopen(req)
+except ImportError:
+    # Python 2
+    import urllib2
+    def urllib_response(url):
+        req = urllib2.Request(url)
+        return urllib2.urlopen(req)
 
 def _download(filename, full_path, download_url):
     """
     Downloads remote file at `download_url` to local file at `full_path`
     """
-    print "Downloading %s to %s" % (download_url, full_path)
+    print("Downloading %s to %s" % (download_url, full_path))
 
     base_name, ext = splitext(filename)
     if download_url.startswith("http"):
@@ -40,8 +51,7 @@ def _download(filename, full_path, download_url):
         response.raise_for_status()
         data = response.content
     else:
-        req = urllib2.Request(download_url)
-        response = urllib2.urlopen(req)
+        response = urllib_response(download_url)
         data = response.read()
     tmp_file = NamedTemporaryFile(
         suffix='.' + ext,
