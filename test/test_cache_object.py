@@ -19,3 +19,11 @@ def test_cache_fetch_google():
     assert exists(path)
     assert path == cache.local_path("http://www.google.com", filename="google")
 
+def test_cache_delete_key():
+    cache = Cache("datacache_test")
+    url = "http://www.google.com"
+    path = cache.fetch(url, filename="google")
+    assert exists(path)
+    cache.delete_key(url)
+    assert not exists(path)
+    assert url not in cache.local_paths

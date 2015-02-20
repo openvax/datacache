@@ -16,10 +16,11 @@ class Cache(object):
         self.local_paths = {}
 
     def delete_key(self, url):
-        path = self.local_paths(url)
-        del self.local_paths[url]
-        if exists(path):
-            remove(path)
+        if url in self.local_paths:
+            path = self.local_paths[url]
+            del self.local_paths[url]
+            if exists(path):
+                remove(path)
 
     def delete_all(self):
         self.local_paths.clear()
