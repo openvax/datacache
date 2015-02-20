@@ -14,7 +14,7 @@
 
 import gzip
 from os import remove
-from os.path import (exists, splitext)
+from os.path import exists, splitext
 from shutil import move, copyfileobj
 from tempfile import NamedTemporaryFile
 import zipfile
@@ -55,8 +55,8 @@ def _download(filename, full_path, download_url):
         data = response.read()
     tmp_file = NamedTemporaryFile(
         suffix='.' + ext,
-        prefix = base_name,
-        delete = False)
+        prefix=base_name,
+        delete=False)
     tmp_file.write(data)
     tmp_path = tmp_file.name
     tmp_file.close()
@@ -95,9 +95,9 @@ def _download(filename, full_path, download_url):
 
 
 def file_exists(download_url,
-                filename = None,
-                decompress = False,
-                subdir = None):
+                filename=None,
+                decompress=False,
+                subdir=None):
     """
     Return True if a local file corresponding to these arguments
     exists.
@@ -109,9 +109,9 @@ def file_exists(download_url,
 
 def fetch_file(
         download_url,
-        filename = None,
-        decompress = False,
-        subdir = None):
+        filename=None,
+        decompress=False,
+        subdir=None):
     """
     Download a remote file and store it locally in a cache directory. Don't
     download it again if it's already present.
@@ -152,7 +152,7 @@ def fetch_and_transform(
         loader,
         source_filename,
         source_url,
-        subdir = None):
+        subdir=None):
     """
     Fetch a remote file from `source_url`, save it locally as `source_filename` and then use
     the `loader` and `transformer` function arguments to turn this saved data into an in-memory
@@ -180,10 +180,8 @@ def fetch_csv_dataframe(
     Load that local file as a CSV into Pandas using extra keyword arguments such as sep='\t'.
     """
     path = fetch_file(
-        download_url = download_url,
-        filename = filename,
-        decompress = True,
-        subdir = subdir)
+        download_url=download_url,
+        filename=filename,
+        decompress=True,
+        subdir=subdir)
     return pd.read_csv(path, **pandas_kwargs)
-
-
