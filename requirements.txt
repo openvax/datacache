@@ -4,3 +4,4 @@ nose2
 pandas
 progressbar
 requests
+mock
