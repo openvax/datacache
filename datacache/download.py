@@ -111,10 +111,11 @@ def fetch_file(
         download_url,
         filename=None,
         decompress=False,
-        subdir=None):
+        subdir=None,
+        force=False):
     """
     Download a remote file and store it locally in a cache directory. Don't
-    download it again if it's already present.
+    download it again if it's already present (unless `force` is True.)
 
     Parameters
     ----------
@@ -134,11 +135,15 @@ def fetch_file(
     subdir : str, optional
         Group downloads in a single subdirectory.
 
+    force : bool, optional
+        By default, a remote file is not downloaded if it's already present.
+        However, with this argument set to True, it will be overwritten.
+
     Returns the full path of the local file.
     """
     filename = build_local_filename(download_url, filename, decompress)
     full_path = build_path(filename, subdir)
-    if not exists(full_path):
+    if not exists(full_path) or force:
         logging.info("Fetching %s from URL %s", filename, download_url)
         _download(filename, full_path, download_url)
     else:

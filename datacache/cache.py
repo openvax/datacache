@@ -37,12 +37,14 @@ class Cache(object):
                 decompress=decompress,
                 subdir=self.subdir)
 
-    def fetch(self, url, filename=None, decompress=False):
+    def fetch(self, url, filename=None, decompress=False,
+              force=False):
         """
         Return the local path to the downloaded copy of a given URL.
-        Don't download the file again if it's already present.
+        Don't download the file again if it's already present,
+        unless `force` is True.
         """
-        if url in self.local_paths:
+        if not force and url in self.local_paths:
             path = self.local_paths[url]
             if exists(path):
                 return path
@@ -52,7 +54,8 @@ class Cache(object):
             url,
             filename=filename,
             decompress=decompress,
-            subdir=self.subdir)
+            subdir=self.subdir,
+            force=force)
         self.local_paths[url] = path
         return path
 
