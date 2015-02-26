@@ -28,8 +28,7 @@ def test_cache_fetch_force(mock_download):
     assert len(mock_download.call_args_list) == 2, \
         "Expected two separate calls to _download, given force=True"
 
-@patch('datacache.cache.download._download')
-def test_cache_delete_url(mock_download):
+def test_cache_delete_url():
     cache = Cache("datacache_test")
     url = "http://www.google.com"
     path = cache.fetch(url, filename="google")
