@@ -27,3 +27,13 @@ def test_cache_fetch_force(mock_download):
     cache.fetch("http://www.google.com", filename="google", force=True)
     assert len(mock_download.call_args_list) == 2, \
         "Expected two separate calls to _download, given force=True"
+
+@patch('datacache.cache.download._download')
+def test_cache_delete_url(mock_download):
+    cache = Cache("datacache_test")
+    url = "http://www.google.com"
+    path = cache.fetch(url, filename="google")
+    assert exists(path), "Expected %s to exist after download" % path
+    cache.delete_url(url)
+    assert not exists(path), \
+        "Expected %s to be deleted after call to delete_url" % path

@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 from os.path import split, exists, join
 from os import remove
 
@@ -12,14 +14,32 @@ class Cache(object):
         self.subdir = subdir
         self.cache_directory_path = common.get_data_dir(subdir)
 
-        # dictionary mapping from URL to local paths
+        # dictionary mapping from (URL, decompress) pair to local paths
+        # TODO: handle decompression separately from download,
+        # so we can use copies of compressed files we've already downloaded
         self.local_paths = {}
 
-    def delete_key(self, url):
-        path = self.local_paths(url)
-        del self.local_paths[url]
-        if exists(path):
-            remove(path)
+    def delete_url(self, url):
+        """
+        Delete local files downloaded from given URL
+        """
+        # file may exist locally in compressed and decompressed states
+        # delete both
+        for decompress in [False, True]:
+            key = (url, decompress)
+            if key in self.local_paths:
+                path = self.local_paths[key]
+                remove(path)
+                del self.local_paths[key]
+
+            # possible that file was downloaded via the download module without
+            # using the Cache object, this wouldn't end up in the local_paths
+            # but should still be deleted
+            path = self.local_path(
+                url, decompress=decompress, download=False)
+
+            if exists(path):
+                remove(path)
 
     def delete_all(self):
         self.local_paths.clear()
@@ -44,19 +64,21 @@ class Cache(object):
         Don't download the file again if it's already present,
         unless `force` is True.
         """
-        if not force and url in self.local_paths:
-            path = self.local_paths[url]
+        key = (url, decompress)
+        if not force and key in self.local_paths:
+            path = self.local_paths[key]
             if exists(path):
                 return path
             else:
-                del self.local_paths[url]
+                del self.local_paths[key]
         path = download.fetch_file(
             url,
             filename=filename,
             decompress=decompress,
             subdir=self.subdir,
             force=force)
-        self.local_paths[url] = path
+
+        self.local_paths[key] = path
         return path
 
     def local_filename(
