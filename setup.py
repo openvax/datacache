@@ -55,7 +55,8 @@ if __name__ == '__main__':
             'appdirs>=1.4.0',
             'progressbar>=2.2',
             'biopython>=1.65',
-            'requests>=2.5.1'
+            'requests>=2.5.1',
+            'typechecks>=0.0.0'
         ],
         long_description=readme,
         packages=['datacache'],

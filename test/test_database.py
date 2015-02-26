@@ -24,11 +24,19 @@ VERSION=2
 def test_create_db():
     if exists(TEST_DB_PATH):
         remove(TEST_DB_PATH)
-    db = sqlite3.connect(TEST_DB_PATH)
-
-    datacache.db._create_db(
+    db = datacache.database.Database(TEST_DB_PATH)
+    table = datacache.database_table.DatabaseTable(
+        name=TABLE_NAME,
+        column_types=COL_TYPES,
+            make_rows,
+            indices=[],
+            nullable=set(),
+            primary_key=None):
+    )
+    tables = {TABLE_NAME : table}
+    datacache.database_helpers._create_db(
         db=db,
-        table_name=TABLE_NAME,
+        tables=tables)
         col_types=COL_TYPES,
         key_column_name=KEY_COLUMN_NAME,
         nullable=NULLABLE,
@@ -36,14 +44,14 @@ def test_create_db():
         indices=INDICES,
         version=VERSION)
     db.commit()
-    assert datacache.db.db_table_exists(db, TABLE_NAME)
-    assert datacache.db.db_has_version(db)
-    assert datacache.db.db_version(db) == VERSION
+    assert db.table_exists(TABLE_NAME)
+    assert db.has_version()
+    assert db.version() == VERSION
     sql = """
         SELECT %s from %s WHERE %s = '%s'
     """ % (INT_COL_NAME, TABLE_NAME, STR_COL_NAME, "light")
     print(sql)
-    cursor = db.execute(sql)
+    cursor = db.connection.execute(sql)
     int_result_tuple = cursor.fetchone()
     int_result = int_result_tuple[0]
     eq_(int_result, 2)
