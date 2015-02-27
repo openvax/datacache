@@ -1,6 +1,7 @@
+import logging
 import sqlite3
 
-from typechecks import require_integer
+from typechecks import require_integer, require_string, require_iterable_of
 
 METADATA_COLUMN_NAME = "_datacache_metadata"
 
@@ -35,7 +36,7 @@ class Database(object):
 
     def has_tables(self, table_names):
         """Are all of the given table names present in the database?"""
-        return all(db_has_table(db, table_name) for table_name in table_names)
+        return all(self.has_table(table_name) for table_name in table_names)
 
     def has_version(self):
         return self.has_table(METADATA_COLUMN_NAME)
@@ -88,8 +89,8 @@ class Database(object):
         require_iterable_of(nullable, str, name="nullable")
 
         column_decls = []
-        for column_name, column_type in col_types:
-            decl = "%s %s" % (col_name,t)
+        for column_name, column_type in column_types:
+            decl = "%s %s" % (column_name, column_type)
             if column_name == primary:
                 decl += " UNIQUE PRIMARY KEY"
             if column_name not in nullable:
@@ -97,5 +98,5 @@ class Database(object):
             column_decls.append(decl)
         column_decl_str = ", ".join(column_decls)
         create_table_sql = \
-            "CREATE TABLE %s (%s)" % (table_name, col_decl_str)
-        self.execute_sql(db, create_table_sql)
+            "CREATE TABLE %s (%s)" % (table_name, column_decl_str)
+        self.execute_sql(create_table_sql)
