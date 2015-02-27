@@ -27,6 +27,8 @@ from typechecks import (
 
 from .common import build_path, normalize_filename
 from .download import fetch_file, fetch_csv_dataframe
+from .database import Database
+from .database_table import DatabaseTable
 
 
 def _create_db(db, tables, version=1):
@@ -44,18 +46,18 @@ def _create_db(db, tables, version=1):
     tables : dict
         Dictionary mapping table names to datacache.DatabaseTable objects
     """
-    for (table_name, table) in tables.items():
+    for table in tables:
         db.create_table(
-            table_name=table_name,
+            table_name=table.name,
             column_types=table.column_types,
-            primary=table.primary,
+            primary=table.primary_key,
             nullable=table.nullable)
-        db.fill_table(table_name, table.rows())
-        db.create_indices(table_name, table.indices)
+        db.fill_table(table.name, table.rows())
+        db.create_indices(table.name, table.indices)
     db.set_version(version)
     db.close()
 
-def create_cached_db(
+def _create_cached_db(
         db_filename,
         tables,
         subdir=None,
@@ -65,7 +67,6 @@ def create_cached_db(
 
     Parameters
     --------
-
     db_filename : str
         Name of sqlite3 database file
 
@@ -78,12 +79,11 @@ def create_cached_db(
         Version acceptable as cached data.
     """
     require_string(db_filename, "db_filename")
-    require_iterable_of(table_names, str)
+    require_iterable_of(tables, DatabaseTable)
     if not (subdir is None or isinstance(subdir, str)):
         raise TypeError("Expected subdir to be None or str, got %s : %s" % (
             subdir, type(subdir)))
-    require_iterable_of(nullable, str, name="nullable")
-    require_iterable_of(indices, tuple, name="indices")
+
     try:
         version = int(version)
     except ValueError:
@@ -102,23 +102,23 @@ def create_cached_db(
     # to avoid leaving behind an empty DB
     try:
         if db.has_tables(table_names) and \
-           db.has_version()) and \
+           db.has_version() and \
            db.version() == version:
             logging.info("Found existing table in database %s", db_path)
         else:
             logging.info(
-                "Creating database table %s at %s", table_name, db_path)
-            _create_db(db,
-                col_types,
-                key_column_name,
-                nullable,
-                rows,
-                indices,
+                "Creating database %d table(s) %s",
+                len(table_names),
+                db_path)
+            _create_db(
+                db,
+                tables,
                 version)
     except:
         logging.warning(
-            "Failed to create table %s in database %s",
-            table_name, db_path)
+            "Failed to create tables %s in database %s",
+            table_names,
+            db_path)
         db.close()
         remove(db_path)
         raise
@@ -139,31 +139,23 @@ def fetch_fasta_db(
     base_filename = normalize_filename(split(download_url)[1])
     db_filename = "%s.%s.%s.db" % (base_filename, key_column, value_column)
 
-    def load_data():
-        fasta_path = fetch_file(
-            download_url=download_url,
-            filename=fasta_filename,
-            subdir=subdir,
-            decompress=True)
+    fasta_path = fetch_file(
+        download_url=download_url,
+        filename=fasta_filename,
+        subdir=subdir,
+        decompress=True)
 
-        fasta_dict = SeqIO.index(fasta_path, 'fasta')
-        key_list = list(fasta_dict.keys())
-        key_set = set(key_list)
-        assert len(key_set) == len(key_list), \
-            "FASTA file from %s contains %d non-unique sequence identifiers" % \
-            (download_url, len(key_list) - len(key_set))
-        col_types = [(key_column, "TEXT"), (value_column, "TEXT")]
-        rows = [
-            (idx, str(record.seq))
-            for (idx, record)
-            in fasta_dict.items()
-        ]
-        return col_types, rows, key_column
 
-    return create_cached_db(
-        db_filename,
+    fasta_dict = SeqIO.index(fasta_path, 'fasta')
+    table = DatabaseTable.from_fasta_dict(
         table_name,
-        fn=load_data,
+        fasta_dict,
+        key_column=key_column,
+        value_column=value_column)
+
+    return _create_cached_db(
+        db_filename,
+        tables=[table],
         subdir=subdir,
         version=version)
 
@@ -181,7 +173,7 @@ def construct_db_filename(base_filename, df):
 def db_from_dataframes(
         db_filename,
         dataframes_dict,
-        key_column_names={}
+        key_column_names={},
         indices_dict={},
         subdir=None,
         overwrite=False,
@@ -213,7 +205,7 @@ def db_from_dataframes(
     if overwrite and exists(db_path):
         remove(db_path)
 
-    tables = {}
+    tables = []
     for table_name, df in dataframes.items():
         table_indices = indices_dict.get(table_name, [])
         primary_key = key_column_names.get(table_name)
@@ -222,11 +214,11 @@ def db_from_dataframes(
             df=df,
             indices=table_indices,
             primary_key=primary)
-        tables[table_name] = table
+        tables.append(table)
 
-    return create_cached_db(
+    return _create_cached_db(
         db_path,
-        tables,
+        tables=tables,
         subdir=subdir,
         version=version)
 
