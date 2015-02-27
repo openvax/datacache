@@ -67,8 +67,8 @@ def db_type(python_type):
     """
     Converts from Python type or NumPy/Pandas dtype to a sqlite3 type name
     """
-
-    for candidate_key in _candidate_type_names(python_type):
-
-
-    assert False, "Failed to find sqlite3 column type for %s" % dtype
+    for candidate_type_name in _candidate_type_names(python_type):
+        result = _lookup_type_name(candidate_type_name)
+        if result:
+            return result
+    raise ValueError("Failed to find sqlite3 column type for %s" % python_type)

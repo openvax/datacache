@@ -25,26 +25,17 @@ def test_create_db():
     if exists(TEST_DB_PATH):
         remove(TEST_DB_PATH)
     db = datacache.database.Database(TEST_DB_PATH)
+    def make_rows():
+        return ROWS
     table = datacache.database_table.DatabaseTable(
         name=TABLE_NAME,
         column_types=COL_TYPES,
-            make_rows,
-            indices=[],
-            nullable=set(),
-            primary_key=None):
-    )
-    tables = {TABLE_NAME : table}
-    datacache.database_helpers._create_db(
-        db=db,
-        tables=tables)
-        col_types=COL_TYPES,
-        key_column_name=KEY_COLUMN_NAME,
-        nullable=NULLABLE,
-        rows=ROWS,
-        indices=INDICES,
-        version=VERSION)
-    db.commit()
-    assert db.table_exists(TABLE_NAME)
+        make_rows=make_rows,
+        indices=[],
+        nullable=set(),
+        primary_key=None)
+    db.init(tables=[table], version=VERSION)
+    assert db.has_table(TABLE_NAME)
     assert db.has_version()
     assert db.version() == VERSION
     sql = """
