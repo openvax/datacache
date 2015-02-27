@@ -15,8 +15,11 @@ class Database(object):
         self.path = path
         self.connection = sqlite3.connect(path)
 
-    def close(self):
+    def commit(self):
         self.connection.commit()
+
+    def close(self):
+        self.commit()
         self.connection.close()
 
     def has_table(self, table_name):
@@ -43,14 +46,14 @@ class Database(object):
 
     def version(self):
         query =  "SELECT version FROM %s" % METADATA_COLUMN_NAME
-        cursor = db.execute(query)
+        cursor = self.connection.execute(query)
         version = cursor.fetchone()
         if not version:
             return 0
         else:
             return int(version[0])
 
-    def set_version(version):
+    def set_version(self, version):
         """
         Create metadata table for database with version number.
 
@@ -67,7 +70,7 @@ class Database(object):
             "INSERT INTO %s VALUES (%s)" % (METADATA_COLUMN_NAME, version)
         self.execute_sql(insert_version_sql)
 
-    def create_table(self, table_name, column_types, primary=None, nullable=()):
+    def _create_table(self, table_name, column_types, primary=None, nullable=()):
         """Creates a sqlite3 table from the given metadata.
 
         Parameters
@@ -100,3 +103,63 @@ class Database(object):
         create_table_sql = \
             "CREATE TABLE %s (%s)" % (table_name, column_decl_str)
         self.execute_sql(create_table_sql)
+
+    def _fill_table(self, table_name, rows):
+        require_string(table_name, "table_name")
+        require_iterable_of(rows, tuple, "rows")
+
+        if not self.has_table(table_name):
+            raise ValueError(
+                "Table '%s' does not exist in database" % (table_name,))
+        if len(rows) == 0:
+            raise ValueError("Rows must be non-empty sequence")
+
+        first_row = rows[0]
+        n_columns = len(first_row)
+        if not all(len(row) == n_columns for row in rows):
+            raise ValueError("Rows must all have %d values" % n_columns)
+        blank_slots = ", ".join("?" for _ in range(n_columns))
+        logging.info("Inserting %d rows into table %s", len(rows), table_name)
+        sql = "INSERT INTO %s VALUES (%s)" % (table_name, blank_slots)
+        self.connection.executemany(sql, rows)
+
+    def init(self, tables, version):
+        """Do the actual work of creating the database, filling its tables with
+        values, creating indices, and setting the datacache version metadata.
+
+        Parameters
+        ----------
+        tables : list
+            List of datacache.DatabaseTable objects
+
+        version : int
+        """
+        for table in tables:
+            self._create_table(
+                table_name=table.name,
+                column_types=table.column_types,
+                primary=table.primary_key,
+                nullable=table.nullable)
+            self._fill_table(table.name, table.rows)
+            self._create_indices(table.name, table.indices)
+        self.set_version(version)
+        self.commit()
+
+    def _create_index(self, table_name, index_number, index_column_set):
+        logging.info("Creating index on %s (%s)" % (
+                table_name,
+                ", ".join(index_column_set)))
+        index_name = "index%d_%s" % (i, "_".join(index_column_set))
+        self.connection.execute(
+            "CREATE INDEX IF NOT EXISTS %s ON %s (%s)" % (
+                index_name,
+                table_name,
+                ", ".join(index_column_set)))
+
+    def _create_indices(self, table_name, indices):
+        require_string(table_name, "table_name")
+        require_iterable_of(indices, (tuple, list))
+        for i, index_column_set in enumerate(indices):
+            self._create_index(table_name, i, index_column_set)
+
+

@@ -31,32 +31,6 @@ from .database import Database
 from .database_table import DatabaseTable
 
 
-def _create_db(db, tables, version=1):
-    """Create a database from dicts that map table names to rows and metadata.
-
-    This function does the actual work of creating a table in the database,
-    filling its tables with values, creating indices, and setting the datacache
-    version metadata.
-
-    Parameters
-    ----------
-    db : datacache.Database
-        Wrapper around sqlite3 connection to an empty database
-
-    tables : dict
-        Dictionary mapping table names to datacache.DatabaseTable objects
-    """
-    for table in tables:
-        db.create_table(
-            table_name=table.name,
-            column_types=table.column_types,
-            primary=table.primary_key,
-            nullable=table.nullable)
-        db.fill_table(table.name, table.rows())
-        db.create_indices(table.name, table.indices)
-    db.set_version(version)
-    db.close()
-
 def _create_cached_db(
         db_filename,
         tables,
@@ -110,10 +84,7 @@ def _create_cached_db(
                 "Creating database %d table(s) %s",
                 len(table_names),
                 db_path)
-            _create_db(
-                db,
-                tables,
-                version)
+            db.fill(tables, version)
     except:
         logging.warning(
             "Failed to create tables %s in database %s",
