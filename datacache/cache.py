@@ -17,7 +17,7 @@ class Cache(object):
         # dictionary mapping from (URL, decompress) pair to local paths
         # TODO: handle decompression separately from download,
         # so we can use copies of compressed files we've already downloaded
-        self.local_paths = {}
+        self._local_paths = {}
 
     def delete_url(self, url):
         """
@@ -27,10 +27,10 @@ class Cache(object):
         # delete both
         for decompress in [False, True]:
             key = (url, decompress)
-            if key in self.local_paths:
-                path = self.local_paths[key]
+            if key in self._local_paths:
+                path = self._local_paths[key]
                 remove(path)
-                del self.local_paths[key]
+                del self._local_paths[key]
 
             # possible that file was downloaded via the download module without
             # using the Cache object, this wouldn't end up in the local_paths
@@ -42,7 +42,7 @@ class Cache(object):
                 remove(path)
 
     def delete_all(self):
-        self.local_paths.clear()
+        self._local_paths.clear()
         common.clear_cache(self.cache_directory_path)
         common.ensure_dir(self.cache_directory_path)
 
@@ -65,12 +65,12 @@ class Cache(object):
         unless `force` is True.
         """
         key = (url, decompress)
-        if not force and key in self.local_paths:
-            path = self.local_paths[key]
+        if not force and key in self._local_paths:
+            path = self._local_paths[key]
             if exists(path):
                 return path
             else:
-                del self.local_paths[key]
+                del self._local_paths[key]
         path = download.fetch_file(
             url,
             filename=filename,
@@ -78,7 +78,7 @@ class Cache(object):
             subdir=self.subdir,
             force=force)
 
-        self.local_paths[key] = path
+        self._local_paths[key] = path
         return path
 
     def local_filename(
