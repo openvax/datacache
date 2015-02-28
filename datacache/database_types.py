@@ -50,7 +50,7 @@ def _candidate_type_names(python_type):
 
     #if we get a dtype object i.e. dtype('int16'), then pull out its name
     if hasattr(python_type, 'name'):
-        candidates.add(python_type.name)
+        yield python_type.name
 
     # convert Python types by adding their type's name
     if hasattr(python_type, '__name__'):

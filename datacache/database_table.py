@@ -1,4 +1,4 @@
-from .db_types import dtype_to_db_type
+from .database_types import db_type
 
 class DatabaseTable(object):
     """Converts between a DataFrame and a sqlite3 database table"""
@@ -37,9 +37,8 @@ class DatabaseTable(object):
             values = df[column_name]
             if values.isnull().any():
                 self.nullable.add(column_name)
-            col_db_type = dtype_to_db_type(col.dtype)
-            col_name = col_name.replace(" ", "_")
-            column_types.append( (col_name, col_db_type) )
+            column_db_type = db_type(values.dtype)
+            column_types.append((column_name.replace(" ", "_"), column_db_type))
 
         def make_rows():
             return list(tuple(row) for row in df.values)

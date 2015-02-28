@@ -15,11 +15,11 @@ class Database(object):
         self.path = path
         self.connection = sqlite3.connect(path)
 
-    def commit(self):
+    def _commit(self):
         self.connection.commit()
 
     def close(self):
-        self.commit()
+        self._commit()
         self.connection.close()
 
     def has_table(self, table_name):
@@ -53,7 +53,7 @@ class Database(object):
         else:
             return int(version[0])
 
-    def set_version(self, version):
+    def _set_version(self, version):
         """
         Create metadata table for database with version number.
 
@@ -123,7 +123,7 @@ class Database(object):
         sql = "INSERT INTO %s VALUES (%s)" % (table_name, blank_slots)
         self.connection.executemany(sql, rows)
 
-    def init(self, tables, version):
+    def fill(self, tables, version):
         """Do the actual work of creating the database, filling its tables with
         values, creating indices, and setting the datacache version metadata.
 
@@ -142,14 +142,14 @@ class Database(object):
                 nullable=table.nullable)
             self._fill_table(table.name, table.rows)
             self._create_indices(table.name, table.indices)
-        self.set_version(version)
-        self.commit()
+        self._set_version(version)
+        self._commit()
 
     def _create_index(self, table_name, index_number, index_column_set):
         logging.info("Creating index on %s (%s)" % (
                 table_name,
                 ", ".join(index_column_set)))
-        index_name = "index%d_%s" % (i, "_".join(index_column_set))
+        index_name = "index%d_%s" % (index_number, "_".join(index_column_set))
         self.connection.execute(
             "CREATE INDEX IF NOT EXISTS %s ON %s (%s)" % (
                 index_name,
