@@ -51,6 +51,8 @@ def _create_cached_db(
 
     version : int, optional
         Version acceptable as cached data.
+
+    Returns sqlite3 connection
     """
     require_string(db_filename, "db_filename")
     require_iterable_of(tables, DatabaseTable)
@@ -70,10 +72,9 @@ def _create_cached_db(
     # then assuming it's complete/correct and return it
     db = Database(db_path)
 
-    table_names = [table.name for table in tables]
-
     # make sure to delete the database file in case anything goes wrong
     # to avoid leaving behind an empty DB
+    table_names = [table.name for table in tables]
     try:
         if db.has_tables(table_names) and \
            db.has_version() and \
@@ -93,7 +94,7 @@ def _create_cached_db(
         db.close()
         remove(db_path)
         raise
-    return db
+    return db.connection
 
 def fetch_fasta_db(
         table_name,
@@ -130,7 +131,7 @@ def fetch_fasta_db(
         subdir=subdir,
         version=version)
 
-def construct_db_filename(base_filename, df):
+def _construct_db_filename(base_filename, df):
     """
     Generate  filename for a DataFrame
     """
@@ -143,9 +144,9 @@ def construct_db_filename(base_filename, df):
 
 def db_from_dataframes(
         db_filename,
-        dataframes_dict,
-        key_column_names={},
-        indices_dict={},
+        dataframes,
+        key_columns={},
+        indices={},
         subdir=None,
         overwrite=False,
         version=1):
@@ -155,13 +156,13 @@ def db_from_dataframes(
     db_filename : str
         Name of database file to create
 
-    dataframes_dict : dict
+    dataframes : dict
         Dictionary from table names to DataFrame objects
 
-    key_column_names : dict, optional
+    key_columns : dict, optional
         Name of primary key column for each table
 
-    indices_dict : dict, optional
+    indices : dict, optional
         Dictionary from table names to list of column name tuples
 
     subdir : str, optional
@@ -178,15 +179,14 @@ def db_from_dataframes(
 
     tables = []
     for table_name, df in dataframes.items():
-        table_indices = indices_dict.get(table_name, [])
-        primary_key = key_column_names.get(table_name)
+        table_indices = indices.get(table_name, [])
+        primary_key = key_columns.get(table_name)
         table = DatabaseTable.from_dataframe(
             name=table_name,
             df=df,
             indices=table_indices,
-            primary_key=primary)
+            primary_key=primary_key)
         tables.append(table)
-
     return _create_cached_db(
         db_path,
         tables=tables,
@@ -197,7 +197,7 @@ def db_from_dataframe(
         db_filename,
         table_name,
         df,
-        key_column_name=None,
+        key_column=None,
         subdir=None,
         overwrite=False,
         indices=(),
@@ -205,11 +205,13 @@ def db_from_dataframe(
     """
     Given a dataframe `df`, turn it into a sqlite3 database.
     Store values in a table called `table_name`.
+
+    Returns full path to the sqlite database file.
     """
     return db_from_dataframes(
         db_filename=db_filename,
         dataframes={table_name : df},
-        key_column_names={table_name : key_column_name},
+        key_columns={table_name : key_column},
         indices={table_name : indices},
         subdir=subdir,
         overwrite=overwrite,
@@ -224,7 +226,8 @@ def fetch_csv_db(
         version=1,
         **pandas_kwargs):
     """
-    Download a remote CSV file and create a local sqlite3 database from its contents
+    Download a remote CSV file and create a local sqlite3 database
+    from its contents
     """
     df = fetch_csv_dataframe(
         download_url=download_url,
@@ -233,7 +236,7 @@ def fetch_csv_db(
         **pandas_kwargs)
     base_filename = splitext(csv_filename)[0]
     if db_filename is None:
-        db_filename = construct_db_filename(base_filename, df)
+        db_filename = _construct_db_filename(base_filename, df)
     return db_from_dataframe(
         db_filename,
         table_name,
