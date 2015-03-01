@@ -145,7 +145,7 @@ def _construct_db_filename(base_filename, df):
 def db_from_dataframes(
         db_filename,
         dataframes,
-        key_columns={},
+        primary_keys={},
         indices={},
         subdir=None,
         overwrite=False,
@@ -159,7 +159,7 @@ def db_from_dataframes(
     dataframes : dict
         Dictionary from table names to DataFrame objects
 
-    key_columns : dict, optional
+    primary_keys : dict, optional
         Name of primary key column for each table
 
     indices : dict, optional
@@ -180,7 +180,7 @@ def db_from_dataframes(
     tables = []
     for table_name, df in dataframes.items():
         table_indices = indices.get(table_name, [])
-        primary_key = key_columns.get(table_name)
+        primary_key = primary_keys.get(table_name)
         table = DatabaseTable.from_dataframe(
             name=table_name,
             df=df,

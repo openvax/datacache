@@ -36,7 +36,7 @@ class DatabaseTable(object):
         for column_name in df.columns:
             values = df[column_name]
             if values.isnull().any():
-                self.nullable.add(column_name)
+                nullable.add(column_name)
             column_db_type = db_type(values.dtype)
             column_types.append((column_name.replace(" ", "_"), column_db_type))
 
