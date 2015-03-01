@@ -4,7 +4,8 @@ from .database_helpers import (
     db_from_dataframe,
     db_from_dataframes,
     fetch_fasta_db,
-    fetch_csv_db
+    fetch_csv_db,
+    connect_if_correct_version
 )
 from .common import ensure_dir, get_data_dir, build_path, clear_cache, build_local_filename
 from .cache import Cache
