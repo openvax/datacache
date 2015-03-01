@@ -91,14 +91,19 @@ def _create_cached_db(
     table_names = [table.name for table in tables]
     try:
         if db.has_tables(table_names) and \
-           db.has_version() and \
-           db.version() == version:
+                db.has_version() and \
+                db.version() == version:
             logging.info("Found existing table in database %s", db_path)
         else:
+            if len(db.table_names()) > 0:
+                logging.info("Dropping tables from database %s: %s",
+                    db_path,
+                    ", ".join(db.table_names()))
+                db.drop_tables()
             logging.info(
-                "Creating database %d table(s) %s",
-                len(table_names),
-                db_path)
+                "Creating database %s containing: %s",
+                db_path,
+                ", ".join(table_names))
             db.fill(tables, version)
     except:
         logging.warning(
