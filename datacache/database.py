@@ -19,19 +19,30 @@ class Database(object):
         self.connection.commit()
 
     def close(self):
+        """Commit changes and close database connection"""
         self._commit()
         self.connection.close()
 
+    def table_names(self):
+        """Returns names of all tables in the database"""
+        query = "SELECT name FROM sqlite_master WHERE type='table'"
+        cursor = self.connection.execute(query)
+        results = cursor.fetchall()
+        return [result_tuple[0] for result_tuple in results]
+
     def has_table(self, table_name):
         """Does a table named `table_name` exist in the sqlite database?"""
-        query = """
-            SELECT name FROM sqlite_master
-            WHERE type='table' AND name='%s'""" % table_name
-        cursor = self.connection.execute(query)
-        results = cursor.fetchmany()
-        return len(results) > 0
+        table_names = self.table_names()
+        return table_name in table_names
+
+    def drop_all_tables(self):
+        """Drop all tables in the database"""
+        for table_name in self.table_names():
+            self.execute_sql("DROP TABLE %s" % table_name)
+        self.connection.commit()
 
     def execute_sql(self, sql, commit=False):
+        """Log and then execute a SQL query"""
         logging.info("Running sqlite query: \"%s\"", sql)
         self.connection.execute(sql)
         if commit:
@@ -42,9 +53,16 @@ class Database(object):
         return all(self.has_table(table_name) for table_name in table_names)
 
     def has_version(self):
+        """Does this database have version information?
+
+        The absence of version information indicates that this database was
+        either not created by datacache or is incomplete.
+        """
         return self.has_table(METADATA_COLUMN_NAME)
 
     def version(self):
+        """What's the version of this database? Found in metadata attached
+        by datacache when creating this database."""
         query =  "SELECT version FROM %s" % METADATA_COLUMN_NAME
         cursor = self.connection.execute(query)
         version = cursor.fetchone()
