@@ -216,7 +216,7 @@ def db_from_dataframe(
         db_filename,
         table_name,
         df,
-        key_column=None,
+        primary_key=None,
         subdir=None,
         overwrite=False,
         indices=(),
@@ -230,7 +230,7 @@ def db_from_dataframe(
     return db_from_dataframes(
         db_filename=db_filename,
         dataframes={table_name : df},
-        key_columns={table_name : key_column},
+        primary_keys={table_name : primary_key},
         indices={table_name : indices},
         subdir=subdir,
         overwrite=overwrite,

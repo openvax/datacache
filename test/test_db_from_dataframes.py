@@ -11,7 +11,7 @@ def test_database_from_dataframes():
         db = db_from_dataframes(
             db_filename=f.name,
             dataframes={"A" : dfA, "B" : dfB},
-            key_columns={"A" : "numbers"},
+            primary_keys={"A" : "numbers"},
             indices={"A" : [("numbers", "strings")]},
             subdir="test_datacache")
         cursor_A = db.execute("SELECT * FROM A");
@@ -21,14 +21,13 @@ def test_database_from_dataframes():
         results_B = cursor_B.fetchall()
         eq_(results_B, [("nuzzle",), ("ruzzle",)])
 
-
 def test_database_from_single_dataframe():
     with NamedTemporaryFile(suffix="test.db") as f:
         db = db_from_dataframe(
             db_filename=f.name,
             table_name="A",
             df=dfA,
-            key_column="numbers",
+            primary_key="numbers",
             indices=[("numbers", "strings")],
             subdir="test_datacache")
         cursor = db.execute("SELECT * FROM A");
