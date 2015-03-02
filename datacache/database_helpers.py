@@ -12,16 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import sqlite3
 from os import remove
 from os.path import splitext, split, exists
 import logging
 
-import numpy as np
 from Bio import SeqIO
 from typechecks import (
     require_string,
-    require_integer,
     require_iterable_of
 )
 
@@ -29,6 +26,7 @@ from .common import build_path, normalize_filename
 from .download import fetch_file, fetch_csv_dataframe
 from .database import Database
 from .database_table import DatabaseTable
+from .database_types import db_type
 
 
 def connect_if_correct_version(db_path, version):
@@ -104,7 +102,7 @@ def _create_cached_db(
                 "Creating database %s containing: %s",
                 db_path,
                 ", ".join(table_names))
-            db.fill(tables, version)
+            db.create(tables, version)
     except:
         logging.warning(
             "Failed to create tables %s in database %s",
@@ -136,7 +134,6 @@ def fetch_fasta_db(
         subdir=subdir,
         decompress=True)
 
-
     fasta_dict = SeqIO.index(fasta_path, 'fasta')
     table = DatabaseTable.from_fasta_dict(
         table_name,
@@ -155,10 +152,10 @@ def _construct_db_filename(base_filename, df):
     Generate  filename for a DataFrame
     """
     db_filename = base_filename + ("_nrows%d" % len(df))
-    for col_name in df.columns:
-        col_db_type = dtype_to_db_type(col.dtype)
-        col_name = col_name.replace(" ", "_")
-        db_filename += ".%s_%s" % (col_name, col_db_type)
+    for column_name in df.columns:
+        column_db_type = db_type(df[column_name].dtype)
+        column_name = column_name.replace(" ", "_")
+        db_filename += ".%s_%s" % (column_name, column_db_type)
     return db_filename + ".db"
 
 def db_from_dataframes(
@@ -229,9 +226,9 @@ def db_from_dataframe(
     """
     return db_from_dataframes(
         db_filename=db_filename,
-        dataframes={table_name : df},
-        primary_keys={table_name : primary_key},
-        indices={table_name : indices},
+        dataframes={table_name: df},
+        primary_keys={table_name: primary_key},
+        indices={table_name: indices},
         subdir=subdir,
         overwrite=overwrite,
         version=version)

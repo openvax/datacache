@@ -21,11 +21,12 @@ readme_filename = "README.md"
 current_directory = os.path.dirname(__file__)
 readme_path = os.path.join(current_directory, readme_filename)
 
+
 try:
     with open(readme_path, "r") as f:
         readme = f.read()
 except:
-    loggin.warn("Failed to load %s", readme_filename)
+    logging.warn("Failed to load %s", readme_filename)
     readme = ""
 
 try:

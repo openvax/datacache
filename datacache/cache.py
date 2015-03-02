@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from os.path import split, exists, join
+from os.path import exists, join
 from os import remove
 
 from . import common
-from . import db
 from . import download
+from .database_helpers import db_from_dataframe
 
 
 class Cache(object):
@@ -91,7 +91,7 @@ class Cache(object):
         if download:
             return self.fetch(url=url, filename=filename, decompress=decompress)
         else:
-            filename =  self.local_filename(url, filename, decompress)
+            filename = self.local_filename(url, filename, decompress)
             return join(self.cache_directory_path, filename)
 
     def db_from_dataframe(
@@ -99,10 +99,10 @@ class Cache(object):
             db_filename,
             table_name,
             df,
-            key_column_name = None):
+            key_column_name=None):
         return db_from_dataframe(
-            db_filename = db_filename,
-            table_name = table_name,
-            df = df,
-            key_column_name = key_column_name,
-            subdir = self.subdir)
+            db_filename=db_filename,
+            table_name=table_name,
+            df=df,
+            key_column_name=key_column_name,
+            subdir=self.subdir)

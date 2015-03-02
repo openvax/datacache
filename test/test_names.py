@@ -1,4 +1,4 @@
-from datacache import build_path, build_local_filename
+from datacache import build_local_filename
 
 def test_url_without_filename():
     filename = build_local_filename(download_url="http://www.google.com/")

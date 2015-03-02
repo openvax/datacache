@@ -70,16 +70,18 @@ class DatabaseTable(object):
         key_list = list(fasta_dict.keys())
         key_set = set(key_list)
         assert len(key_set) == len(key_list), \
-            "FASTA file from %s contains %d non-unique sequence identifiers" % \
-            (download_url, len(key_list) - len(key_set))
+            "FASTA file from contains %d non-unique sequence identifiers" % \
+            (len(key_list) - len(key_set))
         column_types = [(key_column, "TEXT"), (value_column, "TEXT")]
+
         def make_rows():
             return [
                 (idx, str(record.seq))
                 for (idx, record)
                 in fasta_dict.items()
             ]
-        return  cls(
+
+        return cls(
             name=name,
             column_types=column_types,
             make_rows=make_rows,

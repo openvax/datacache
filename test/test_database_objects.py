@@ -2,9 +2,6 @@
 Test that datacache constructs databases correctly
 (separately from downloading/caching them)
 """
-from os import remove
-from os.path import exists
-import sqlite3
 import tempfile
 
 import datacache
@@ -42,7 +39,7 @@ def test_create_db():
     with tempfile.NamedTemporaryFile(suffix="test.db") as f:
         db = datacache.database.Database(f.name)
         table = make_table_object()
-        db.fill(tables=[table], version=VERSION)
+        db.create(tables=[table], version=VERSION)
         assert db.has_table(TABLE_NAME)
         assert db.has_version()
         assert db.version() == VERSION

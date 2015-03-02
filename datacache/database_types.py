@@ -19,27 +19,27 @@ from typechecks import is_string
 
 
 _dtype_to_db_type_dict = {
- 'int' : 'INT',
- 'int8' : 'INT',
- 'int16' : 'INT',
- 'int32' : 'INT',
- 'int64' : 'INT',
+ 'int': 'INT',
+ 'int8': 'INT',
+ 'int16': 'INT',
+ 'int32': 'INT',
+ 'int64': 'INT',
 
- 'uint8' : 'INT',
- 'uint16' : 'INT',
- 'uint32' : 'INT',
- 'uint64' : 'INT',
+ 'uint8': 'INT',
+ 'uint16': 'INT',
+ 'uint32': 'INT',
+ 'uint64': 'INT',
 
- 'bool' : 'INT',
+ 'bool': 'INT',
 
- 'float' : 'FLOAT',
- 'float32' : 'FLOAT',
- 'float64' : 'FLOAT',
+ 'float': 'FLOAT',
+ 'float32': 'FLOAT',
+ 'float64': 'FLOAT',
 
- 'object' : 'TEXT',
- 'object_' : 'TEXT',
- 'string_' : 'TEXT',
- 'str' : 'TEXT',
+ 'object': 'TEXT',
+ 'object_': 'TEXT',
+ 'string_': 'TEXT',
+ 'str': 'TEXT',
 }
 
 def _lookup_type_name(type_name):
@@ -52,17 +52,13 @@ def _candidate_type_names(python_type):
     """Generator which yields possible type names to look up in the conversion
     dictionary
     """
-    # create list of candidate type names to search through the
-    # dictionary of known conversions
-    if is_string(python_type):
-        yield python_type
 
     # if we get a single character code we should normalize to a NumPy type
     if python_type in np.typeDict:
         python_type = np.typeDict[python_type]
         yield python_type.__name__
 
-    #if we get a dtype object i.e. dtype('int16'), then pull out its name
+    # if we get a dtype object i.e. dtype('int16'), then pull out its name
     if hasattr(python_type, 'name'):
         yield python_type.name
 
@@ -75,7 +71,7 @@ def _candidate_type_names(python_type):
     if hasattr(python_type, 'type') and hasattr(python_type.type, '__name__'):
         yield python_type.type.__name__
 
-    yield str(dtype)
+    yield str(python_type)
 
 def db_type(python_type):
     """
