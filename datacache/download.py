@@ -1,4 +1,4 @@
-# Copyright (c) 2014. Mount Sinai School of Medicine
+# Copyright (c) 2015. Mount Sinai School of Medicine
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ from .common import build_path, build_local_filename
 
 try:
     import urllib.request, urllib.error, urllib.parse
-    # Python 3 
+    # Python 3
     def urllib_response(url):
         req = urllib.request.Request(url)
         return urllib.request.urlopen(req)

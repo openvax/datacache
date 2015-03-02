@@ -13,28 +13,40 @@
 # limitations under the License.
 
 import os
+import logging
 
-readme_filename = os.path.join(os.path.dirname(__file__), 'README.md')
+from setuptools import setup
+
+readme_filename = "README.md"
+current_directory = os.path.dirname(__file__)
+readme_path = os.path.join(current_directory, readme_filename)
 
 try:
-    with open(readme_filename, 'r') as f:
+    with open(readme_path, "r") as f:
         readme = f.read()
 except:
-    print("Failed to load README file")
+    loggin.warn("Failed to load %s", readme_filename)
     readme = ""
 
 try:
     import pypandoc
-    readme = pypandoc.convert(readme, to='rst', format='md')
+    readme = pypandoc.convert(readme, to="rst", format="md")
 except:
-    print("Conversion of long_description from markdown to reStructuredText failed, skipping...")
+    logging.warn("Failed to convert %s to reStructuredText", readme_filename)
 
 
-from setuptools import setup
+requirements_path = os.path.join(current_directory, "requirements.txt")
 
-if __name__ == '__main__':
+with open(requirements_path, "r") as f:
+    requirements = [
+        line.strip()
+        for line in f.read().splitlines()
+        if line.strip()
+    ]
+
+if __name__ == "__main__":
     setup(
-        name='datacache',
+        name="datacache",
         version="0.4.7",
         description="Helpers for transparently downloading datasets",
         author="Alex Rubinsteyn",
@@ -42,22 +54,15 @@ if __name__ == '__main__':
         url="https://github.com/hammerlab/datacache",
         license="http://www.apache.org/licenses/LICENSE-2.0.html",
         classifiers=[
-            'Development Status :: 3 - Alpha',
-            'Environment :: Console',
-            'Operating System :: OS Independent',
-            'Intended Audience :: Science/Research',
-            'License :: OSI Approved :: Apache Software License',
-            'Programming Language :: Python',
-            'Topic :: Scientific/Engineering :: Bio-Informatics',
+            "Development Status :: 3 - Alpha",
+            "Environment :: Console",
+            "Operating System :: OS Independent",
+            "Intended Audience :: Science/Research",
+            "License :: OSI Approved :: Apache Software License",
+            "Programming Language :: Python",
+            "Topic :: Scientific/Engineering :: Bio-Informatics",
         ],
-        install_requires=[
-            'pandas>=0.15.2',
-            'appdirs>=1.4.0',
-            'progressbar>=2.2',
-            'biopython>=1.65',
-            'requests>=2.5.1',
-            'typechecks>=0.0.0'
-        ],
+        install_requires=requirements,
         long_description=readme,
-        packages=['datacache'],
+        packages=["datacache"],
     )
