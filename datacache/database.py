@@ -181,7 +181,10 @@ class Database(object):
         logging.info("Creating index on %s (%s)" % (
                 table_name,
                 ", ".join(index_column_set)))
-        index_name = "index%d_%s" % (index_number, "_".join(index_column_set))
+        index_name = "%s_index%d_%s" % (
+            table_name,
+            index_number,
+            "_".join(index_column_set))
         self.connection.execute(
             "CREATE INDEX IF NOT EXISTS %s ON %s (%s)" % (
                 index_name,
