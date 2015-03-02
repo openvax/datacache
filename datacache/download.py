@@ -28,7 +28,7 @@ from .common import build_path, build_local_filename
 
 try:
     import urllib.request, urllib.error, urllib.parse
-    # Python 3 
+    # Python 3
     def urllib_response(url):
         req = urllib.request.Request(url)
         return urllib.request.urlopen(req)
