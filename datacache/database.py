@@ -77,7 +77,7 @@ class Database(object):
     def version(self):
         """What's the version of this database? Found in metadata attached
         by datacache when creating this database."""
-        query =  "SELECT version FROM %s" % METADATA_COLUMN_NAME
+        query = "SELECT version FROM %s" % METADATA_COLUMN_NAME
         cursor = self.connection.execute(query)
         version = cursor.fetchone()
         if not version:
@@ -155,7 +155,7 @@ class Database(object):
         sql = "INSERT INTO %s VALUES (%s)" % (table_name, blank_slots)
         self.connection.executemany(sql, rows)
 
-    def fill(self, tables, version):
+    def create(self, tables, version):
         """Do the actual work of creating the database, filling its tables with
         values, creating indices, and setting the datacache version metadata.
 
@@ -196,5 +196,3 @@ class Database(object):
         require_iterable_of(indices, (tuple, list))
         for i, index_column_set in enumerate(indices):
             self._create_index(table_name, i, index_column_set)
-
-

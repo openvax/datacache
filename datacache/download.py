@@ -13,13 +13,13 @@
 # limitations under the License.
 
 import gzip
+import logging
 from os import remove
 from os.path import exists, splitext
-from shutil import move, copyfileobj
+from shutil import move
 from tempfile import NamedTemporaryFile
 import zipfile
-import logging
-import hashlib
+
 
 import requests
 import pandas as pd
@@ -27,7 +27,10 @@ import pandas as pd
 from .common import build_path, build_local_filename
 
 try:
-    import urllib.request, urllib.error, urllib.parse
+    import urllib.request
+    import urllib.error
+    import urllib.parse
+
     # Python 3
     def urllib_response(url):
         req = urllib.request.Request(url)
@@ -35,6 +38,7 @@ try:
 except ImportError:
     # Python 2
     import urllib2
+
     def urllib_response(url):
         req = urllib2.Request(url)
         return urllib2.urlopen(req)

@@ -14,12 +14,11 @@
 
 
 import hashlib
-import logging
-from os import makedirs, remove, environ
+from os import makedirs, environ
 from os.path import join, exists, split, splitext
 import re
-from shutil import move, rmtree, copyfileobj
 
+from shutil import rmtree
 import appdirs
 
 def ensure_dir(path):
@@ -67,7 +66,7 @@ def build_local_filename(download_url=None, filename=None, decompress=False):
     if not filename:
         digest = hashlib.md5(download_url.encode('utf-8')).hexdigest()
         parts = split(download_url)
-        filename =  digest + "." + "_".join(parts)
+        filename = digest + "." + "_".join(parts)
 
     filename = normalize_filename(filename)
 
