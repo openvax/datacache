@@ -17,13 +17,16 @@ import sqlite3
 
 from typechecks import require_integer, require_string, require_iterable_of
 
-METADATA_COLUMN_NAME = "_datacache_metadata"
+METADATA_TABLE_NAME = "_datacache_metadata"
 
 class Database(object):
     """
     Wrapper object for sqlite3 database which provides helpers for
     querying and constructing the datacache metadata table, as well as
     creating and checking for existence of particular table names.
+
+    Calls to methods other than Database.close() and Database.create()
+    will not commit their changes.
     """
     def __init__(self, path):
         self.path = path
@@ -72,12 +75,12 @@ class Database(object):
         The absence of version information indicates that this database was
         either not created by datacache or is incomplete.
         """
-        return self.has_table(METADATA_COLUMN_NAME)
+        return self.has_table(METADATA_TABLE_NAME)
 
     def version(self):
         """What's the version of this database? Found in metadata attached
         by datacache when creating this database."""
-        query = "SELECT version FROM %s" % METADATA_COLUMN_NAME
+        query = "SELECT version FROM %s" % METADATA_TABLE_NAME
         cursor = self.connection.execute(query)
         version = cursor.fetchone()
         if not version:
@@ -85,7 +88,7 @@ class Database(object):
         else:
             return int(version[0])
 
-    def _set_version(self, version):
+    def _finalize_database(self, version):
         """
         Create metadata table for database with version number.
 
@@ -96,10 +99,10 @@ class Database(object):
         """
         require_integer(version, "version")
         create_metadata_sql = \
-            "CREATE TABLE %s (version INT)" % METADATA_COLUMN_NAME
+            "CREATE TABLE %s (version INT)" % METADATA_TABLE_NAME
         self.execute_sql(create_metadata_sql)
         insert_version_sql = \
-            "INSERT INTO %s VALUES (%s)" % (METADATA_COLUMN_NAME, version)
+            "INSERT INTO %s VALUES (%s)" % (METADATA_TABLE_NAME, version)
         self.execute_sql(insert_version_sql)
 
     def _create_table(self, table_name, column_types, primary=None, nullable=()):
@@ -174,25 +177,45 @@ class Database(object):
                 nullable=table.nullable)
             self._fill_table(table.name, table.rows)
             self._create_indices(table.name, table.indices)
-        self._set_version(version)
+        self._finalize_database(version)
         self._commit()
 
-    def _create_index(self, table_name, index_number, index_column_set):
+    def _create_index(self, table_name, index_columns):
+        """
+        Creates an index over multiple columns of a given table.
+
+        Parameters
+        ----------
+        table_name : str
+
+        index_columns : iterable of str
+            Which columns should be indexed
+        """
+
         logging.info("Creating index on %s (%s)" % (
                 table_name,
-                ", ".join(index_column_set)))
-        index_name = "%s_index%d_%s" % (
+                ", ".join(index_columns)))
+        index_name = "%s_index_%s" % (
             table_name,
-            index_number,
-            "_".join(index_column_set))
+            "_".join(index_columns))
         self.connection.execute(
             "CREATE INDEX IF NOT EXISTS %s ON %s (%s)" % (
                 index_name,
                 table_name,
-                ", ".join(index_column_set)))
+                ", ".join(index_columns)))
 
     def _create_indices(self, table_name, indices):
+        """
+        Create multiple indices (each over multiple columns) on a given table.
+
+        Parameters
+        ----------
+        table_name : str
+
+        indices : iterable of tuples
+            Multiple groups of columns, each of which should be indexed.
+        """
         require_string(table_name, "table_name")
         require_iterable_of(indices, (tuple, list))
-        for i, index_column_set in enumerate(indices):
-            self._create_index(table_name, i, index_column_set)
+        for index_column_set in indices:
+            self._create_index(table_name, index_column_set)

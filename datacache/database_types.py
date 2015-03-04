@@ -15,8 +15,6 @@
 """Convert from Python type names to sqlite3 column types"""
 
 import numpy as np
-from typechecks import is_string
-
 
 _dtype_to_db_type_dict = {
  'int': 'INT',
@@ -48,37 +46,50 @@ def _lookup_type_name(type_name):
     else:
         return None
 
-def _candidate_type_names(python_type):
+def _candidate_type_names(python_type_representation):
     """Generator which yields possible type names to look up in the conversion
-    dictionary
-    """
+    dictionary.
 
+    Parameters
+    ----------
+    python_type_representation : object
+        Any Python object which represents a type, such as `int`,
+        `dtype('int8')`, `np.int8`, or `"int8"`.
+    """
     # if we get a single character code we should normalize to a NumPy type
-    if python_type in np.typeDict:
-        python_type = np.typeDict[python_type]
-        yield python_type.__name__
+    # using np.typeDict, which maps string representations of types to NumPy
+    # type objects
+    if python_type_representation in np.typeDict:
+        python_type_representation = np.typeDict[python_type_representation]
+        yield python_type_representation.__name__
 
     # if we get a dtype object i.e. dtype('int16'), then pull out its name
-    if hasattr(python_type, 'name'):
-        yield python_type.name
+    if hasattr(python_type_representation, 'name'):
+        yield python_type_representation.name
 
     # convert Python types by adding their type's name
-    if hasattr(python_type, '__name__'):
-        yield python_type.__name__
+    if hasattr(python_type_representation, '__name__'):
+        yield python_type_representation.__name__
 
     # for a dtype like dtype('S3') need to access dtype.type.__name__
     # to get 'string_'
-    if hasattr(python_type, 'type') and hasattr(python_type.type, '__name__'):
-        yield python_type.type.__name__
+    if hasattr(python_type_representation, 'type'):
+        if hasattr(python_type_representation.type, '__name__'):
+            yield python_type_representation.type.__name__
 
-    yield str(python_type)
+    yield str(python_type_representation)
 
-def db_type(python_type):
+def db_type(python_type_representation):
     """
-    Converts from Python type or NumPy/Pandas dtype to a sqlite3 type name
+    Converts from any of:
+        (1) Python type
+        (2) NumPy/Pandas dtypes
+        (3) string names of types
+    ...to a sqlite3 type name
     """
-    for candidate_type_name in _candidate_type_names(python_type):
-        result = _lookup_type_name(candidate_type_name)
-        if result:
-            return result
-    raise ValueError("Failed to find sqlite3 column type for %s" % python_type)
+    for type_name in _candidate_type_names(python_type_representation):
+        db_type_name = _lookup_type_name(type_name)
+        if db_type_name:
+            return db_type_name
+    raise ValueError("Failed to find sqlite3 column type for %s" % (
+        python_type_representation))

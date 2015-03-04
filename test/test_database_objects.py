@@ -46,7 +46,6 @@ def test_create_db():
         sql = """
             SELECT %s from %s WHERE %s = '%s'
         """ % (INT_COL_NAME, TABLE_NAME, STR_COL_NAME, "light")
-        print(sql)
         cursor = db.connection.execute(sql)
         int_result_tuple = cursor.fetchone()
         int_result = int_result_tuple[0]

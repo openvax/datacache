@@ -19,6 +19,7 @@ import logging
 from Bio import SeqIO
 from typechecks import (
     require_string,
+    require_integer,
     require_iterable_of
 )
 
@@ -71,17 +72,16 @@ def _create_cached_db(
     if not (subdir is None or isinstance(subdir, str)):
         raise TypeError("Expected subdir to be None or str, got %s : %s" % (
             subdir, type(subdir)))
-
-    try:
-        version = int(version)
-    except ValueError:
-        raise TypeError("Expected version to be int, got %s : %s" % (
-            version, type(version)))
+    require_integer(version, "version")
 
     db_path = build_path(db_filename, subdir)
 
-    # if we've already create the table in the database
-    # then assuming it's complete/correct and return it
+    # if the database file doesn't already exist and we encounter an error
+    # later, delete the file before raising an exception
+    delete_on_error = not exists(db_path)
+
+    # if the database already exists, contains all the table
+    # names and has the right version, then just return it
     db = Database(db_path)
 
     # make sure to delete the database file in case anything goes wrong
@@ -109,7 +109,8 @@ def _create_cached_db(
             table_names,
             db_path)
         db.close()
-        remove(db_path)
+        if delete_on_error:
+            remove(db_path)
         raise
     return db.connection
 
@@ -146,17 +147,6 @@ def fetch_fasta_db(
         tables=[table],
         subdir=subdir,
         version=version)
-
-def _construct_db_filename(base_filename, df):
-    """
-    Generate  filename for a DataFrame
-    """
-    db_filename = base_filename + ("_nrows%d" % len(df))
-    for column_name in df.columns:
-        column_db_type = db_type(df[column_name].dtype)
-        column_name = column_name.replace(" ", "_")
-        db_filename += ".%s_%s" % (column_name, column_db_type)
-    return db_filename + ".db"
 
 def db_from_dataframes(
         db_filename,
@@ -233,6 +223,20 @@ def db_from_dataframe(
         overwrite=overwrite,
         version=version)
 
+
+def _db_filename_from_dataframe(base_filename, df):
+    """
+    Generate database filename for a sqlite3 database we're going to
+    fill with the contents of a DataFrame, using the DataFrame's
+    column names and types.
+    """
+    db_filename = base_filename + ("_nrows%d" % len(df))
+    for column_name in df.columns:
+        column_db_type = db_type(df[column_name].dtype)
+        column_name = column_name.replace(" ", "_")
+        db_filename += ".%s_%s" % (column_name, column_db_type)
+    return db_filename + ".db"
+
 def fetch_csv_db(
         table_name,
         download_url,
@@ -252,7 +256,7 @@ def fetch_csv_db(
         **pandas_kwargs)
     base_filename = splitext(csv_filename)[0]
     if db_filename is None:
-        db_filename = _construct_db_filename(base_filename, df)
+        db_filename = _db_filename_from_dataframe(base_filename, df)
     return db_from_dataframe(
         db_filename,
         table_name,
