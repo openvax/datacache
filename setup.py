@@ -60,7 +60,7 @@ if __name__ == "__main__":
             "progressbar>=2.2",
             "biopython>=1.65",
             "requests>=2.5.1",
-            "typechecks>=0.0.3",
+            "typechecks>=0.0.2",
         ],
         long_description=readme,
         packages=["datacache"],
