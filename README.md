@@ -13,4 +13,3 @@ Helpers for transparently downloading datasets
         key_column = *'id'*, value_column = *'seq'*, subdir = *None*)
 * **fetch_csv_db**(table_name, download_url, csv_filename = *None*, subdir = *None*,
         \*\*pandas_kwargs)
-

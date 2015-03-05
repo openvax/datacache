@@ -36,19 +36,10 @@ except:
     logging.warn("Failed to convert %s to reStructuredText", readme_filename)
 
 
-requirements_path = os.path.join(current_directory, "requirements.txt")
-
-with open(requirements_path, "r") as f:
-    requirements = [
-        line.strip()
-        for line in f.read().splitlines()
-        if line.strip()
-    ]
-
 if __name__ == "__main__":
     setup(
         name="datacache",
-        version="0.4.10",
+        version="0.4.11",
         description="Helpers for transparently downloading datasets",
         author="Alex Rubinsteyn",
         author_email="alex {dot} rubinsteyn {at} mssm {dot} edu",
@@ -63,11 +54,14 @@ if __name__ == "__main__":
             "Programming Language :: Python",
             "Topic :: Scientific/Engineering :: Bio-Informatics",
         ],
-        install_requires=requirements,
+        install_requires=[
+            "pandas>=0.15.2",
+            "appdirs>=1.4.0",
+            "progressbar>=2.2",
+            "biopython>=1.65",
+            "requests>=2.5.1",
+            "typechecks>=0.0.3",
+        ],
         long_description=readme,
         packages=["datacache"],
-        # must include requirements.txt in the package if
-        # we're parsing setuptools requirements from this file
-        package_data={"datacache": [requirements_path]},
-        include_package_data=True,
     )
