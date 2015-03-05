@@ -1,7 +1,7 @@
-appdirs
-biopython
-nose2
-pandas
-progressbar
-requests
-mock
+pandas>=0.15.2
+appdirs>=1.4.0
+progressbar>=2.2
+biopython>=1.65
+requests>=2.5.1
+typechecks>=0.0.0
+nose>=1.3.3
