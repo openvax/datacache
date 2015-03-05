@@ -48,7 +48,7 @@ with open(requirements_path, "r") as f:
 if __name__ == "__main__":
     setup(
         name="datacache",
-        version="0.4.7",
+        version="0.4.10",
         description="Helpers for transparently downloading datasets",
         author="Alex Rubinsteyn",
         author_email="alex {dot} rubinsteyn {at} mssm {dot} edu",
@@ -66,4 +66,8 @@ if __name__ == "__main__":
         install_requires=requirements,
         long_description=readme,
         packages=["datacache"],
+        # must include requirements.txt in the package if
+        # we're parsing setuptools requirements from this file
+        package_data={"datacache": [requirements_path]},
+        include_package_data=True,
     )
