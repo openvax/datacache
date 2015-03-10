@@ -73,7 +73,7 @@ def _download(filename, full_path, download_url):
             if filename in names:
                 chosen_filename = filename
             else:
-                # in case zip archive contains multiple files, choose the biggest
+                # If zip archive contains multiple files, choose the biggest.
                 biggest_size = 0
                 chosen_filename = names[0]
                 for info in z.infolist():
@@ -88,7 +88,7 @@ def _download(filename, full_path, download_url):
         with gzip.GzipFile(tmp_path) as src:
             contents = src.read()
         remove(tmp_path)
-        with open(full_path, 'w') as dst:
+        with open(full_path, 'wb') as dst:
             dst.write(contents)
     elif download_url.endswith(("html", "htm")):
         logging.info("Extracting HTML table into CSV %s...", filename)
