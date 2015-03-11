@@ -97,7 +97,7 @@ def _create_cached_db(
                 logging.info("Dropping tables from database %s: %s",
                     db_path,
                     ", ".join(db.table_names()))
-                db.drop_tables()
+                db.drop_all_tables()
             logging.info(
                 "Creating database %s containing: %s",
                 db_path,
