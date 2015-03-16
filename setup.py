@@ -57,7 +57,7 @@ if __name__ == "__main__":
         install_requires=[
             "pandas>=0.15.2",
             "appdirs>=1.4.0",
-            "progressbar>=2.2",
+            "progressbar33>=2.4",
             "biopython>=1.65",
             "requests>=2.5.1",
             "typechecks>=0.0.2",
