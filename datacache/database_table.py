@@ -15,7 +15,7 @@
 from .database_types import db_type
 
 class DatabaseTable(object):
-    """Converts between a DataFrame and a sqlite3 database table"""
+    """Converts between a DataFrame and a database table"""
 
     def __init__(
             self,
@@ -55,7 +55,7 @@ class DatabaseTable(object):
             column_types.append((column_name.replace(" ", "_"), column_db_type))
 
         def make_rows():
-            return list(tuple(row) for row in df.values)
+            return df.to_dict(orient="records")
 
         return cls(
             name=name,
@@ -76,7 +76,7 @@ class DatabaseTable(object):
 
         def make_rows():
             return [
-                (idx, str(record.seq))
+                {key_column: idx, value_column: str(record.seq)}
                 for (idx, record)
                 in fasta_dict.items()
             ]
