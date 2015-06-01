@@ -39,7 +39,7 @@ except:
 if __name__ == "__main__":
     setup(
         name="datacache",
-        version="0.4.14",
+        version="0.5.0",
         description="Helpers for transparently downloading datasets",
         author="Alex Rubinsteyn",
         author_email="alex {dot} rubinsteyn {at} mssm {dot} edu",
@@ -61,6 +61,8 @@ if __name__ == "__main__":
             "biopython>=1.65",
             "requests>=2.5.1",
             "typechecks>=0.0.2",
+            "sqlalchemy>=1.0.4",
+            "sqlalchemy_utils>=0.30.6"
         ],
         long_description=readme,
         packages=["datacache"],

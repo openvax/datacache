@@ -17,206 +17,269 @@ from os.path import splitext, split, exists
 import logging
 
 from Bio import SeqIO
+
+from sqlalchemy_utils import database_exists, drop_database
 from typechecks import (
     require_string,
     require_integer,
     require_iterable_of
 )
 
-from .common import build_path, normalize_filename
+from .common import (build_path, normalize_filename, get_db_name,
+                     build_sqlite_url)
 from .download import fetch_file, fetch_csv_dataframe
 from .database import Database
 from .database_table import DatabaseTable
 from .database_types import db_type
 
 
-def connect_if_correct_version(db_path, version):
-    """Return a sqlite3 database connection if the version in the database's
+def connect_if_correct_version(db_url, collection_name, subdir, version):
+    """Return a database connection if the version in the database's
     metadata matches the version argument.
 
     Also implicitly checks for whether the data in this database has
     been completely filled, since we set the version last.
 
+    Fall back to a sqlite DB file if no DB URL (None) is provided.
+
     TODO: Make an explicit 'complete' flag to the metadata.
     """
-    db = Database(db_path)
+    # Fall back to a sqlite DB file if no DB URL (None) is provided
+    db_url = db_url if db_url else build_sqlite_url(
+        collection_name, subdir)
+
+    if not exists(db_url):
+        return None
+
+    db = Database(db_url=db_url, collection_name=collection_name)
     if db.has_version() and db.version() == version:
         return db.connection
     return None
 
+
+def exists(db_url):
+    try:
+        return database_exists(db_url)
+    except Exception as e:
+        logging.warning(
+            "Failed to check if db_url \"%s\" exists with error: %s" %
+            (db_url, e.message))
+        return False
+
+
 def _create_cached_db(
-        db_filename,
+        collection_name,
         tables,
+        db_url=None,
+        overwrite=False,
         subdir=None,
         version=1):
     """
-    Either create or retrieve sqlite database.
+    Either create or retrieve a database.
 
     Parameters
     --------
-    db_filename : str
-        Name of sqlite3 database file
+    collection_name : str
+        A name describing the set of data, e.g.
+        Homo_sapiens.GRCh37.62
 
-    tables : dict
-        Dictionary mapping table names to datacache.DatabaseTable objects
+    db_url : str
+        Database connection description: see
+        http://docs.sqlalchemy.org/en/latest/core/engines.html
+        #database-urls
+        Fall back to a sqlite DB file if no DB URL is provided
+
+    tables : iterable
+        Iterable of datacache.DatabaseTable objects
+
+    overwrite : bool, optional
+        Overwrite existing tables?
 
     subdir : str, optional
 
     version : int, optional
         Version acceptable as cached data.
 
-    Returns sqlite3 connection
+    Returns a database connection
     """
-    require_string(db_filename, "db_filename")
+    if db_url is not None:
+        require_string(db_url, "db_url")
     require_iterable_of(tables, DatabaseTable)
     if not (subdir is None or isinstance(subdir, str)):
         raise TypeError("Expected subdir to be None or str, got %s : %s" % (
             subdir, type(subdir)))
     require_integer(version, "version")
 
-    db_path = build_path(db_filename, subdir)
+    # Fall back to a sqlite DB file if no DB URL (None) is provided
+    is_db_url_fallback = db_url is None
+    db_url = db_url if db_url else build_sqlite_url(
+        collection_name, subdir)
+    db_name = get_db_name(db_url)
 
-    # if the database file doesn't already exist and we encounter an error
-    # later, delete the file before raising an exception
-    delete_on_error = not exists(db_path)
+    # If the database is specific to this collection, drop the whole
+    # database.
+    if overwrite and exists(db_url):
+        if db_name == collection_name:
+            drop_database(db_url)
 
-    # if the database already exists, contains all the table
+    # If the database doesn't already exist and we encounter an error
+    # later, delete the database before raising an exception
+    drop_db_on_error = is_db_url_fallback and not exists(db_url)
+
+    # If the database already exists, contains all the table
     # names and has the right version, then just return it
-    db = Database(db_path)
+    db = Database(db_url, collection_name)
 
-    # make sure to delete the database file in case anything goes wrong
+    # Make sure to delete the database in case anything goes wrong
     # to avoid leaving behind an empty DB
     table_names = [table.name for table in tables]
     try:
-        if db.has_tables(table_names) and \
-                db.has_version() and \
-                db.version() == version:
-            logging.info("Found existing table in database %s", db_path)
+        if (db.has_tables(table_names) and
+            db.has_version() and
+            db.version() == version):
+            logging.info("Found existing tables in database %s", db_name)
         else:
-            if len(db.table_names()) > 0:
-                logging.info("Dropping tables from database %s: %s",
-                    db_path,
-                    ", ".join(db.table_names()))
-                db.drop_all_tables()
             logging.info(
                 "Creating database %s containing: %s",
-                db_path,
+                db_name,
                 ", ".join(table_names))
-            db.create(tables, version)
-    except:
+            db.create(tables=tables, overwrite=overwrite,
+                      version=version)
+    except Exception:
         logging.warning(
             "Failed to create tables %s in database %s",
             table_names,
-            db_path)
+            db_name)
         db.close()
-        if delete_on_error:
-            remove(db_path)
+        if drop_db_on_error:
+            drop_database(db_url)
         raise
     return db.connection
+
 
 def fetch_fasta_db(
         table_name,
         download_url,
+        db_url=None,
         fasta_filename=None,
         key_column='id',
         value_column='seq',
         subdir=None,
+        overwrite=False,
         version=1):
     """
-    Download a FASTA file from `download_url` and store it locally as a sqlite3 database.
-    """
+    Download a FASTA file from `download_url` and store it as
+    a new database or within an existing database.
 
+    Fall back to a sqlite DB file if no DB URL is provided
+    """
     base_filename = normalize_filename(split(download_url)[1])
-    db_filename = "%s.%s.%s.db" % (base_filename, key_column, value_column)
+    collection_name = "%s.%s.%s" % (base_filename, key_column,
+                                    value_column)
 
     fasta_path = fetch_file(
         download_url=download_url,
         filename=fasta_filename,
         subdir=subdir,
         decompress=True)
-
     fasta_dict = SeqIO.index(fasta_path, 'fasta')
+
     table = DatabaseTable.from_fasta_dict(
-        table_name,
-        fasta_dict,
+        name=build_table_name(table_name, collection_name),
+        fasta_dict=fasta_dict,
         key_column=key_column,
         value_column=value_column)
 
     return _create_cached_db(
-        db_filename,
+        collection_name=collection_name,
+        db_url=db_url,
         tables=[table],
         subdir=subdir,
+        overwrite=overwrite,
         version=version)
 
+
 def db_from_dataframes(
-        db_filename,
+        collection_name,
         dataframes,
+        db_url=None,
         primary_keys={},
         indices={},
         subdir=None,
         overwrite=False,
         version=1):
-    """Create a sqlite3 database with
+    """Create or load into a database with
     Parameters
     ----------
-    db_filename : str
-        Name of database file to create
+    collection_name : str
+        A name describing all these dataframes, e.g.
+        Homo_sapiens.GRCh37.62
 
     dataframes : dict
-        Dictionary from table names to DataFrame objects
+        Dictionary from table names (before concatentation with
+        collection_name) to DataFrame objects
+
+    db_url : str, optional
+        Database connection description: see
+        http://docs.sqlalchemy.org/en/latest/core/engines.html
+        #database-urls
+        Fall back to a sqlite DB file if no DB URL is provided
 
     primary_keys : dict, optional
         Name of primary key column for each table
 
     indices : dict, optional
-        Dictionary from table names to list of column name tuples
+        Dictionary from table names (before concatentation with
+        collection_name) to list of column name tuples
 
     subdir : str, optional
 
     overwrite : bool, optional
-        If the database already exists, overwrite it?
+        If the database already exists, and its name matches
+        the collection name, overwrite it
 
     version : int, optional
     """
-    db_path = build_path(db_filename, subdir)
-
-    if overwrite and exists(db_path):
-        remove(db_path)
-
     tables = []
     for table_name, df in dataframes.items():
         table_indices = indices.get(table_name, [])
         primary_key = primary_keys.get(table_name)
         table = DatabaseTable.from_dataframe(
-            name=table_name,
+            name=build_table_name(table_name, collection_name),
             df=df,
             indices=table_indices,
             primary_key=primary_key)
         tables.append(table)
+
     return _create_cached_db(
-        db_path,
+        collection_name=collection_name,
+        db_url=db_url,
         tables=tables,
         subdir=subdir,
         version=version)
 
+
 def db_from_dataframe(
-        db_filename,
-        table_name,
+        collection_name,
         df,
+        table_name,
+        db_url=None,
         primary_key=None,
+        indices=(),
         subdir=None,
         overwrite=False,
-        indices=(),
         version=1):
     """
-    Given a dataframe `df`, turn it into a sqlite3 database.
-    Store values in a table called `table_name`.
+    Given a dataframe `df`, turn it into a database.
+    Store values in a table prefixed `table_name` (concatentaed
+    with `collection_name`; see db_from_dataframes).
 
-    Returns full path to the sqlite database file.
+    Returns a database connection.
     """
     return db_from_dataframes(
-        db_filename=db_filename,
+        collection_name=collection_name,
         dataframes={table_name: df},
+        db_url=db_url,
         primary_keys={table_name: primary_key},
         indices={table_name: indices},
         subdir=subdir,
@@ -224,30 +287,19 @@ def db_from_dataframe(
         version=version)
 
 
-def _db_filename_from_dataframe(base_filename, df):
-    """
-    Generate database filename for a sqlite3 database we're going to
-    fill with the contents of a DataFrame, using the DataFrame's
-    column names and types.
-    """
-    db_filename = base_filename + ("_nrows%d" % len(df))
-    for column_name in df.columns:
-        column_db_type = db_type(df[column_name].dtype)
-        column_name = column_name.replace(" ", "_")
-        db_filename += ".%s_%s" % (column_name, column_db_type)
-    return db_filename + ".db"
-
 def fetch_csv_db(
         table_name,
         download_url,
         csv_filename=None,
-        db_filename=None,
+        db_url=None,
         subdir=None,
         version=1,
         **pandas_kwargs):
     """
-    Download a remote CSV file and create a local sqlite3 database
-    from its contents
+    Download a remote CSV file and create (or populate) a database
+    from its contents.
+
+    If db_url is not provided, a new sqlite DB is created.
     """
     df = fetch_csv_dataframe(
         download_url=download_url,
@@ -255,11 +307,32 @@ def fetch_csv_db(
         subdir=subdir,
         **pandas_kwargs)
     base_filename = splitext(csv_filename)[0]
-    if db_filename is None:
-        db_filename = _db_filename_from_dataframe(base_filename, df)
+
+    def get_collection_name(base_filename, df):
+        """
+        Generate a collection name for a database we're going to
+        fill with the contents of a DataFrame, using the DataFrame's
+        column names and types.
+
+        This will prefix the table in the database, and will also
+        serve as the filename if the database is sqlite.
+        """
+        collection_name = base_filename + ("_nrows%d" % len(df))
+        for column_name in df.columns:
+            column_db_type = db_type(df[column_name].dtype)
+            column_name = column_name.replace(" ", "_")
+            collection_name += ".%s_%s" % (column_name, column_db_type)
+        return collection_name
+    collection_name = get_collection_name(base_filename, df)
+
     return db_from_dataframe(
-        db_filename,
-        table_name,
-        df,
+        collection_name=collection_name,
+        df=df,
+        table_name=table_name,
+        db_url=db_url,
         subdir=subdir,
         version=version)
+
+
+def build_table_name(table_name_prefix, collection_name):
+    return "%s_%s" % (table_name_prefix, collection_name)

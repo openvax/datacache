@@ -15,15 +15,18 @@
 
 import hashlib
 from os import makedirs, environ
-from os.path import join, exists, split, splitext
+from os.path import join, exists, split, splitext, basename
 import re
+from sqlalchemy.engine.url import URL, make_url
 
 from shutil import rmtree
 import appdirs
 
+
 def ensure_dir(path):
     if not exists(path):
         makedirs(path)
+
 
 def get_data_dir(subdir=None, envkey=None):
     if envkey and envkey in environ:
@@ -32,14 +35,27 @@ def get_data_dir(subdir=None, envkey=None):
         subdir = "datacache"
     return appdirs.user_cache_dir(subdir)
 
+
+def build_sqlite_url(collection_name, subdir=None):
+    filename = "%s.db" % collection_name
+    path = build_path(filename, subdir)
+    return "%s%s" % ("sqlite:///", path)
+
+
 def build_path(filename, subdir=None):
     data_dir = get_data_dir(subdir)
     ensure_dir(data_dir)
     return join(data_dir, filename)
 
+
+def get_db_name(db_url):
+    return basename(make_url(db_url).database)
+
+
 def clear_cache(subdir=None):
     data_dir = get_data_dir(subdir)
     rmtree(data_dir)
+
 
 def normalize_filename(filename):
     """
@@ -53,6 +69,7 @@ def normalize_filename(filename):
         filename = prefix + filename[-140:]
 
     return filename
+
 
 def build_local_filename(download_url=None, filename=None, decompress=False):
     """

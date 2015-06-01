@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Convert from Python type names to sqlite3 column types"""
+"""Convert from Python type names to database column types"""
 
 import numpy as np
 
+# Note: these types won't work with any arbitary DB-API backend,
+# though they do work with SQLite and Postgres.
 _dtype_to_db_type_dict = {
  'int': 'INT',
  'int8': 'INT',
@@ -85,11 +87,11 @@ def db_type(python_type_representation):
         (1) Python type
         (2) NumPy/Pandas dtypes
         (3) string names of types
-    ...to a sqlite3 type name
+    ...to a database type name
     """
     for type_name in _candidate_type_names(python_type_representation):
         db_type_name = _lookup_type_name(type_name)
         if db_type_name:
             return db_type_name
-    raise ValueError("Failed to find sqlite3 column type for %s" % (
+    raise ValueError("Failed to find database column type for %s" % (
         python_type_representation))
