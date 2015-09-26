@@ -193,7 +193,7 @@ def db_from_dataframes_with_absolute_path(
     table_names_to_primary_keys : dict, optional
         Name of primary key column for each table
 
-    table_name_to_indices_dict : dict, optional
+    table_name_to_indices : dict, optional
         Dictionary from table names to list of column name tuples
 
     overwrite : bool, optional
