@@ -17,6 +17,7 @@ from .fasta import fetch_fasta_dict
 from .database_helpers import (
     db_from_dataframe,
     db_from_dataframes,
+    db_from_dataframes_with_absolute_path,
     fetch_fasta_db,
     fetch_csv_db,
     connect_if_correct_version
