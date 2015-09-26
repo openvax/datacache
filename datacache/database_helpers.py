@@ -45,36 +45,28 @@ def connect_if_correct_version(db_path, version):
     return None
 
 def _create_cached_db(
-        db_filename,
+        db_path,
         tables,
-        subdir=None,
         version=1):
     """
     Either create or retrieve sqlite database.
 
     Parameters
     --------
-    db_filename : str
-        Name of sqlite3 database file
+    db_path : str
+        Path to sqlite3 database file
 
     tables : dict
         Dictionary mapping table names to datacache.DatabaseTable objects
-
-    subdir : str, optional
 
     version : int, optional
         Version acceptable as cached data.
 
     Returns sqlite3 connection
     """
-    require_string(db_filename, "db_filename")
+    require_string(db_path, "db_path")
     require_iterable_of(tables, DatabaseTable)
-    if not (subdir is None or isinstance(subdir, str)):
-        raise TypeError("Expected subdir to be None or str, got %s : %s" % (
-            subdir, type(subdir)))
     require_integer(version, "version")
-
-    db_path = build_path(db_filename, subdir)
 
     # if the database file doesn't already exist and we encounter an error
     # later, delete the file before raising an exception
@@ -136,16 +128,89 @@ def fetch_fasta_db(
         decompress=True)
 
     fasta_dict = SeqIO.index(fasta_path, 'fasta')
+
     table = DatabaseTable.from_fasta_dict(
         table_name,
         fasta_dict,
         key_column=key_column,
         value_column=value_column)
 
+    db_path = build_path(db_filename, subdir)
+
     return _create_cached_db(
-        db_filename,
+        db_path,
         tables=[table],
-        subdir=subdir,
+        version=version)
+
+def build_tables(
+        table_names_to_dataframes,
+        table_names_to_primary_keys={},
+        table_names_to_indices={}):
+    """
+    Parameters
+    ----------
+    table_names_to_dataframes : dict
+        Dictionary mapping each table name to a DataFrame
+
+    table_names_to_primary_keys : dict
+        Dictionary mapping each table to its primary key
+
+    table_names_to_indices : dict
+        Dictionary mapping each table to a set of indices
+
+    Returns list of DatabaseTable objects
+    """
+    tables = []
+    for table_name, df in table_names_to_dataframes.items():
+        table_indices = table_names_to_indices.get(table_name, [])
+        primary_key = table_names_to_primary_keys.get(table_name)
+        table = DatabaseTable.from_dataframe(
+            name=table_name,
+            df=df,
+            indices=table_indices,
+            primary_key=primary_key)
+        tables.append(table)
+    return tables
+
+def db_from_dataframes_with_absolute_path(
+        db_path,
+        table_names_to_dataframes,
+        table_names_to_primary_keys={},
+        table_name_to_indices={},
+        overwrite=False,
+        version=1):
+    """
+    Create a sqlite3 database from a collection of DataFrame objects
+
+    Parameters
+    ----------
+    db_path : str
+        Path to database file to create
+
+    table_names_to_dataframes : dict
+        Dictionary from table names to DataFrame objects
+
+    table_names_to_primary_keys : dict, optional
+        Name of primary key column for each table
+
+    table_name_to_indices_dict : dict, optional
+        Dictionary from table names to list of column name tuples
+
+    overwrite : bool, optional
+        If the database already exists, overwrite it?
+
+    version : int, optional
+    """
+    if overwrite and exists(db_path):
+        remove(db_path)
+
+    tables = build_tables(
+        table_names_to_dataframes,
+        table_names_to_primary_keys,
+        table_name_to_indices)
+    return _create_cached_db(
+        db_path,
+        tables=tables,
         version=version)
 
 def db_from_dataframes(
@@ -156,7 +221,9 @@ def db_from_dataframes(
         subdir=None,
         overwrite=False,
         version=1):
-    """Create a sqlite3 database with
+    """
+    Create a sqlite3 database from a collection of DataFrame objects
+
     Parameters
     ----------
     db_filename : str
@@ -179,24 +246,12 @@ def db_from_dataframes(
     version : int, optional
     """
     db_path = build_path(db_filename, subdir)
-
-    if overwrite and exists(db_path):
-        remove(db_path)
-
-    tables = []
-    for table_name, df in dataframes.items():
-        table_indices = indices.get(table_name, [])
-        primary_key = primary_keys.get(table_name)
-        table = DatabaseTable.from_dataframe(
-            name=table_name,
-            df=df,
-            indices=table_indices,
-            primary_key=primary_key)
-        tables.append(table)
-    return _create_cached_db(
+    return db_from_dataframes_with_absolute_path(
         db_path,
-        tables=tables,
-        subdir=subdir,
+        table_names_to_dataframes=dataframes,
+        table_names_to_primary_keys=primary_keys,
+        table_name_to_indices=indices,
+        overwrite=overwrite,
         version=version)
 
 def db_from_dataframe(
