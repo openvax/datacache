@@ -253,7 +253,7 @@ def db_from_dataframes(
         db_path,
         table_names_to_dataframes=dataframes,
         table_names_to_primary_keys=primary_keys,
-        table_name_to_indices=indices,
+        table_names_to_indices=indices,
         overwrite=overwrite,
         version=version)
 
