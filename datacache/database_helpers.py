@@ -245,6 +245,9 @@ def db_from_dataframes(
 
     version : int, optional
     """
+    if not (subdir is None or isinstance(subdir, str)):
+        raise TypeError("Expected subdir to be None or str, got %s : %s" % (
+            subdir, type(subdir)))
     db_path = build_path(db_filename, subdir)
     return db_from_dataframes_with_absolute_path(
         db_path,
