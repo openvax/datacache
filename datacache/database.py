@@ -193,8 +193,8 @@ class Database(object):
         """
 
         logging.info("Creating index on %s (%s)" % (
-                table_name,
-                ", ".join(index_columns)))
+            table_name,
+            ", ".join(index_columns)))
         index_name = "%s_index_%s" % (
             table_name,
             "_".join(index_columns))

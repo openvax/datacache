@@ -92,7 +92,7 @@ def _download(filename, full_path, download_url):
             dst.write(contents)
     elif download_url.endswith(("html", "htm")):
         logging.info("Extracting HTML table into CSV %s...", filename)
-        df = pd.read_html(tmp_path, header=0, infer_types=False)[0]
+        df = pd.read_html(tmp_path, header=0)[0]
         df.to_csv(full_path, sep=',', index=False, encoding='utf-8')
     else:
         move(tmp_path, full_path)
