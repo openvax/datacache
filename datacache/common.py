@@ -26,10 +26,12 @@ def ensure_dir(path):
         makedirs(path)
 
 def get_data_dir(subdir=None, envkey=None):
-    if envkey and envkey in environ:
-        return environ[envkey]
     if subdir is None:
         subdir = "datacache"
+
+    if envkey and envkey in environ:
+        return "%s/%s".format(environ[envkey], subdir)
+
     return appdirs.user_cache_dir(subdir)
 
 def build_path(filename, subdir=None):
