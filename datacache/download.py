@@ -20,11 +20,14 @@ from shutil import move
 from tempfile import NamedTemporaryFile
 import zipfile
 
-
 import requests
 import pandas as pd
 
 from .common import build_path, build_local_filename
+
+
+logger = logging.getLogger(__name__)
+
 
 try:
     import urllib.request
@@ -47,7 +50,7 @@ def _download(filename, full_path, download_url):
     """
     Downloads remote file at `download_url` to local file at `full_path`
     """
-    print("Downloading %s to %s" % (download_url, full_path))
+    logger.info("Downloading %s to %s", download_url, full_path)
 
     base_name, ext = splitext(filename)
     if download_url.startswith("http"):
@@ -66,7 +69,7 @@ def _download(filename, full_path, download_url):
     tmp_file.close()
 
     if download_url.endswith("zip") and not filename.endswith("zip"):
-        logging.info("Decompressing zip into %s...", filename)
+        logger.info("Decompressing zip into %s...", filename)
         with zipfile.ZipFile(tmp_path) as z:
             names = z.namelist()
             assert len(names) > 0, "Empty zip archive"
@@ -84,14 +87,14 @@ def _download(filename, full_path, download_url):
         move(extract_path, full_path)
         remove(tmp_path)
     elif download_url.endswith("gz") and not filename.endswith("gz"):
-        logging.info("Decompressing gzip into %s...", filename)
+        logger.info("Decompressing gzip into %s...", filename)
         with gzip.GzipFile(tmp_path) as src:
             contents = src.read()
         remove(tmp_path)
         with open(full_path, 'wb') as dst:
             dst.write(contents)
     elif download_url.endswith(("html", "htm")):
-        logging.info("Extracting HTML table into CSV %s...", filename)
+        logger.info("Extracting HTML table into CSV %s...", filename)
         df = pd.read_html(tmp_path, header=0)[0]
         df.to_csv(full_path, sep=',', index=False, encoding='utf-8')
     else:
@@ -148,10 +151,10 @@ def fetch_file(
     filename = build_local_filename(download_url, filename, decompress)
     full_path = build_path(filename, subdir)
     if not exists(full_path) or force:
-        logging.info("Fetching %s from URL %s", filename, download_url)
+        logger.info("Fetching %s from URL %s", filename, download_url)
         _download(filename, full_path, download_url)
     else:
-        logging.info("Cached file %s from URL %s", filename, download_url)
+        logger.info("Cached file %s from URL %s", filename, download_url)
     return full_path
 
 
@@ -170,10 +173,10 @@ def fetch_and_transform(
     transformed_path = build_path(transformed_filename, subdir)
     if not exists(transformed_path):
         source_path = fetch_file(source_url, source_filename, subdir)
-        logging.info("Generating data file %s from %s", transformed_path, source_path)
+        logger.info("Generating data file %s from %s", transformed_path, source_path)
         result = transformer(source_path, transformed_path)
     else:
-        logging.info("Cached data file: %s", transformed_path)
+        logger.info("Cached data file: %s", transformed_path)
         result = loader(transformed_path)
     assert exists(transformed_path)
     return result
