@@ -30,6 +30,10 @@ from .database_table import DatabaseTable
 from .database_types import db_type
 
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+
 def connect_if_correct_version(db_path, version):
     """Return a sqlite3 database connection if the version in the database's
     metadata matches the version argument.
@@ -83,20 +87,20 @@ def _create_cached_db(
         if db.has_tables(table_names) and \
                 db.has_version() and \
                 db.version() == version:
-            logging.info("Found existing table in database %s", db_path)
+            logger.info("Found existing table in database %s", db_path)
         else:
             if len(db.table_names()) > 0:
-                logging.info("Dropping tables from database %s: %s",
+                logger.info("Dropping tables from database %s: %s",
                     db_path,
                     ", ".join(db.table_names()))
                 db.drop_all_tables()
-            logging.info(
+            logger.info(
                 "Creating database %s containing: %s",
                 db_path,
                 ", ".join(table_names))
             db.create(tables, version)
     except:
-        logging.warning(
+        logger.warning(
             "Failed to create tables %s in database %s",
             table_names,
             db_path)

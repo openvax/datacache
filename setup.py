@@ -61,6 +61,7 @@ if __name__ == "__main__":
             "biopython>=1.65",
             "requests>=2.5.1",
             "typechecks>=0.0.2",
+            "mock",
         ],
         long_description=readme,
         packages=["datacache"],
