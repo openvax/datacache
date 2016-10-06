@@ -17,6 +17,9 @@ import sqlite3
 
 from typechecks import require_integer, require_string, require_iterable_of
 
+
+logger = logging.getLogger(__name__)
+
 METADATA_TABLE_NAME = "_datacache_metadata"
 
 class Database(object):
@@ -60,7 +63,7 @@ class Database(object):
 
     def execute_sql(self, sql, commit=False):
         """Log and then execute a SQL query"""
-        logging.info("Running sqlite query: \"%s\"", sql)
+        logger.info("Running sqlite query: \"%s\"", sql)
         self.connection.execute(sql)
         if commit:
             self.connection.commit()
@@ -154,7 +157,7 @@ class Database(object):
         if not all(len(row) == n_columns for row in rows):
             raise ValueError("Rows must all have %d values" % n_columns)
         blank_slots = ", ".join("?" for _ in range(n_columns))
-        logging.info("Inserting %d rows into table %s", len(rows), table_name)
+        logger.info("Inserting %d rows into table %s", len(rows), table_name)
         sql = "INSERT INTO %s VALUES (%s)" % (table_name, blank_slots)
         self.connection.executemany(sql, rows)
 
@@ -192,9 +195,9 @@ class Database(object):
             Which columns should be indexed
         """
 
-        logging.info("Creating index on %s (%s)" % (
+        logger.info("Creating index on %s (%s)",
             table_name,
-            ", ".join(index_columns)))
+            ", ".join(index_columns))
         index_name = "%s_index_%s" % (
             table_name,
             "_".join(index_columns))
