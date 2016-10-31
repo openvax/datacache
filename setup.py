@@ -39,7 +39,7 @@ except:
 if __name__ == "__main__":
     setup(
         name="datacache",
-        version="0.4.19",
+        version="0.4.20",
         description="Helpers for transparently downloading datasets",
         author="Alex Rubinsteyn",
         author_email="alex {dot} rubinsteyn {at} mssm {dot} edu",
