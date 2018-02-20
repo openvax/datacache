@@ -125,5 +125,5 @@ class Cache(object):
             db_filename=db_filename,
             table_name=table_name,
             df=df,
-            key_column_name=key_column_name,
+            primary_key=key_column_name,
             subdir=self.subdir)
