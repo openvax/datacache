@@ -1,13 +1,44 @@
-# What's need to do run tests via Travis https://travis-ci.org/
+sudo: false
 language: python
 python:
   - "2.7"
-  - "3.5"
+  - "3.6"
 # command to install dependencies
+before_install:
+  # Commands below copied from: http://conda.pydata.org/docs/travis.html
+  #
+  # We do this conditionally because it saves us some downloading if the
+  # version is the same.
+  - if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
+      wget https://repo.continuum.io/miniconda/Miniconda-latest-Linux-x86_64.sh -O miniconda.sh;
+    else
+      wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh;
+    fi
+  - bash miniconda.sh -b -p $HOME/miniconda
+  - export PATH="$HOME/miniconda/bin:$PATH"
+  - hash -r
+  - conda config --set always_yes yes --set changeps1 no
+  - conda update -q conda
+  # Useful for debugging any issues with conda
+  - conda info -a
 install:
-  - "pip install ."
-  - "pip install -r requirements.txt"
+- conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION nose pylint pandoc
+- source activate test-environment
+- pip install -r requirements.txt
+- pip install .
+- pip install pypandoc
+- pip install coveralls
 # command to run tests
 script:
   - ./lint.sh
   - nosetests test --with-coverage --cover-package=datacache
+after_success: coveralls
+deploy:
+  provider: pypi
+  distributions: sdist
+  user: openvax
+  password: # See http://docs.travis-ci.com/user/encryption-keys/
+    secure: "PMl+sLqvrf1Y3E2tWiyhSDITNnP4TXm6NgOZWArLlFCGe3sVqPzBcpd5n1ot6v+UeX7Cmt8HJzPmjv9DMupblyum2qo7D/bjIE3He0sAee+TxEfpn0qzBcJU16xoYROfzLianqMlJ/Jmiz+Vk61qGIjxvA//ZPeKbcgLbYD9IUg="
+  on:
+    branch: master
+  condition: $TRAVIS_PYTHON_VERSION = "2.7"

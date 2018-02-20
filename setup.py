@@ -14,6 +14,7 @@
 
 import os
 import logging
+import re
 
 from setuptools import setup
 
@@ -35,11 +36,16 @@ try:
 except:
     logging.warn("Failed to convert %s to reStructuredText", readme_filename)
 
+with open('mhctools/__init__.py', 'r') as f:
+    version = re.search(
+        r'^__version__\s*=\s*[\'"]([^\'"]*)[\'"]',
+        f.read(),
+        re.MULTILINE).group(1)
 
 if __name__ == "__main__":
     setup(
         name="datacache",
-        version="0.5.0",
+        version=version,
         description="Helpers for transparently downloading datasets",
         author="Alex Rubinsteyn",
         author_email="alex.rubinsteyn@mssm.edu",

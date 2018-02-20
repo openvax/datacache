@@ -30,3 +30,24 @@ from .common import (
     build_local_filename
 )
 from .cache import Cache
+
+__all__ = [
+    'fetch_file',
+    'fetch_fasta_dict',
+    'fetch_and_transform',
+    'fetch_csv_dataframe',
+    'db_from_dataframe',
+    'db_from_dataframes',
+    'db_from_dataframes_with_absolute_path',
+    'fetch_fasta_db',
+    'fetch_csv_db',
+    'connect_if_correct_version',
+    'ensure_dir',
+    'get_data_dir',
+    'build_path',
+    'clear_cache',
+    'build_local_filename',
+    'Cache',
+]
+
+__version__ = '0.5.1'
