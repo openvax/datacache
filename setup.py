@@ -36,7 +36,7 @@ try:
 except:
     logging.warn("Failed to convert %s to reStructuredText", readme_filename)
 
-with open('mhctools/__init__.py', 'r') as f:
+with open('datacache/__init__.py', 'r') as f:
     version = re.search(
         r'^__version__\s*=\s*[\'"]([^\'"]*)[\'"]',
         f.read(),
