@@ -31,6 +31,8 @@ from .common import (
 )
 from .cache import Cache
 
+__version__ = '0.5.2'
+
 __all__ = [
     'fetch_file',
     'fetch_fasta_dict',
@@ -49,5 +51,3 @@ __all__ = [
     'build_local_filename',
     'Cache',
 ]
-
-__version__ = '0.5.1'
