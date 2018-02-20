@@ -65,10 +65,10 @@ class Cache(object):
         exists.
         """
         return download.file_exists(
-                url,
-                filename=filename,
-                decompress=decompress,
-                subdir=self.subdir)
+            url,
+            filename=filename,
+            decompress=decompress,
+            subdir=self.subdir)
 
     def fetch(self, url, filename=None, decompress=False,
               force=False):

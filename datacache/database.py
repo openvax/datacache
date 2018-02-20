@@ -195,7 +195,8 @@ class Database(object):
             Which columns should be indexed
         """
 
-        logger.info("Creating index on %s (%s)",
+        logger.info(
+            "Creating index on %s (%s)",
             table_name,
             ", ".join(index_columns))
         index_name = "%s_index_%s" % (

@@ -89,7 +89,8 @@ def _create_cached_db(
             logger.info("Found existing table in database %s", db_path)
         else:
             if len(db.table_names()) > 0:
-                logger.info("Dropping tables from database %s: %s",
+                logger.info(
+                    "Dropping tables from database %s: %s",
                     db_path,
                     ", ".join(db.table_names()))
                 db.drop_all_tables()

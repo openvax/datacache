@@ -17,27 +17,27 @@
 import numpy as np
 
 _dtype_to_db_type_dict = {
- 'int': 'INT',
- 'int8': 'INT',
- 'int16': 'INT',
- 'int32': 'INT',
- 'int64': 'INT',
+    'int': 'INT',
+    'int8': 'INT',
+    'int16': 'INT',
+    'int32': 'INT',
+    'int64': 'INT',
 
- 'uint8': 'INT',
- 'uint16': 'INT',
- 'uint32': 'INT',
- 'uint64': 'INT',
+    'uint8': 'INT',
+    'uint16': 'INT',
+    'uint32': 'INT',
+    'uint64': 'INT',
 
- 'bool': 'INT',
+    'bool': 'INT',
 
- 'float': 'FLOAT',
- 'float32': 'FLOAT',
- 'float64': 'FLOAT',
+    'float': 'FLOAT',
+    'float32': 'FLOAT',
+    'float64': 'FLOAT',
 
- 'object': 'TEXT',
- 'object_': 'TEXT',
- 'string_': 'TEXT',
- 'str': 'TEXT',
+    'object': 'TEXT',
+    'object_': 'TEXT',
+    'string_': 'TEXT',
+    'str': 'TEXT',
 }
 
 def _lookup_type_name(type_name):

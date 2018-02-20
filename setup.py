@@ -39,11 +39,11 @@ except:
 if __name__ == "__main__":
     setup(
         name="datacache",
-        version="0.4.20",
+        version="0.5.0",
         description="Helpers for transparently downloading datasets",
         author="Alex Rubinsteyn",
-        author_email="alex {dot} rubinsteyn {at} mssm {dot} edu",
-        url="https://github.com/hammerlab/datacache",
+        author_email="alex.rubinsteyn@mssm.edu",
+        url="https://github.com/openvax/datacache",
         license="http://www.apache.org/licenses/LICENSE-2.0.html",
         classifiers=[
             "Development Status :: 3 - Alpha",
