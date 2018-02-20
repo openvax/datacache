@@ -22,29 +22,15 @@ import zipfile
 
 import requests
 import pandas as pd
+from six.moves import urllib
 
 from .common import build_path, build_local_filename
 
-
 logger = logging.getLogger(__name__)
 
-
-try:
-    import urllib.request
-    import urllib.error
-    import urllib.parse
-
-    # Python 3
-    def urllib_response(url):
-        req = urllib.request.Request(url)
-        return urllib.request.urlopen(req)
-except ImportError:
-    # Python 2
-    import urllib2
-
-    def urllib_response(url):
-        req = urllib2.Request(url)
-        return urllib2.urlopen(req)
+def urllib_response(url):
+    req = urllib.request.Request(url)
+    return urllib.request.urlopen(req)
 
 def _download(filename, full_path, download_url):
     """
