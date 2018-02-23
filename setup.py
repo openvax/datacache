@@ -1,4 +1,4 @@
-# Copyright (c) 2014. Mount Sinai School of Medicine
+# Copyright (c) 2014-2018. Mount Sinai School of Medicine
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,15 +25,16 @@ readme_path = os.path.join(current_directory, readme_filename)
 
 try:
     with open(readme_path, "r") as f:
-        readme = f.read()
+        readme_markdown = f.read()
 except:
     logging.warn("Failed to load %s", readme_filename)
-    readme = ""
+    readme_markdown = ""
 
 try:
     import pypandoc
-    readme = pypandoc.convert(readme, to="rst", format="md")
+    readme_restructured = pypandoc.convert(readme_markdown, to="rst", format="md")
 except:
+    readme_restructured = readme_markdown
     logging.warn("Failed to convert %s to reStructuredText", readme_filename)
 
 with open('datacache/__init__.py', 'r') as f:
@@ -69,6 +70,6 @@ if __name__ == "__main__":
             "typechecks>=0.0.2",
             "mock",
         ],
-        long_description=readme,
+        long_description=readme_restructured,
         packages=["datacache"],
     )
