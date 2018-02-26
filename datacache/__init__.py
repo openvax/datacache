@@ -31,7 +31,7 @@ from .common import (
 )
 from .cache import Cache
 
-__version__ = '0.5.3'
+__version__ = '0.5.4'
 
 __all__ = [
     'fetch_file',
