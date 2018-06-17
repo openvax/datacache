@@ -36,7 +36,7 @@ def fetch_fasta_dict(path_or_url):
         if line.startswith(">"):
             if key is not None:
                 d[key] = "".join(value_buffer)
-                value_buffer.clear()
+                value_buffer = []
             key = line.split()[0][1:]
         else:
             value_buffer.append(line.strip())
