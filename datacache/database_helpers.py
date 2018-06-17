@@ -1,4 +1,4 @@
-# Copyright (c) 2015. Mount Sinai School of Medicine
+# Copyright (c) 2015-2018. Mount Sinai School of Medicine
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,19 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import print_function, division, absolute_import
+
 from os import remove
-from os.path import splitext, split, exists
+from os.path import splitext, exists
 import logging
 
-from Bio import SeqIO
 from typechecks import (
     require_string,
     require_integer,
     require_iterable_of
 )
 
-from .common import build_path, normalize_filename
-from .download import fetch_file, fetch_csv_dataframe
+from .common import build_path
+from .download import fetch_csv_dataframe
 from .database import Database
 from .database_table import DatabaseTable
 from .database_types import db_type
@@ -109,42 +110,6 @@ def _create_cached_db(
             remove(db_path)
         raise
     return db.connection
-
-def fetch_fasta_db(
-        table_name,
-        download_url,
-        fasta_filename=None,
-        key_column='id',
-        value_column='seq',
-        subdir=None,
-        version=1):
-    """
-    Download a FASTA file from `download_url` and store it locally as a sqlite3 database.
-    """
-
-    base_filename = normalize_filename(split(download_url)[1])
-    db_filename = "%s.%s.%s.db" % (base_filename, key_column, value_column)
-
-    fasta_path = fetch_file(
-        download_url=download_url,
-        filename=fasta_filename,
-        subdir=subdir,
-        decompress=True)
-
-    fasta_dict = SeqIO.index(fasta_path, 'fasta')
-
-    table = DatabaseTable.from_fasta_dict(
-        table_name,
-        fasta_dict,
-        key_column=key_column,
-        value_column=value_column)
-
-    db_path = build_path(db_filename, subdir)
-
-    return _create_cached_db(
-        db_path,
-        tables=[table],
-        version=version)
 
 def build_tables(
         table_names_to_dataframes,

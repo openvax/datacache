@@ -29,7 +29,7 @@ def test_cache_fetch_google():
     eq_(path, cache.local_path(TEST_URL, filename=TEST_FILENAME))
 
 
-@patch('datacache.cache.download._download')
+@patch('datacache.cache.download._download_and_decompress_if_necessary')
 def test_cache_fetch_force(mock_download):
     cache = Cache("datacache_test")
     cache.fetch("http://www.google.com", filename="google", force=True)

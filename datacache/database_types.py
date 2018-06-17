@@ -14,6 +14,8 @@
 
 """Convert from Python type names to sqlite3 column types"""
 
+from __future__ import print_function, division, absolute_import
+
 import numpy as np
 
 _dtype_to_db_type_dict = {

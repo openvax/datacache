@@ -12,17 +12,40 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datacache import fetch_fasta_dict
+from datacache import fetch_file
+import gzip
 
-FASTA_FILENAME = 'Homo_sapiens.GRCh37.75.dna_rm.chromosome.MT.fa'
-URL = \
-    'ftp://ftp.ensembl.org/pub/release-75/fasta/homo_sapiens/dna/Homo_sapiens.GRCh37.75.dna_rm.chromosome.MT.fa.gz'
+URL = "".join([
+    'ftp://ftp.ensembl.org/pub/release-75',
+    '/fasta/homo_sapiens/dna/Homo_sapiens.GRCh37.75',
+    '.dna_rm.chromosome.MT.fa.gz',
+])
+
+def fetch_fasta_dict(path_or_url):
+    path = fetch_file(path_or_url)
+    d = {}
+    value_buffer = []
+    key = None
+    if path.endswith(".gz") or path.endswith(".gzip"):
+        f = gzip.open(path, "r")
+    else:
+        f = open(path, "r")
+    for line in f.readlines():
+        if type(line) is bytes:
+            line = line.decode("ascii")
+        if line.startswith(">"):
+            if key is not None:
+                d[key] = "".join(value_buffer)
+                value_buffer = []
+            key = line.split()[0][1:]
+        else:
+            value_buffer.append(line.strip())
+    if key and value_buffer:
+        d[key] = "".join(value_buffer)
+    f.close()
+    return d
+
 
 def test_download_fasta_dict():
     d = fetch_fasta_dict(URL)
-    assert hasattr(d, 'keys'), d
-    assert hasattr(d, 'values'), d
     assert len(d) > 0
-
-    d2 = fetch_fasta_dict(URL, filename=FASTA_FILENAME)
-    assert len(d) == len(d2)
