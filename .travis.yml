@@ -14,8 +14,6 @@ cache:
   # along with the indexed db of intervals and ID mappings and pickles
   # of sequence dictionaries
   pip: true
-  directories:
-    - $HOME/.cache/pyensembl/
 before_install:
   # download different versions of mini-conda for py2 vs. py3
   - |

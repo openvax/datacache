@@ -1,4 +1,4 @@
-# Copyright (c) 2015. Mount Sinai School of Medicine
+# Copyright (c) 2015-2018. Mount Sinai School of Medicine
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import print_function, division, absolute_import
+
 from .download import fetch_file, fetch_and_transform, fetch_csv_dataframe
-from .fasta import fetch_fasta_dict
 from .database_helpers import (
     db_from_dataframe,
     db_from_dataframes,
     db_from_dataframes_with_absolute_path,
-    fetch_fasta_db,
     fetch_csv_db,
     connect_if_correct_version
 )
@@ -31,17 +31,15 @@ from .common import (
 )
 from .cache import Cache
 
-__version__ = '0.5.5'
+__version__ = '1.0.0'
 
 __all__ = [
     'fetch_file',
-    'fetch_fasta_dict',
     'fetch_and_transform',
     'fetch_csv_dataframe',
     'db_from_dataframe',
     'db_from_dataframes',
     'db_from_dataframes_with_absolute_path',
-    'fetch_fasta_db',
     'fetch_csv_db',
     'connect_if_correct_version',
     'ensure_dir',
