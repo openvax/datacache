@@ -74,6 +74,7 @@ def _download_to_temp_file(
                 "wget",
                 download_url,
                 "-O", tmp_path,
+                "--no-verbose",
             ]
             if download_url.startswith("ftp"):
                 wget_command_list.extend(["--passive-ftp"])
