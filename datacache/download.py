@@ -16,12 +16,12 @@ from __future__ import print_function, division, absolute_import
 
 import gzip
 import logging
-from os import remove
-from os.path import exists, splitext, split
+import os
+import subprocess
 from shutil import move
 from tempfile import NamedTemporaryFile
 import zipfile
-import subprocess
+
 
 import requests
 import pandas as pd
@@ -69,9 +69,11 @@ def _download_to_temp_file(
         ])
         logger.info("Running: %s" % (" ".join(wget_command_list)))
         subprocess.call(wget_command_list)
-    except OSError:
-        data = _download(download_url, timeout=timeout)
-        tmp_file.write(data)
+    except OSError as e:
+        if e.errno == os.errno.ENOENT:
+            # wget not found
+            data = _download(download_url, timeout=timeout)
+            tmp_file.write(data)
     tmp_file.close()
     return tmp_path
 
@@ -84,8 +86,8 @@ def _download_and_decompress_if_necessary(
     Downloads remote file at `download_url` to local file at `full_path`
     """
     logger.info("Downloading %s to %s", download_url, full_path)
-    filename = split(full_path)[1]
-    base_name, ext = splitext(filename)
+    filename = os.path.split(full_path)[1]
+    base_name, ext = os.path.splitext(filename)
     tmp_path = _download_to_temp_file(
         download_url=download_url,
         timeout=timeout,
@@ -109,12 +111,12 @@ def _download_and_decompress_if_necessary(
                         biggest_size = info.file_size
             extract_path = z.extract(chosen_filename)
         move(extract_path, full_path)
-        remove(tmp_path)
+        os.remove(tmp_path)
     elif download_url.endswith("gz") and not filename.endswith("gz"):
         logger.info("Decompressing gzip into %s...", filename)
         with gzip.GzipFile(tmp_path) as src:
             contents = src.read()
-        remove(tmp_path)
+        os.remove(tmp_path)
         with open(full_path, 'wb') as dst:
             dst.write(contents)
     elif download_url.endswith(("html", "htm")) and full_path.endswith(".csv"):
@@ -136,7 +138,7 @@ def file_exists(
     """
     filename = build_local_filename(download_url, filename, decompress)
     full_path = build_path(filename, subdir)
-    return exists(full_path)
+    return os.path.exists(full_path)
 
 
 def fetch_file(
@@ -180,7 +182,7 @@ def fetch_file(
     """
     filename = build_local_filename(download_url, filename, decompress)
     full_path = build_path(filename, subdir)
-    if not exists(full_path) or force:
+    if not os.path.exists(full_path) or force:
         logger.info("Fetching %s from URL %s", filename, download_url)
         _download_and_decompress_if_necessary(
             full_path=full_path,
@@ -204,14 +206,14 @@ def fetch_and_transform(
     object.
     """
     transformed_path = build_path(transformed_filename, subdir)
-    if not exists(transformed_path):
+    if not os.path.exists(transformed_path):
         source_path = fetch_file(source_url, source_filename, subdir)
         logger.info("Generating data file %s from %s", transformed_path, source_path)
         result = transformer(source_path, transformed_path)
     else:
         logger.info("Cached data file: %s", transformed_path)
         result = loader(transformed_path)
-    assert exists(transformed_path)
+    assert os.path.exists(transformed_path)
     return result
 
 
