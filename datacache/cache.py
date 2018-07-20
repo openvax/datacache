@@ -71,8 +71,14 @@ class Cache(object):
             decompress=decompress,
             subdir=self.subdir)
 
-    def fetch(self, url, filename=None, decompress=False,
-              force=False):
+    def fetch(
+            self,
+            url,
+            filename=None,
+            decompress=False,
+            force=False,
+            timeout=None,
+            use_wget_if_available=True):
         """
         Return the local path to the downloaded copy of a given URL.
         Don't download the file again if it's already present,
@@ -90,7 +96,9 @@ class Cache(object):
             filename=filename,
             decompress=decompress,
             subdir=self.subdir,
-            force=force)
+            force=force,
+            timeout=timeout,
+            use_wget_if_available=use_wget_if_available)
 
         self._local_paths[key] = path
         return path
