@@ -1,5 +1,6 @@
+dist: trusty
 sudo: false
-language: python
+language: minimal
 python:
   - "2.7"
   - "3.6"
@@ -15,6 +16,7 @@ cache:
   # of sequence dictionaries
   pip: true
 before_install:
+  - echo "TRAVIS_PYTHON_VERSION=$TRAVIS_PYTHON_VERSION"
   # download different versions of mini-conda for py2 vs. py3
   - |
     if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
