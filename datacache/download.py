@@ -21,6 +21,7 @@ from os.path import exists, splitext, split
 from shutil import move
 from tempfile import NamedTemporaryFile
 import zipfile
+import subprocess
 
 import requests
 import pandas as pd
@@ -29,6 +30,7 @@ from six.moves import urllib
 from .common import build_path, build_local_filename
 
 logger = logging.getLogger(__name__)
+
 
 def _download(download_url, timeout=None):
     if download_url.startswith("http"):
@@ -40,18 +42,36 @@ def _download(download_url, timeout=None):
         response = urllib.request.urlopen(req, data=None, timeout=timeout)
         return response.read()
 
+
 def _download_to_temp_file(
         download_url,
         timeout=None,
         base_name="download",
         ext="tmp"):
-    data = _download(download_url, timeout=timeout)
+
     tmp_file = NamedTemporaryFile(
         suffix='.' + ext,
         prefix=base_name,
         delete=False)
-    tmp_file.write(data)
     tmp_path = tmp_file.name
+    try:
+        # first try using wget to download since this works on Travis
+        # even when FTP otherwise fails
+        wget_command_list = [
+            "wget",
+            "--no-passive-ftp",
+        ]
+        if timeout:
+            wget_command_list.extend(["-T", timeout])
+        wget_command_list.extend([
+            "-O", tmp_path,
+            download_url
+        ])
+        logger.info("Running: %s" % (" ".join(wget_command_list)))
+        subprocess.call(wget_command_list)
+    except OSError:
+        data = _download(download_url, timeout=timeout)
+        tmp_file.write(data)
     tmp_file.close()
     return tmp_path
 
