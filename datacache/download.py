@@ -90,7 +90,8 @@ def _download_to_temp_file(
 def _download_and_decompress_if_necessary(
         full_path,
         download_url,
-        timeout=None):
+        timeout=None,
+        use_wget_if_available=True):
     """
     Downloads remote file at `download_url` to local file at `full_path`
     """
@@ -101,7 +102,8 @@ def _download_and_decompress_if_necessary(
         download_url=download_url,
         timeout=timeout,
         base_name=base_name,
-        ext=ext)
+        ext=ext,
+        use_wget_if_available=use_wget_if_available)
 
     if download_url.endswith("zip") and not filename.endswith("zip"):
         logger.info("Decompressing zip into %s...", filename)
@@ -156,7 +158,8 @@ def fetch_file(
         decompress=False,
         subdir=None,
         force=False,
-        timeout=None):
+        timeout=None,
+        use_wget_if_available=True):
     """
     Download a remote file and store it locally in a cache directory. Don't
     download it again if it's already present (unless `force` is True.)
@@ -187,6 +190,10 @@ def fetch_file(
         Timeout for download in seconds, default is None which uses
         global timeout.
 
+    use_wget_if_available: bool, optional
+        If the `wget` command is available, use that for download instead
+        of Python libraries (default True)
+
     Returns the full path of the local file.
     """
     filename = build_local_filename(download_url, filename, decompress)
@@ -196,7 +203,8 @@ def fetch_file(
         _download_and_decompress_if_necessary(
             full_path=full_path,
             download_url=download_url,
-            timeout=timeout)
+            timeout=timeout,
+            use_wget_if_available=use_wget_if_available)
     else:
         logger.info("Cached file %s from URL %s", filename, download_url)
     return full_path

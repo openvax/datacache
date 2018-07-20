@@ -18,15 +18,18 @@ FASTA_FILENAME = 'Homo_sapiens.GRCh37.75.dna_rm.chromosome.MT.fa'
 URL = \
     'ftp://ftp.ensembl.org/pub/release-75/fasta/homo_sapiens/dna/Homo_sapiens.GRCh37.75.dna_rm.chromosome.MT.fa.gz'
 
-def test_fetch_decompress():
-    path1 = fetch_file(
-        URL,
-        decompress=True, subdir="datacache")
-    assert path1.endswith(FASTA_FILENAME)
 
-    with open(path1, 'r') as f1:
-        s1 = f1.read()
-        assert "TCAATTTCGTGCCAG" in s1
+def test_fetch_decompress():
+    for use_wget_if_available in [True, False]:
+        path1 = fetch_file(
+            URL,
+            decompress=True,
+            subdir="datacache",
+            use_wget_if_available=use_wget_if_available)
+        assert path1.endswith(FASTA_FILENAME)
+        with open(path1, 'r') as f1:
+            s1 = f1.read()
+            assert "TCAATTTCGTGCCAG" in s1
 
 
 def test_fetch_subdirs():
