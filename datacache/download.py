@@ -16,11 +16,12 @@ from __future__ import print_function, division, absolute_import
 
 import gzip
 import logging
-from os import remove
-from os.path import exists, splitext, split
+import os
+import subprocess
 from shutil import move
 from tempfile import NamedTemporaryFile
 import zipfile
+
 
 import requests
 import pandas as pd
@@ -29,6 +30,7 @@ from six.moves import urllib
 from .common import build_path, build_local_filename
 
 logger = logging.getLogger(__name__)
+
 
 def _download(download_url, timeout=None):
     if download_url.startswith("http"):
@@ -40,37 +42,68 @@ def _download(download_url, timeout=None):
         response = urllib.request.urlopen(req, data=None, timeout=timeout)
         return response.read()
 
+
 def _download_to_temp_file(
         download_url,
         timeout=None,
         base_name="download",
-        ext="tmp"):
-    data = _download(download_url, timeout=timeout)
-    tmp_file = NamedTemporaryFile(
-        suffix='.' + ext,
-        prefix=base_name,
-        delete=False)
-    tmp_file.write(data)
-    tmp_path = tmp_file.name
-    tmp_file.close()
+        ext="tmp",
+        use_wget_if_available=True):
+
+    with NamedTemporaryFile(
+            suffix='.' + ext,
+            prefix=base_name,
+            delete=False) as tmp:
+        tmp_path = tmp.name
+
+    def download_using_python():
+        with open(tmp_path, mode="w+b") as tmp_file:
+            tmp_file.write(
+                _download(download_url, timeout=timeout))
+
+    if not use_wget_if_available:
+        download_using_python()
+    else:
+        try:
+            # first try using wget to download since this works on Travis
+            # even when FTP otherwise fails
+            wget_command_list = [
+                "wget",
+                download_url,
+                "-O", tmp_path,
+            ]
+            if download_url.startswith("ftp"):
+                wget_command_list.extend(["--passive-ftp"])
+            if timeout:
+                wget_command_list.extend(["-T", timeout])
+            logger.info("Running: %s" % (" ".join(wget_command_list)))
+            subprocess.call(wget_command_list)
+        except OSError as e:
+            if e.errno == os.errno.ENOENT:
+                # wget not found
+                download_using_python()
+            else:
+                raise
     return tmp_path
 
 
 def _download_and_decompress_if_necessary(
         full_path,
         download_url,
-        timeout=None):
+        timeout=None,
+        use_wget_if_available=True):
     """
     Downloads remote file at `download_url` to local file at `full_path`
     """
     logger.info("Downloading %s to %s", download_url, full_path)
-    filename = split(full_path)[1]
-    base_name, ext = splitext(filename)
+    filename = os.path.split(full_path)[1]
+    base_name, ext = os.path.splitext(filename)
     tmp_path = _download_to_temp_file(
         download_url=download_url,
         timeout=timeout,
         base_name=base_name,
-        ext=ext)
+        ext=ext,
+        use_wget_if_available=use_wget_if_available)
 
     if download_url.endswith("zip") and not filename.endswith("zip"):
         logger.info("Decompressing zip into %s...", filename)
@@ -89,12 +122,12 @@ def _download_and_decompress_if_necessary(
                         biggest_size = info.file_size
             extract_path = z.extract(chosen_filename)
         move(extract_path, full_path)
-        remove(tmp_path)
+        os.remove(tmp_path)
     elif download_url.endswith("gz") and not filename.endswith("gz"):
         logger.info("Decompressing gzip into %s...", filename)
         with gzip.GzipFile(tmp_path) as src:
             contents = src.read()
-        remove(tmp_path)
+        os.remove(tmp_path)
         with open(full_path, 'wb') as dst:
             dst.write(contents)
     elif download_url.endswith(("html", "htm")) and full_path.endswith(".csv"):
@@ -116,7 +149,7 @@ def file_exists(
     """
     filename = build_local_filename(download_url, filename, decompress)
     full_path = build_path(filename, subdir)
-    return exists(full_path)
+    return os.path.exists(full_path)
 
 
 def fetch_file(
@@ -125,7 +158,8 @@ def fetch_file(
         decompress=False,
         subdir=None,
         force=False,
-        timeout=None):
+        timeout=None,
+        use_wget_if_available=True):
     """
     Download a remote file and store it locally in a cache directory. Don't
     download it again if it's already present (unless `force` is True.)
@@ -156,16 +190,21 @@ def fetch_file(
         Timeout for download in seconds, default is None which uses
         global timeout.
 
+    use_wget_if_available: bool, optional
+        If the `wget` command is available, use that for download instead
+        of Python libraries (default True)
+
     Returns the full path of the local file.
     """
     filename = build_local_filename(download_url, filename, decompress)
     full_path = build_path(filename, subdir)
-    if not exists(full_path) or force:
+    if not os.path.exists(full_path) or force:
         logger.info("Fetching %s from URL %s", filename, download_url)
         _download_and_decompress_if_necessary(
             full_path=full_path,
             download_url=download_url,
-            timeout=timeout)
+            timeout=timeout,
+            use_wget_if_available=use_wget_if_available)
     else:
         logger.info("Cached file %s from URL %s", filename, download_url)
     return full_path
@@ -184,14 +223,14 @@ def fetch_and_transform(
     object.
     """
     transformed_path = build_path(transformed_filename, subdir)
-    if not exists(transformed_path):
+    if not os.path.exists(transformed_path):
         source_path = fetch_file(source_url, source_filename, subdir)
         logger.info("Generating data file %s from %s", transformed_path, source_path)
         result = transformer(source_path, transformed_path)
     else:
         logger.info("Cached data file: %s", transformed_path)
         result = loader(transformed_path)
-    assert exists(transformed_path)
+    assert os.path.exists(transformed_path)
     return result
 
 
