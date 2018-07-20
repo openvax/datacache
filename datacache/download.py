@@ -57,15 +57,15 @@ def _download_to_temp_file(
     try:
         # first try using wget to download since this works on Travis
         # even when FTP otherwise fails
-        wget_command_list = ["wget"]
+        wget_command_list = [
+            "wget",
+            download_url,
+            "-O", tmp_path,
+        ]
         if download_url.startswith("ftp"):
             wget_command_list.extend(["--passive-ftp"])
         if timeout:
             wget_command_list.extend(["-T", timeout])
-        wget_command_list.extend([
-            "-O", tmp_path,
-            download_url
-        ])
         logger.info("Running: %s" % (" ".join(wget_command_list)))
         subprocess.call(wget_command_list)
     except OSError as e:
