@@ -57,10 +57,9 @@ def _download_to_temp_file(
     try:
         # first try using wget to download since this works on Travis
         # even when FTP otherwise fails
-        wget_command_list = [
-            "wget",
-            "--passive-ftp",
-        ]
+        wget_command_list = ["wget"]
+        if download_url.startswith("ftp"):
+            wget_command_list.extend(["--passive-ftp"])
         if timeout:
             wget_command_list.extend(["-T", timeout])
         wget_command_list.extend([
