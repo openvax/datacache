@@ -59,7 +59,7 @@ def _download_to_temp_file(
         # even when FTP otherwise fails
         wget_command_list = [
             "wget",
-            "--no-passive-ftp",
+            "--passive-ftp",
         ]
         if timeout:
             wget_command_list.extend(["-T", timeout])
