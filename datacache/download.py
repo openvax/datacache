@@ -47,33 +47,43 @@ def _download_to_temp_file(
         download_url,
         timeout=None,
         base_name="download",
-        ext="tmp"):
+        ext="tmp",
+        use_wget_if_available=True):
 
-    tmp_file = NamedTemporaryFile(
-        suffix='.' + ext,
-        prefix=base_name,
-        delete=False)
-    tmp_path = tmp_file.name
-    try:
-        # first try using wget to download since this works on Travis
-        # even when FTP otherwise fails
-        wget_command_list = [
-            "wget",
-            download_url,
-            "-O", tmp_path,
-        ]
-        if download_url.startswith("ftp"):
-            wget_command_list.extend(["--passive-ftp"])
-        if timeout:
-            wget_command_list.extend(["-T", timeout])
-        logger.info("Running: %s" % (" ".join(wget_command_list)))
-        subprocess.call(wget_command_list)
-    except OSError as e:
-        if e.errno == os.errno.ENOENT:
-            # wget not found
-            data = _download(download_url, timeout=timeout)
-            tmp_file.write(data)
-    tmp_file.close()
+    with NamedTemporaryFile(
+            suffix='.' + ext,
+            prefix=base_name,
+            delete=False) as tmp:
+        tmp_path = tmp.name
+
+    def download_using_python():
+        with open(tmp_path, mode="w+b") as tmp_file:
+            tmp_file.write(
+                _download(download_url, timeout=timeout))
+
+    if not use_wget_if_available:
+        download_using_python()
+    else:
+        try:
+            # first try using wget to download since this works on Travis
+            # even when FTP otherwise fails
+            wget_command_list = [
+                "wget",
+                download_url,
+                "-O", tmp_path,
+            ]
+            if download_url.startswith("ftp"):
+                wget_command_list.extend(["--passive-ftp"])
+            if timeout:
+                wget_command_list.extend(["-T", timeout])
+            logger.info("Running: %s" % (" ".join(wget_command_list)))
+            subprocess.call(wget_command_list)
+        except OSError as e:
+            if e.errno == os.errno.ENOENT:
+                # wget not found
+                download_using_python()
+            else:
+                raise
     return tmp_path
 
 
