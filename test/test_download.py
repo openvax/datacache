@@ -21,16 +21,17 @@ URL = \
 
 def test_fetch_decompress():
     for use_wget_if_available in [True, False]:
-        path1 = fetch_file(
-            URL,
-            decompress=True,
-            subdir="datacache",
-            use_wget_if_available=use_wget_if_available)
+        for timeout in [None, 10**6]:
+            path1 = fetch_file(
+                URL,
+                decompress=True,
+                subdir="datacache",
+                use_wget_if_available=use_wget_if_available,
+                timeout=timeout)
         assert path1.endswith(FASTA_FILENAME)
         with open(path1, 'r') as f1:
             s1 = f1.read()
             assert "TCAATTTCGTGCCAG" in s1
-
 
 def test_fetch_subdirs():
     path = fetch_file(URL, decompress=True, subdir="datacache")

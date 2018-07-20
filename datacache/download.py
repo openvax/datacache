@@ -50,6 +50,9 @@ def _download_to_temp_file(
         ext="tmp",
         use_wget_if_available=True):
 
+    if not download_url:
+        raise ValueError("URL not provided")
+
     with NamedTemporaryFile(
             suffix='.' + ext,
             prefix=base_name,
@@ -75,7 +78,7 @@ def _download_to_temp_file(
             if download_url.startswith("ftp"):
                 wget_command_list.extend(["--passive-ftp"])
             if timeout:
-                wget_command_list.extend(["-T", timeout])
+                wget_command_list.extend(["-T", "%s" % timeout])
             logger.info("Running: %s" % (" ".join(wget_command_list)))
             subprocess.call(wget_command_list)
         except OSError as e:
