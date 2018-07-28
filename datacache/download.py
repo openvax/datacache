@@ -48,7 +48,7 @@ def _download_to_temp_file(
         timeout=None,
         base_name="download",
         ext="tmp",
-        use_wget_if_available=True):
+        use_wget_if_available=False):
 
     if not download_url:
         raise ValueError("URL not provided")
@@ -95,7 +95,7 @@ def _download_and_decompress_if_necessary(
         full_path,
         download_url,
         timeout=None,
-        use_wget_if_available=True):
+        use_wget_if_available=False):
     """
     Downloads remote file at `download_url` to local file at `full_path`
     """
@@ -163,7 +163,7 @@ def fetch_file(
         subdir=None,
         force=False,
         timeout=None,
-        use_wget_if_available=True):
+        use_wget_if_available=False):
     """
     Download a remote file and store it locally in a cache directory. Don't
     download it again if it's already present (unless `force` is True.)
