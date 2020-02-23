@@ -6,8 +6,8 @@ from nose.tools import eq_
 from datacache import Cache
 
 CACHE_DIR = "datacache_test"
-TEST_URL = "http://www.google.com"
-TEST_FILENAME = "google"
+TEST_URL = "http://www.github.com"
+TEST_FILENAME = "github"
 
 def test_cache_object_path():
     cache = Cache(CACHE_DIR)
@@ -31,9 +31,10 @@ def test_cache_fetch_google():
 
 @patch('datacache.cache.download._download_and_decompress_if_necessary')
 def test_cache_fetch_force(mock_download):
+    mock_download.return_value = ""
     cache = Cache("datacache_test")
-    cache.fetch("http://www.google.com", filename="google", force=True)
-    cache.fetch("http://www.google.com", filename="google", force=True)
+    cache.fetch(TEST_URL, filename=TEST_FILENAME, force=True)
+    cache.fetch(TEST_URL, filename=TEST_FILENAME, force=True)
     assert len(mock_download.call_args_list) == 2, \
         "Expected two separate calls to _download, given force=True"
 
