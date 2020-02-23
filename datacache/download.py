@@ -1,5 +1,3 @@
-# Copyright (c) 2015-2018. Mount Sinai School of Medicine
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -234,7 +232,8 @@ def fetch_and_transform(
     else:
         logger.info("Cached data file: %s", transformed_path)
         result = loader(transformed_path)
-    assert os.path.exists(transformed_path)
+    if not os.path.exists(transformed_path):
+        raise ValueError("Expected '%s' to exist" % transformed_path)
     return result
 
 
