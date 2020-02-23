@@ -111,7 +111,9 @@ def _download_and_decompress_if_necessary(
         logger.info("Decompressing zip into %s...", filename)
         with zipfile.ZipFile(tmp_path) as z:
             names = z.namelist()
-            assert len(names) > 0, "Empty zip archive"
+            if len(names) == 0:
+                raise ValueError("Empty zip archive after downloading '%s'" % (
+                    download_url,))
             if filename in names:
                 chosen_filename = filename
             else:

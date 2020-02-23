@@ -1,5 +1,3 @@
-# Copyright (c) 2014-2018. Mount Sinai School of Medicine
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -30,12 +28,6 @@ except:
     logging.warn("Failed to load %s", readme_filename)
     readme_markdown = ""
 
-try:
-    import pypandoc
-    readme_restructured = pypandoc.convert(readme_markdown, to="rst", format="md")
-except:
-    readme_restructured = readme_markdown
-    logging.warn("Failed to convert %s to reStructuredText", readme_filename)
 
 with open('datacache/__init__.py', 'r') as f:
     version = re.search(
@@ -49,11 +41,11 @@ if __name__ == "__main__":
         version=version,
         description="Helpers for transparently downloading datasets",
         author="Alex Rubinsteyn",
-        author_email="alex.rubinsteyn@mssm.edu",
+        author_email="alex@openvax.org",
         url="https://github.com/openvax/datacache",
         license="http://www.apache.org/licenses/LICENSE-2.0.html",
         classifiers=[
-            "Development Status :: 3 - Alpha",
+            "Development Status :: 4 - Beta",
             "Environment :: Console",
             "Operating System :: OS Independent",
             "Intended Audience :: Science/Research",
@@ -69,6 +61,7 @@ if __name__ == "__main__":
             "typechecks>=0.0.2",
             "mock",
         ],
-        long_description=readme_restructured,
+        long_description=readme_markdown,
+        long_description_content_type='text/markdown',
         packages=["datacache"],
     )

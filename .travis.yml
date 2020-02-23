@@ -32,11 +32,10 @@ before_install:
   # Useful for debugging any issues with conda
   - conda info -a
 install:
-- conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION nose pylint pandoc
+- conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION nose pylint
 - source activate test-environment
 - pip install -r requirements.txt
 - pip install .
-- pip install pypandoc
 - pip install coveralls
 # command to run tests
 script:

@@ -61,7 +61,8 @@ def build_local_filename(download_url=None, filename=None, decompress=False):
     an optional desired filename, and whether a compression suffix needs
     to be removed
     """
-    assert download_url or filename, "Either filename or URL must be specified"
+    if not (download_url or filename):
+        raise ValueError("Either filename or URL must be specified")
 
     # if no filename provided, use the original filename on the server
     if not filename:
