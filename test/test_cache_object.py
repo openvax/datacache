@@ -1,7 +1,7 @@
 from os import remove
 from os.path import exists
 from mock import patch
-from nose.tools import eq_
+
 
 from datacache import Cache
 
@@ -26,7 +26,8 @@ def test_cache_fetch_google():
         "Expected local file to be named %s but got %s" % (
             TEST_FILENAME, path)
     assert exists(path), "File not found: %s" % path
-    eq_(path, cache.local_path(TEST_URL, filename=TEST_FILENAME))
+    assert(path == cache.local_path(TEST_URL, filename=TEST_FILENAME))
+
 
 
 @patch('datacache.cache.download._download_and_decompress_if_necessary')

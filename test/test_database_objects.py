@@ -6,7 +6,6 @@ import tempfile
 
 import datacache
 
-from nose.tools import eq_
 
 TABLE_NAME = "test"
 INT_COL_NAME = "int_col"
@@ -29,11 +28,12 @@ def make_table_object():
 
 def test_database_table_object():
     table = make_table_object()
-    eq_(table.name, TABLE_NAME)
-    eq_(table.indices, INDICES)
-    eq_(table.nullable, NULLABLE)
-    eq_(table.rows, ROWS)
-    eq_(table.indices, INDICES)
+    assert(table.name == TABLE_NAME)
+    assert(table.indices == INDICES)
+    assert(table.nullable == NULLABLE)
+    assert(table.rows == ROWS)
+    assert(table.indices == INDICES)
+
 
 def test_create_db():
     with tempfile.NamedTemporaryFile(suffix="test.db") as f:
@@ -49,4 +49,4 @@ def test_create_db():
         cursor = db.connection.execute(sql)
         int_result_tuple = cursor.fetchone()
         int_result = int_result_tuple[0]
-        eq_(int_result, 2)
+        assert(int_result == 2)
