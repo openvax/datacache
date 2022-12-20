@@ -6,7 +6,8 @@ import tempfile
 
 import datacache
 
-from nose.tools import eq_
+def eq_(x, y):
+    assert x == y
 
 TABLE_NAME = "test"
 INT_COL_NAME = "int_col"

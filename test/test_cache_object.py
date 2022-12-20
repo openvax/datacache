@@ -1,13 +1,15 @@
 from os import remove
 from os.path import exists
 from mock import patch
-from nose.tools import eq_
 
 from datacache import Cache
 
 CACHE_DIR = "datacache_test"
 TEST_URL = "http://www.google.com"
 TEST_FILENAME = "google"
+
+def eq_(x, y):
+    assert x == y
 
 def test_cache_object_path():
     cache = Cache(CACHE_DIR)

@@ -1,10 +1,12 @@
-from nose.tools import eq_
 import pandas as pd
 from tempfile import NamedTemporaryFile
 from datacache import db_from_dataframes, db_from_dataframe
 
 dfA = pd.DataFrame({"numbers": [1, 2, 3], "strings": ["a", "b", "c"]})
 dfB = pd.DataFrame({"wuzzles": ["nuzzle", "ruzzle"]})
+
+def eq_(x, y):
+    assert x == y
 
 def test_database_from_dataframes():
     with NamedTemporaryFile(suffix="test.db") as f:

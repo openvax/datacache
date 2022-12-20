@@ -13,7 +13,7 @@ PYTHON3 ?= python3
 all: check
 
 check:
-	cd test && nose2
+	cd test && pytest
 
 #: Clean up temporary files
 clean:
@@ -26,6 +26,9 @@ dist:
 #: Create source tarball
 sdist:
 	$(PYTHON) ./setup.py sdist
+
+upload: sdist
+	 twine upload dist/*
 
 #: Create binary egg distribution
 bdist_egg:
