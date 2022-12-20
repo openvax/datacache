@@ -1,5 +1,3 @@
-# Copyright (c) 2014-2018. Mount Sinai School of Medicine
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -21,7 +19,7 @@ from setuptools import setup
 readme_filename = "README.md"
 current_directory = os.path.dirname(__file__)
 readme_path = os.path.join(current_directory, readme_filename)
-
+project_name = "datacache"
 
 try:
     with open(readme_path, "r") as f:
@@ -30,14 +28,7 @@ except:
     logging.warn("Failed to load %s", readme_filename)
     readme_markdown = ""
 
-try:
-    import pypandoc
-    readme_restructured = pypandoc.convert(readme_markdown, to="rst", format="md")
-except:
-    readme_restructured = readme_markdown
-    logging.warn("Failed to convert %s to reStructuredText", readme_filename)
-
-with open('datacache/__init__.py', 'r') as f:
+with open('%s/version.py' % project_name, 'r') as f:
     version = re.search(
         r'^__version__\s*=\s*[\'"]([^\'"]*)[\'"]',
         f.read(),
@@ -45,15 +36,15 @@ with open('datacache/__init__.py', 'r') as f:
 
 if __name__ == "__main__":
     setup(
-        name="datacache",
+        name=project_name,
         version=version,
         description="Helpers for transparently downloading datasets",
         author="Alex Rubinsteyn",
-        author_email="alex.rubinsteyn@mssm.edu",
-        url="https://github.com/openvax/datacache",
+        author_email="alex.rubinsteyn@unc.edu",
+        url="https://github.com/openvax/%s" % project_name,
         license="http://www.apache.org/licenses/LICENSE-2.0.html",
         classifiers=[
-            "Development Status :: 3 - Alpha",
+            "Development Status :: 4 - Beta",
             "Environment :: Console",
             "Operating System :: OS Independent",
             "Intended Audience :: Science/Research",
@@ -69,6 +60,7 @@ if __name__ == "__main__":
             "typechecks>=0.0.2",
             "mock",
         ],
-        long_description=readme_restructured,
-        packages=["datacache"],
+        long_description=readme_markdown,
+        long_description_content_type='text/markdown',
+        packages=[project_name],
     )

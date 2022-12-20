@@ -1,5 +1,3 @@
-# Copyright (c) 2015-2018. Mount Sinai School of Medicine
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -58,13 +56,6 @@ def _candidate_type_names(python_type_representation):
         Any Python object which represents a type, such as `int`,
         `dtype('int8')`, `np.int8`, or `"int8"`.
     """
-    # if we get a single character code we should normalize to a NumPy type
-    # using np.typeDict, which maps string representations of types to NumPy
-    # type objects
-    if python_type_representation in np.typeDict:
-        python_type_representation = np.typeDict[python_type_representation]
-        yield python_type_representation.__name__
-
     # if we get a dtype object i.e. dtype('int16'), then pull out its name
     if hasattr(python_type_representation, 'name'):
         yield python_type_representation.name
