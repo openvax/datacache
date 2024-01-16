@@ -1,1 +1,1 @@
-pytest --cov=gtfparse/ --cov-report=term-missing tests
+pytest --cov=datacache/ --cov-report=term-missing tests
