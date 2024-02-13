@@ -12,11 +12,8 @@ Helpers for transparently downloading datasets
 
 ## API
 
-- **fetch_file**(download*url, filename = \_None*, decompress = _False_, subdir = _None_)
-- **fetch_and_transform**(transformed*filename, transformer, loader,
-  source_filename, source_url, subdir = \_None*)
-- **fetch_fasta_dict**(download*url, filename = \_None*, subdir = _None_)
-- **fetch_fasta_db**(table*name, download_url, fasta_filename = \_None*,
-  key*column = *'id'_, value_column = _'seq'_, subdir = \_None_)
-- **fetch_csv_db**(table*name, download_url, csv_filename = \_None*, subdir = _None_,
-  \*\*pandas_kwargs)
+- **fetch_file**(download\_url, filename = \_None*, decompress = _False_, subdir = _None_)
+- **fetch_and_transform**(transformed\_filename, transformer, loader, source_filename, source_url, subdir = _None_)
+- **fetch_fasta_dict**(download\_url, filename = \_None*, subdir = _None_)
+- **fetch_fasta_db**(table\_name, download_url, fasta_filename = \_None*, key\_column = 'id', value\_column = 'seq', subdir = _None_)
+- **fetch_csv_db**(table\_name, download\_url, csv\_filename = _None_, subdir = _None_, \*\*pandas_kwargs)
