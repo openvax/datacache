@@ -38,8 +38,6 @@ _dtype_to_db_type_dict = {
     'object_': 'TEXT',
     'string_': 'TEXT',
     'str': 'TEXT',
-
-    'CategoricalDtypeType': 'TEXT',
     'category': 'TEXT',
 }
 

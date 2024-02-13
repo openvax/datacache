@@ -13,6 +13,7 @@
 import gzip
 import logging
 import os
+import errno
 import subprocess
 from shutil import move
 from tempfile import NamedTemporaryFile
@@ -78,7 +79,7 @@ def _download_to_temp_file(
             logger.info("Running: %s" % (" ".join(wget_command_list)))
             subprocess.call(wget_command_list)
         except OSError as e:
-            if e.errno == os.errno.ENOENT:
+            if e.errno == errno.ENOENT:
                 # wget not found
                 download_using_python()
             else:
