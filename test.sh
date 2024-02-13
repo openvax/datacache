@@ -1,2 +1,2 @@
-pytest --cov=golfy/ --cov-report=term-missing tests
+pytest --cov=datacache/ --cov-report=term-missing tests
 
