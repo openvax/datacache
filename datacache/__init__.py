@@ -29,6 +29,7 @@ from .cache import Cache
 from .version import __version__
 
 __all__ = [
+    '__version__',
     'fetch_file',
     'fetch_and_transform',
     'fetch_csv_dataframe',
