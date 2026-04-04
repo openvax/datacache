@@ -1,6 +1,6 @@
 from os import remove
 from os.path import exists
-from mock import patch
+from unittest.mock import patch
 
 from datacache import Cache
 
