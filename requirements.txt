@@ -1,5 +1,4 @@
 pandas>=0.15.2
 appdirs>=1.4.0
 requests>=2.5.1
-typechecks>=0.0.0
-pytest
+typechecks>=0.0.2
