@@ -118,6 +118,27 @@ def _download_to_temp_file(
     return tmp_path
 
 
+def _decompress_to_file(src_stream, full_path):
+    """Stream an already-open decompressed source into ``full_path`` atomically.
+
+    Writes to a sibling temp file and moves it into place, so a corrupt or
+    interrupted decompress (e.g. a gzip CRC failure, which is only detected at
+    end-of-stream) never leaves a partial file at ``full_path`` that a later
+    ``fetch_file`` would mistake for a complete cache hit.
+    """
+    out_dir = os.path.dirname(full_path) or "."
+    with NamedTemporaryFile(dir=out_dir, delete=False) as tmp:
+        tmp_out = tmp.name
+    try:
+        with open(tmp_out, "wb") as dst:
+            copyfileobj(src_stream, dst)
+        move(tmp_out, full_path)
+    finally:
+        # On success the move consumed tmp_out; on failure drop the partial.
+        if os.path.exists(tmp_out):
+            os.remove(tmp_out)
+
+
 def _download_and_decompress_if_necessary(
         full_path,
         download_url,
@@ -149,20 +170,20 @@ def _download_and_decompress_if_necessary(
             chosen = next(
                 (info for info in infos if info.filename == filename),
                 max(infos, key=lambda info: info.file_size))
-            # Stream the chosen member straight to full_path. We deliberately
-            # avoid ZipFile.extract(), which writes into the current working
-            # directory and recreates the member's stored path -- a
-            # cwd-pollution + path-traversal footgun (a member named e.g.
+            # Stream the chosen member's *contents* into full_path. We
+            # deliberately avoid ZipFile.extract(), which writes into the
+            # current working directory and recreates the member's stored path
+            # -- a cwd-pollution + path-traversal footgun (a member named e.g.
             # "../evil" would escape the intended directory).
-            with z.open(chosen) as src, open(full_path, "wb") as dst:
-                copyfileobj(src, dst)
+            with z.open(chosen) as src:
+                _decompress_to_file(src, full_path)
         os.remove(tmp_path)
     elif download_url.endswith("gz") and not filename.endswith("gz"):
         logger.info("Decompressing gzip into %s...", filename)
         # Stream the gunzip to disk rather than read the whole (decompressed)
         # file into memory -- the whole point of the streaming download (#49).
-        with gzip.GzipFile(tmp_path) as src, open(full_path, "wb") as dst:
-            copyfileobj(src, dst)
+        with gzip.GzipFile(tmp_path) as src:
+            _decompress_to_file(src, full_path)
         os.remove(tmp_path)
     elif download_url.endswith(("html", "htm")) and full_path.endswith(".csv"):
         logger.info("Extracting HTML table into CSV %s...", filename)

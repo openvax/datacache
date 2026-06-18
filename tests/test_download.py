@@ -95,6 +95,23 @@ def test_fetch_decompress_zip_picks_named_member(isolated_cache):
     assert not os.path.exists("readme.txt")
 
 
+def test_corrupt_gz_leaves_no_partial_cache(isolated_cache):
+    # A truncated gzip decompresses partway then fails its trailing CRC check.
+    # fetch_file must surface the error and leave NO file at the destination,
+    # so the next call re-fetches instead of serving a silent partial.
+    good = gzip.compress(b"the full payload that must not be half-cached\n" * 50)
+    corrupt = good[:-8]  # drop the CRC32 + ISIZE trailer
+    archive = isolated_cache / "trunc.fa.gz"
+    archive.write_bytes(corrupt)
+    url = "file://" + str(archive)
+
+    with pytest.raises(Exception):
+        fetch_file(url, filename="trunc.fa.gz", decompress=True)
+
+    dest = isolated_cache / "cache" / "trunc.fa"
+    assert not dest.exists(), "corrupt decompress must not leave a cached partial"
+
+
 def test_fetch_subdirs(tmp_path, monkeypatch):
     # Different subdirs resolve to different cache locations. Hermetic: route
     # each subdir to its own tmp dir.
