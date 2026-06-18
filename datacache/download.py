@@ -27,16 +27,69 @@ from .common import build_path, build_local_filename
 
 logger = logging.getLogger(__name__)
 
+# Number of bytes to read/write at a time when streaming a download to disk.
+DEFAULT_CHUNK_SIZE = 2 ** 20  # 1 MB
 
-def _download(download_url, timeout=None):
+
+def _content_length(header_value):
+    """Parse a Content-Length header value into an int, or None if it's
+    absent or not a valid integer."""
+    if header_value is None:
+        return None
+    try:
+        return int(header_value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _stream_to_file(
+        download_url,
+        file_handle,
+        timeout=None,
+        chunk_size=DEFAULT_CHUNK_SIZE,
+        progress_callback=None):
+    """
+    Stream the contents of `download_url` into an already-open binary file
+    handle, one chunk at a time, so the entire payload never has to be held in
+    memory at once.
+
+    If `progress_callback` is given it is called as
+    ``progress_callback(bytes_downloaded, total_bytes)`` after each chunk is
+    written, where `total_bytes` is taken from the server's Content-Length
+    header (or None when the server doesn't report a size). This lets callers
+    drive e.g. a tqdm progress bar without datacache depending on tqdm.
+
+    Returns the total number of bytes written.
+    """
+    bytes_downloaded = 0
+
+    def report(total_bytes):
+        if progress_callback is not None:
+            progress_callback(bytes_downloaded, total_bytes)
+
     if download_url.startswith("http"):
-        response = requests.get(download_url, timeout=timeout)
+        response = requests.get(download_url, timeout=timeout, stream=True)
         response.raise_for_status()
-        return response.content
+        total_bytes = _content_length(response.headers.get("Content-Length"))
+        for chunk in response.iter_content(chunk_size=chunk_size):
+            if not chunk:
+                # skip keep-alive chunks that carry no data
+                continue
+            file_handle.write(chunk)
+            bytes_downloaded += len(chunk)
+            report(total_bytes)
     else:
         req = urllib.request.Request(download_url)
         response = urllib.request.urlopen(req, data=None, timeout=timeout)
-        return response.read()
+        total_bytes = _content_length(response.headers.get("Content-Length"))
+        while True:
+            chunk = response.read(chunk_size)
+            if not chunk:
+                break
+            file_handle.write(chunk)
+            bytes_downloaded += len(chunk)
+            report(total_bytes)
+    return bytes_downloaded
 
 
 def _download_to_temp_file(
@@ -44,7 +97,9 @@ def _download_to_temp_file(
         timeout=None,
         base_name="download",
         ext="tmp",
-        use_wget_if_available=False):
+        use_wget_if_available=False,
+        chunk_size=DEFAULT_CHUNK_SIZE,
+        progress_callback=None):
 
     if not download_url:
         raise ValueError("URL not provided")
@@ -57,8 +112,12 @@ def _download_to_temp_file(
 
     def download_using_python():
         with open(tmp_path, mode="w+b") as tmp_file:
-            tmp_file.write(
-                _download(download_url, timeout=timeout))
+            _stream_to_file(
+                download_url,
+                tmp_file,
+                timeout=timeout,
+                chunk_size=chunk_size,
+                progress_callback=progress_callback)
 
     if not use_wget_if_available:
         download_using_python()
@@ -91,7 +150,9 @@ def _download_and_decompress_if_necessary(
         full_path,
         download_url,
         timeout=None,
-        use_wget_if_available=False):
+        use_wget_if_available=False,
+        chunk_size=DEFAULT_CHUNK_SIZE,
+        progress_callback=None):
     """
     Downloads remote file at `download_url` to local file at `full_path`
     """
@@ -103,7 +164,9 @@ def _download_and_decompress_if_necessary(
         timeout=timeout,
         base_name=base_name,
         ext=ext,
-        use_wget_if_available=use_wget_if_available)
+        use_wget_if_available=use_wget_if_available,
+        chunk_size=chunk_size,
+        progress_callback=progress_callback)
 
     if download_url.endswith("zip") and not filename.endswith("zip"):
         logger.info("Decompressing zip into %s...", filename)
@@ -159,7 +222,9 @@ def fetch_file(
         subdir=None,
         force=False,
         timeout=None,
-        use_wget_if_available=False):
+        use_wget_if_available=False,
+        chunk_size=DEFAULT_CHUNK_SIZE,
+        progress_callback=None):
     """
     Download a remote file and store it locally in a cache directory. Don't
     download it again if it's already present (unless `force` is True.)
@@ -194,6 +259,17 @@ def fetch_file(
         If the `wget` command is available, use that for download instead
         of Python libraries (default True)
 
+    chunk_size : int, optional
+        Number of bytes to stream from the server to disk at a time when
+        using the Python downloader. Defaults to 1 MB.
+
+    progress_callback : callable, optional
+        If provided, called as ``progress_callback(bytes_downloaded,
+        total_bytes)`` after each chunk is written, where `total_bytes` is the
+        server-reported size or None if unknown. Lets callers render a progress
+        bar (e.g. tqdm) without datacache taking on that dependency. Only
+        applies to the Python downloader, not the optional `wget` path.
+
     Returns the full path of the local file.
     """
     filename = build_local_filename(download_url, filename, decompress)
@@ -204,7 +280,9 @@ def fetch_file(
             full_path=full_path,
             download_url=download_url,
             timeout=timeout,
-            use_wget_if_available=use_wget_if_available)
+            use_wget_if_available=use_wget_if_available,
+            chunk_size=chunk_size,
+            progress_callback=progress_callback)
     else:
         logger.info("Cached file %s from URL %s", filename, download_url)
     return full_path
