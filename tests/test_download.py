@@ -21,6 +21,8 @@ cached state -- the two sources of flakiness in the old live-Ensembl test (#42).
 """
 
 import gzip
+import os
+import zipfile
 
 import pytest
 
@@ -74,6 +76,25 @@ def test_fetch_decompress_caches_then_force(isolated_cache):
         assert f.read() == "SECOND\n"
 
 
+def test_fetch_decompress_zip_picks_named_member(isolated_cache):
+    # Multi-member zip: the member matching the local filename is chosen and
+    # streamed into the cache -- never extracted into the working directory
+    # (the cwd-pollution / path-traversal footgun of the old ZipFile.extract).
+    archive = isolated_cache / "table.tsv.zip"
+    with zipfile.ZipFile(str(archive), "w") as z:
+        z.writestr("table.tsv", "the wanted member\n")
+        z.writestr("readme.txt", "ignore me\n")
+    url = "file://" + str(archive)
+
+    path = fetch_file(url, filename="table.tsv.zip", decompress=True)
+    assert path.endswith("table.tsv")
+    with open(path) as f:
+        assert f.read() == "the wanted member\n"
+    # Nothing leaked into the current working directory.
+    assert not os.path.exists("table.tsv")
+    assert not os.path.exists("readme.txt")
+
+
 def test_fetch_subdirs(tmp_path, monkeypatch):
     # Different subdirs resolve to different cache locations. Hermetic: route
     # each subdir to its own tmp dir.
@@ -97,6 +118,6 @@ def test_use_wget_if_available_is_deprecated(isolated_cache):
     # The legacy wget path was removed; passing the argument is accepted for
     # backwards compatibility but warns and is otherwise ignored.
     url = _write_gz(isolated_cache / "w.fa.gz", "ACGT\n")
-    with pytest.warns(DeprecationWarning):
+    with pytest.warns(DeprecationWarning, match="use_wget_if_available is deprecated"):
         path = fetch_file(url, filename="w.fa.gz", decompress=True, use_wget_if_available=True)
     assert path.endswith("w.fa")

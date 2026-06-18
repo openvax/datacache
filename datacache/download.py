@@ -14,7 +14,7 @@ import gzip
 import logging
 import os
 import warnings
-from shutil import move
+from shutil import copyfileobj, move
 from tempfile import NamedTemporaryFile
 import zipfile
 import urllib
@@ -141,29 +141,29 @@ def _download_and_decompress_if_necessary(
     if download_url.endswith("zip") and not filename.endswith("zip"):
         logger.info("Decompressing zip into %s...", filename)
         with zipfile.ZipFile(tmp_path) as z:
-            names = z.namelist()
-            if len(names) == 0:
+            infos = z.infolist()
+            if not infos:
                 raise ValueError("Empty zip archive")
-            if filename in names:
-                chosen_filename = filename
-            else:
-                # If zip archive contains multiple files, choose the biggest.
-                biggest_size = 0
-                chosen_filename = names[0]
-                for info in z.infolist():
-                    if info.file_size > biggest_size:
-                        chosen_filename = info.filename
-                        biggest_size = info.file_size
-            extract_path = z.extract(chosen_filename)
-        move(extract_path, full_path)
+            # Prefer the member matching the local filename; if there's no such
+            # member (e.g. a multi-file archive), fall back to the biggest one.
+            chosen = next(
+                (info for info in infos if info.filename == filename),
+                max(infos, key=lambda info: info.file_size))
+            # Stream the chosen member straight to full_path. We deliberately
+            # avoid ZipFile.extract(), which writes into the current working
+            # directory and recreates the member's stored path -- a
+            # cwd-pollution + path-traversal footgun (a member named e.g.
+            # "../evil" would escape the intended directory).
+            with z.open(chosen) as src, open(full_path, "wb") as dst:
+                copyfileobj(src, dst)
         os.remove(tmp_path)
     elif download_url.endswith("gz") and not filename.endswith("gz"):
         logger.info("Decompressing gzip into %s...", filename)
-        with gzip.GzipFile(tmp_path) as src:
-            contents = src.read()
+        # Stream the gunzip to disk rather than read the whole (decompressed)
+        # file into memory -- the whole point of the streaming download (#49).
+        with gzip.GzipFile(tmp_path) as src, open(full_path, "wb") as dst:
+            copyfileobj(src, dst)
         os.remove(tmp_path)
-        with open(full_path, 'wb') as dst:
-            dst.write(contents)
     elif download_url.endswith(("html", "htm")) and full_path.endswith(".csv"):
         logger.info("Extracting HTML table into CSV %s...", filename)
         df = pd.read_html(tmp_path, header=0)[0]
