@@ -13,9 +13,8 @@
 import gzip
 import logging
 import os
-import errno
-import subprocess
-from shutil import move
+import warnings
+from shutil import copyfileobj, move
 from tempfile import NamedTemporaryFile
 import zipfile
 import urllib
@@ -97,7 +96,6 @@ def _download_to_temp_file(
         timeout=None,
         base_name="download",
         ext="tmp",
-        use_wget_if_available=False,
         chunk_size=DEFAULT_CHUNK_SIZE,
         progress_callback=None):
 
@@ -110,47 +108,41 @@ def _download_to_temp_file(
             delete=False) as tmp:
         tmp_path = tmp.name
 
-    def download_using_python():
-        with open(tmp_path, mode="w+b") as tmp_file:
-            _stream_to_file(
-                download_url,
-                tmp_file,
-                timeout=timeout,
-                chunk_size=chunk_size,
-                progress_callback=progress_callback)
-
-    if not use_wget_if_available:
-        download_using_python()
-    else:
-        try:
-            # first try using wget to download since this works on Travis
-            # even when FTP otherwise fails
-            wget_command_list = [
-                "wget",
-                download_url,
-                "-O", tmp_path,
-                "--no-verbose",
-            ]
-            if download_url.startswith("ftp"):
-                wget_command_list.extend(["--passive-ftp"])
-            if timeout:
-                wget_command_list.extend(["-T", "%s" % timeout])
-            logger.info("Running: %s" % (" ".join(wget_command_list)))
-            subprocess.call(wget_command_list)
-        except OSError as e:
-            if e.errno == errno.ENOENT:
-                # wget not found
-                download_using_python()
-            else:
-                raise
+    with open(tmp_path, mode="w+b") as tmp_file:
+        _stream_to_file(
+            download_url,
+            tmp_file,
+            timeout=timeout,
+            chunk_size=chunk_size,
+            progress_callback=progress_callback)
     return tmp_path
+
+
+def _decompress_to_file(src_stream, full_path):
+    """Stream an already-open decompressed source into ``full_path`` atomically.
+
+    Writes to a sibling temp file and moves it into place, so a corrupt or
+    interrupted decompress (e.g. a gzip CRC failure, which is only detected at
+    end-of-stream) never leaves a partial file at ``full_path`` that a later
+    ``fetch_file`` would mistake for a complete cache hit.
+    """
+    out_dir = os.path.dirname(full_path) or "."
+    with NamedTemporaryFile(dir=out_dir, delete=False) as tmp:
+        tmp_out = tmp.name
+    try:
+        with open(tmp_out, "wb") as dst:
+            copyfileobj(src_stream, dst)
+        move(tmp_out, full_path)
+    finally:
+        # On success the move consumed tmp_out; on failure drop the partial.
+        if os.path.exists(tmp_out):
+            os.remove(tmp_out)
 
 
 def _download_and_decompress_if_necessary(
         full_path,
         download_url,
         timeout=None,
-        use_wget_if_available=False,
         chunk_size=DEFAULT_CHUNK_SIZE,
         progress_callback=None):
     """
@@ -164,36 +156,35 @@ def _download_and_decompress_if_necessary(
         timeout=timeout,
         base_name=base_name,
         ext=ext,
-        use_wget_if_available=use_wget_if_available,
         chunk_size=chunk_size,
         progress_callback=progress_callback)
 
     if download_url.endswith("zip") and not filename.endswith("zip"):
         logger.info("Decompressing zip into %s...", filename)
         with zipfile.ZipFile(tmp_path) as z:
-            names = z.namelist()
-            if len(names) == 0:
+            infos = z.infolist()
+            if not infos:
                 raise ValueError("Empty zip archive")
-            if filename in names:
-                chosen_filename = filename
-            else:
-                # If zip archive contains multiple files, choose the biggest.
-                biggest_size = 0
-                chosen_filename = names[0]
-                for info in z.infolist():
-                    if info.file_size > biggest_size:
-                        chosen_filename = info.filename
-                        biggest_size = info.file_size
-            extract_path = z.extract(chosen_filename)
-        move(extract_path, full_path)
+            # Prefer the member matching the local filename; if there's no such
+            # member (e.g. a multi-file archive), fall back to the biggest one.
+            chosen = next(
+                (info for info in infos if info.filename == filename),
+                max(infos, key=lambda info: info.file_size))
+            # Stream the chosen member's *contents* into full_path. We
+            # deliberately avoid ZipFile.extract(), which writes into the
+            # current working directory and recreates the member's stored path
+            # -- a cwd-pollution + path-traversal footgun (a member named e.g.
+            # "../evil" would escape the intended directory).
+            with z.open(chosen) as src:
+                _decompress_to_file(src, full_path)
         os.remove(tmp_path)
     elif download_url.endswith("gz") and not filename.endswith("gz"):
         logger.info("Decompressing gzip into %s...", filename)
+        # Stream the gunzip to disk rather than read the whole (decompressed)
+        # file into memory -- the whole point of the streaming download (#49).
         with gzip.GzipFile(tmp_path) as src:
-            contents = src.read()
+            _decompress_to_file(src, full_path)
         os.remove(tmp_path)
-        with open(full_path, 'wb') as dst:
-            dst.write(contents)
     elif download_url.endswith(("html", "htm")) and full_path.endswith(".csv"):
         logger.info("Extracting HTML table into CSV %s...", filename)
         df = pd.read_html(tmp_path, header=0)[0]
@@ -223,7 +214,7 @@ def fetch_file(
         subdir=None,
         force=False,
         timeout=None,
-        use_wget_if_available=False,
+        use_wget_if_available=None,
         chunk_size=DEFAULT_CHUNK_SIZE,
         progress_callback=None):
     """
@@ -256,23 +247,29 @@ def fetch_file(
         Timeout for download in seconds, default is None which uses
         global timeout.
 
-    use_wget_if_available: bool, optional
-        If the `wget` command is available, use that for download instead
-        of Python libraries (default True)
+    use_wget_if_available : bool, optional
+        Deprecated and ignored. datacache now always uses its streaming Python
+        downloader (which handles http(s) and ftp); the legacy `wget` path was
+        removed. Passing this argument emits a DeprecationWarning.
 
     chunk_size : int, optional
-        Number of bytes to stream from the server to disk at a time when
-        using the Python downloader. Defaults to 1 MB.
+        Number of bytes to stream from the server to disk at a time.
+        Defaults to 1 MB.
 
     progress_callback : callable, optional
         If provided, called as ``progress_callback(bytes_downloaded,
         total_bytes)`` after each chunk is written, where `total_bytes` is the
         server-reported size or None if unknown. Lets callers render a progress
-        bar (e.g. tqdm) without datacache taking on that dependency. Only
-        applies to the Python downloader, not the optional `wget` path.
+        bar (e.g. tqdm) without datacache taking on that dependency.
 
     Returns the full path of the local file.
     """
+    if use_wget_if_available is not None:
+        warnings.warn(
+            "use_wget_if_available is deprecated and ignored; datacache now always "
+            "uses its streaming Python downloader (handles http(s) and ftp).",
+            DeprecationWarning,
+            stacklevel=2)
     filename = build_local_filename(download_url, filename, decompress)
     full_path = build_path(filename, subdir)
     if not os.path.exists(full_path) or force:
@@ -281,7 +278,6 @@ def fetch_file(
             full_path=full_path,
             download_url=download_url,
             timeout=timeout,
-            use_wget_if_available=use_wget_if_available,
             chunk_size=chunk_size,
             progress_callback=progress_callback)
     else:
