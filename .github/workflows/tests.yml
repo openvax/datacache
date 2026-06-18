@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         python-version: ["3.9", "3.10", "3.11"]
 
@@ -37,4 +37,8 @@ jobs:
         run: |
           ./test.sh
       - name: Publish coverage to Coveralls
+        # Coverage upload is best-effort: parallel matrix jobs race to post to
+        # the same Coveralls build, and the loser gets a "build already closed"
+        # error. Don't let that flake fail the whole test run.
+        continue-on-error: true
         uses: coverallsapp/github-action@v2.2.3
