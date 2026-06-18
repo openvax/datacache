@@ -20,7 +20,8 @@ from .database_helpers import db_from_dataframe
 
 class Cache(object):
     def __init__(self, subdir="datacache"):
-        assert subdir
+        if not subdir:
+            raise ValueError("Cache subdir must be a non-empty string")
         self.subdir = subdir
         self.cache_directory_path = common.get_data_dir(subdir)
 

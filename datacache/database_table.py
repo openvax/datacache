@@ -67,9 +67,10 @@ class DatabaseTable(object):
     def from_fasta_dict(cls, name, fasta_dict, key_column, value_column):
         key_list = list(fasta_dict.keys())
         key_set = set(key_list)
-        assert len(key_set) == len(key_list), \
-            "FASTA file from contains %d non-unique sequence identifiers" % \
-            (len(key_list) - len(key_set))
+        if len(key_set) != len(key_list):
+            raise ValueError(
+                "FASTA file from contains %d non-unique sequence identifiers" %
+                (len(key_list) - len(key_set)))
         column_types = [(key_column, "TEXT"), (value_column, "TEXT")]
 
         def make_rows():
