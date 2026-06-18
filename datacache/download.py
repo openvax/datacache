@@ -109,7 +109,8 @@ def _download_and_decompress_if_necessary(
         logger.info("Decompressing zip into %s...", filename)
         with zipfile.ZipFile(tmp_path) as z:
             names = z.namelist()
-            assert len(names) > 0, "Empty zip archive"
+            if len(names) == 0:
+                raise ValueError("Empty zip archive")
             if filename in names:
                 chosen_filename = filename
             else:
@@ -230,7 +231,10 @@ def fetch_and_transform(
     else:
         logger.info("Cached data file: %s", transformed_path)
         result = loader(transformed_path)
-    assert os.path.exists(transformed_path)
+    if not os.path.exists(transformed_path):
+        raise RuntimeError(
+            "Expected transformed file %s to exist after fetch_and_transform" % (
+                transformed_path,))
     return result
 
 
