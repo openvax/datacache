@@ -35,7 +35,13 @@ class Database(object):
     """
     def __init__(self, path):
         self.path = path
-        self.connection = sqlite3.connect(path)
+        # check_same_thread=False allows a cached database connection to be
+        # reused across threads, which is needed by long-running / interactive
+        # consumers (e.g. pyensembl) that may issue queries from different
+        # threads than the one which opened the connection. datacache databases
+        # are written once and read-only thereafter, so cross-thread reuse is
+        # safe here. See https://github.com/openvax/datacache/issues/45
+        self.connection = sqlite3.connect(path, check_same_thread=False)
 
     def _commit(self):
         self.connection.commit()

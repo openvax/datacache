@@ -3,6 +3,7 @@ Test that datacache constructs databases correctly
 (separately from downloading/caching them)
 """
 import tempfile
+import threading
 
 import datacache
 
@@ -51,3 +52,24 @@ def test_create_db():
         int_result_tuple = cursor.fetchone()
         int_result = int_result_tuple[0]
         eq_(int_result, 2)
+
+def test_query_db_from_another_thread():
+    # regression test for https://github.com/openvax/datacache/issues/45:
+    # a connection opened in one thread must remain usable from another thread.
+    with tempfile.NamedTemporaryFile(suffix="test.db") as f:
+        db = datacache.database.Database(f.name)
+        table = make_table_object()
+        db.create(tables=[table], version=VERSION)
+
+        results = {}
+
+        def query_in_thread():
+            cursor = db.connection.execute(
+                "SELECT %s FROM %s WHERE %s = '%s'" % (
+                    INT_COL_NAME, TABLE_NAME, STR_COL_NAME, "light"))
+            results["value"] = cursor.fetchone()[0]
+
+        thread = threading.Thread(target=query_in_thread)
+        thread.start()
+        thread.join()
+        eq_(results["value"], 2)
