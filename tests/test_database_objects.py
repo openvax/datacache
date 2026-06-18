@@ -73,3 +73,25 @@ def test_query_db_from_another_thread():
         thread.start()
         thread.join()
         eq_(results["value"], 2)
+
+def test_create_db_with_reserved_and_spaced_identifiers():
+    # regression test for https://github.com/openvax/datacache/issues/17:
+    # table/column names that are SQL keywords or contain spaces must be
+    # quoted so they don't have to be sanitized to alphanumeric + underscore.
+    table_name = "weird table"
+    column_types = [("order", "INT"), ("group by", "STR")]
+    rows = [(1, "a"), (2, "b")]
+    table = datacache.database_table.DatabaseTable(
+        name=table_name,
+        column_types=column_types,
+        make_rows=lambda: rows,
+        indices=[["group by"]],
+        nullable={"group by"},
+        primary_key="order")
+    with tempfile.NamedTemporaryFile(suffix="test.db") as f:
+        db = datacache.database.Database(f.name)
+        db.create(tables=[table], version=VERSION)
+        assert db.has_table(table_name)
+        cursor = db.connection.execute(
+            'SELECT "order" FROM "weird table" WHERE "group by" = ?', ("b",))
+        eq_(cursor.fetchone()[0], 2)
