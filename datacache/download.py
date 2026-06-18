@@ -13,8 +13,7 @@
 import gzip
 import logging
 import os
-import errno
-import subprocess
+import warnings
 from shutil import move
 from tempfile import NamedTemporaryFile
 import zipfile
@@ -97,7 +96,6 @@ def _download_to_temp_file(
         timeout=None,
         base_name="download",
         ext="tmp",
-        use_wget_if_available=False,
         chunk_size=DEFAULT_CHUNK_SIZE,
         progress_callback=None):
 
@@ -110,39 +108,13 @@ def _download_to_temp_file(
             delete=False) as tmp:
         tmp_path = tmp.name
 
-    def download_using_python():
-        with open(tmp_path, mode="w+b") as tmp_file:
-            _stream_to_file(
-                download_url,
-                tmp_file,
-                timeout=timeout,
-                chunk_size=chunk_size,
-                progress_callback=progress_callback)
-
-    if not use_wget_if_available:
-        download_using_python()
-    else:
-        try:
-            # first try using wget to download since this works on Travis
-            # even when FTP otherwise fails
-            wget_command_list = [
-                "wget",
-                download_url,
-                "-O", tmp_path,
-                "--no-verbose",
-            ]
-            if download_url.startswith("ftp"):
-                wget_command_list.extend(["--passive-ftp"])
-            if timeout:
-                wget_command_list.extend(["-T", "%s" % timeout])
-            logger.info("Running: %s" % (" ".join(wget_command_list)))
-            subprocess.call(wget_command_list)
-        except OSError as e:
-            if e.errno == errno.ENOENT:
-                # wget not found
-                download_using_python()
-            else:
-                raise
+    with open(tmp_path, mode="w+b") as tmp_file:
+        _stream_to_file(
+            download_url,
+            tmp_file,
+            timeout=timeout,
+            chunk_size=chunk_size,
+            progress_callback=progress_callback)
     return tmp_path
 
 
@@ -150,7 +122,6 @@ def _download_and_decompress_if_necessary(
         full_path,
         download_url,
         timeout=None,
-        use_wget_if_available=False,
         chunk_size=DEFAULT_CHUNK_SIZE,
         progress_callback=None):
     """
@@ -164,7 +135,6 @@ def _download_and_decompress_if_necessary(
         timeout=timeout,
         base_name=base_name,
         ext=ext,
-        use_wget_if_available=use_wget_if_available,
         chunk_size=chunk_size,
         progress_callback=progress_callback)
 
@@ -223,7 +193,7 @@ def fetch_file(
         subdir=None,
         force=False,
         timeout=None,
-        use_wget_if_available=False,
+        use_wget_if_available=None,
         chunk_size=DEFAULT_CHUNK_SIZE,
         progress_callback=None):
     """
@@ -256,23 +226,29 @@ def fetch_file(
         Timeout for download in seconds, default is None which uses
         global timeout.
 
-    use_wget_if_available: bool, optional
-        If the `wget` command is available, use that for download instead
-        of Python libraries (default True)
+    use_wget_if_available : bool, optional
+        Deprecated and ignored. datacache now always uses its streaming Python
+        downloader (which handles http(s) and ftp); the legacy `wget` path was
+        removed. Passing this argument emits a DeprecationWarning.
 
     chunk_size : int, optional
-        Number of bytes to stream from the server to disk at a time when
-        using the Python downloader. Defaults to 1 MB.
+        Number of bytes to stream from the server to disk at a time.
+        Defaults to 1 MB.
 
     progress_callback : callable, optional
         If provided, called as ``progress_callback(bytes_downloaded,
         total_bytes)`` after each chunk is written, where `total_bytes` is the
         server-reported size or None if unknown. Lets callers render a progress
-        bar (e.g. tqdm) without datacache taking on that dependency. Only
-        applies to the Python downloader, not the optional `wget` path.
+        bar (e.g. tqdm) without datacache taking on that dependency.
 
     Returns the full path of the local file.
     """
+    if use_wget_if_available is not None:
+        warnings.warn(
+            "use_wget_if_available is deprecated and ignored; datacache now always "
+            "uses its streaming Python downloader (handles http(s) and ftp).",
+            DeprecationWarning,
+            stacklevel=2)
     filename = build_local_filename(download_url, filename, decompress)
     full_path = build_path(filename, subdir)
     if not os.path.exists(full_path) or force:
@@ -281,7 +257,6 @@ def fetch_file(
             full_path=full_path,
             download_url=download_url,
             timeout=timeout,
-            use_wget_if_available=use_wget_if_available,
             chunk_size=chunk_size,
             progress_callback=progress_callback)
     else:

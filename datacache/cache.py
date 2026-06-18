@@ -75,11 +75,14 @@ class Cache(object):
             decompress=False,
             force=False,
             timeout=None,
-            use_wget_if_available=True):
+            use_wget_if_available=None):
         """
         Return the local path to the downloaded copy of a given URL.
         Don't download the file again if it's already present,
         unless `force` is True.
+
+        `use_wget_if_available` is deprecated and ignored (datacache always uses
+        its streaming Python downloader now); passing it emits a warning.
         """
         key = (url, decompress)
         if not force and key in self._local_paths:
