@@ -10,8 +10,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .download import fetch_file, fetch_and_transform, fetch_csv_dataframe
+from .download import expected_path, file_exists, fetch_file, fetch_and_transform, fetch_csv_dataframe
 from .integrity import FileValidationError, validate_file
+from .inspection import CacheInspection, FileInspection, inspect_file, inspect_files
 from .database_helpers import (
     db_from_dataframe,
     db_from_dataframes,
@@ -23,6 +24,7 @@ from .common import (
     ensure_dir,
     get_data_dir,
     build_path,
+    resolve_path,
     clear_cache,
     build_local_filename
 )
@@ -32,6 +34,13 @@ from .version import __version__
 __all__ = [
     '__version__',
     'fetch_file',
+    'expected_path',
+    'file_exists',
+    'resolve_path',
+    'FileInspection',
+    'CacheInspection',
+    'inspect_file',
+    'inspect_files',
     'FileValidationError',
     'validate_file',
     'fetch_and_transform',
