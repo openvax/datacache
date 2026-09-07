@@ -10,8 +10,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from os.path import abspath, join
-from os import fspath, remove
+from os.path import isabs, join, realpath
+from os import fspath, getcwd, remove, scandir, stat
 from shutil import rmtree
 
 from . import common
@@ -55,9 +55,19 @@ class Cache(object):
             del self._local_paths[key]
 
     def delete_all(self):
+        """Clear cached contents while preserving the root and its permissions."""
+        # Validate before resolving: missing/.. must not select an existing
+        # parent. Resolve once so deleting a child in a root like child/..
+        # cannot invalidate the paths used for the remaining entries.
+        stat(self.cache_directory_path)
+        directory = realpath(self.cache_directory_path)
+        with scandir(directory) as entries:
+            for entry in entries:
+                if entry.is_dir(follow_symlinks=False):
+                    rmtree(entry.path)
+                else:
+                    remove(entry.path)
         self._local_paths.clear()
-        rmtree(self.cache_directory_path)
-        common.ensure_dir(self.cache_directory_path)
 
     def exists(self, url=None, filename=None, decompress=False):
         """
@@ -138,8 +148,13 @@ class Cache(object):
             table_name,
             df,
             key_column_name=None):
+        db_path = join(self.cache_directory_path, db_filename)
+        if not isabs(db_path):
+            # Prefix the cwd without abspath's lexical removal of symlink/..
+            # components; the filesystem must determine their destination.
+            db_path = join(getcwd(), db_path)
         return db_from_dataframe(
-            db_filename=abspath(join(self.cache_directory_path, db_filename)),
+            db_filename=db_path,
             table_name=table_name,
             df=df,
             primary_key=key_column_name,

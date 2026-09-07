@@ -181,6 +181,10 @@ Creation and repair remain explicit operations: use `fetch_file` or
 `Cache.fetch`, supplying integrity metadata and `force=True` for replacement.
 `Cache.fetch` validates every reuse and respects different filenames for the
 same URL. Its database and deletion methods also use the selected cache root.
+Database paths preserve the filesystem meaning of symlinks followed by `..`.
+`Cache.delete_all()` clears the root's contents while preserving the directory
+and its permissions, including when the root is `.` or a symlink. Symlinks
+inside the cache are removed without clearing their external targets.
 
 ## Downstream compatibility
 
