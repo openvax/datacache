@@ -60,6 +60,9 @@ destination's exact name. Format detection uses the URL path's actual extension
 (case-insensitively), independently of query strings and fragments.
 For ZIP files, the member matching the output filename is selected, falling
 back to the largest non-directory member. No archive paths are extracted.
+HTML-to-CSV conversion requires an explicit `filename` or `destination` ending
+in `.csv`. Query strings and fragments in inferred cache keys never request
+conversion; those downloads retain their original HTML bytes.
 
 A size or SHA-256 mismatch raises `FileValidationError`, with the path and
 expected/actual values in its message. A corrupt cache hit does not trigger a
@@ -77,12 +80,15 @@ keyboard interruption. This avoids `shutil.move`'s cross-filesystem copy and
 metadata fallback (related to [#39](https://github.com/openvax/datacache/issues/39));
 SELinux policy compatibility still needs testing on the target installation.
 
-On replacement, existing files' read/write/execute permission bits are applied
-to the validated staging file before publication. New HTML-to-CSV outputs use
+Download and conversion staging files remain owner-only throughout writing and
+validation. On replacement, existing files' read/write/execute permission bits
+are applied to the validated staging file immediately before publication.
+New HTML-to-CSV outputs use
 normal file-creation permissions (`0666` filtered by the process umask); new
-raw or decompressed downloads retain the existing owner-only default. Creating
-staging files exclusively lets the OS apply umask without reading or changing
-it globally. Permission-setting failure preserves the old file and cleans up
+raw or decompressed downloads retain the existing owner-only default. An empty,
+disposable file measures normal creation permissions without reading or changing
+umask globally; that file never contains downloaded or converted data.
+Permission-setting failure preserves the old file and cleans up
 staging files. Atomic replacement creates a new inode: ownership, ACLs, and
 extended attributes of an existing destination are not copied, and special
 setuid/setgid/sticky bits are not preserved.

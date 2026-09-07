@@ -114,6 +114,40 @@ def test_transform_detection_uses_actual_extensions(tmp_path, monkeypatch, sourc
     assert destination.read_bytes() == CONTENTS
 
 
+@pytest.mark.parametrize("decoration", ["?filename=table.csv", "#table.csv", "?token=abc#table.csv"])
+@pytest.mark.parametrize("decompress", [False, True])
+def test_inferred_html_is_not_converted_from_query_text(monkeypatch, decoration, decompress):
+    url = "https://host/table.html" + decoration
+    html = b"<html><table><tr><td>private data</td></tr></table></html>"
+    serve(monkeypatch, html)
+
+    def reject_parser(*args, **kwargs):
+        pytest.fail("inferred HTML must not require an HTML parser")
+
+    monkeypatch.setattr(download.pd, "read_html", reject_parser)
+    kwargs = dict(decompress=decompress, expected_sha256=hashlib.sha256(html).hexdigest())
+    path = Path(fetch_file(url, **kwargs))
+    assert path.name == common.build_local_filename(url, decompress=decompress)
+    assert path.read_bytes() == html
+    assert fetch_file(url, **kwargs) == str(path)
+    assert fetch_file(url, force=True, **kwargs) == str(path)
+    assert path.read_bytes() == html
+
+
+@pytest.mark.parametrize("output_argument", ["filename", "destination"])
+def test_explicit_csv_conversion_ignores_query_text(tmp_path, monkeypatch, output_argument):
+    html = b"<table><tr><td>fixture</td></tr></table>"
+    frame = pd.DataFrame({"value": [1]})
+    expected = frame.to_csv(index=False).encode()
+    serve(monkeypatch, html)
+    monkeypatch.setattr(download.pd, "read_html", lambda *a, **kw: [frame])
+    output = tmp_path / "table.csv" if output_argument == "destination" else "table.csv"
+    path = fetch_file(
+        "https://host/table.html?filename=source.html#raw", **{output_argument: output},
+        expected_sha256=hashlib.sha256(expected).hexdigest())
+    assert Path(path).read_bytes() == expected
+
+
 @pytest.fixture
 def output_source(monkeypatch):
     def prepare(kind):
@@ -157,6 +191,117 @@ def test_new_csv_uses_normal_creation_permissions(tmp_path, monkeypatch, output_
         os.umask(previous_mask)
     assert destination.read_bytes() == expected
     assert stat.S_IMODE(destination.stat().st_mode) == 0o666 & ~creation_mask
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file-mode semantics")
+@pytest.mark.parametrize("existing_mode", [None, 0o600, 0o640, 0o644])
+@pytest.mark.parametrize("failure", [None, "conversion", "validation"])
+def test_csv_contents_remain_private_until_validated(
+        tmp_path, monkeypatch, output_source, existing_mode, failure):
+    url, expected = output_source("html")
+    destination = tmp_path / "private.csv"
+    if existing_mode is not None:
+        destination.write_bytes(b"old private data")
+        destination.chmod(existing_mode)
+    original_csv = pd.DataFrame.to_csv
+    original_validate = download.validate_file
+    original_replace = os.replace
+    observations = []
+
+    def check_private(path):
+        assert stat.S_IMODE(Path(path).stat().st_mode) & 0o077 == 0
+        for sibling in tmp_path.glob(".datacache-*"):
+            assert stat.S_IMODE(sibling.stat().st_mode) & 0o077 == 0
+
+    def checked_csv(frame, path, **kwargs):
+        check_private(path)
+        Path(path).write_bytes(b"partial private data")
+        check_private(path)
+        if failure == "conversion":
+            raise RuntimeError("injected conversion failure")
+        result = original_csv(frame, path, **kwargs)
+        check_private(path)
+        observations.append("converted")
+        return result
+
+    def checked_validate(path, *args, **kwargs):
+        check_private(path)
+        assert Path(path).read_bytes() == expected
+        if failure == "validation":
+            raise RuntimeError("injected validation failure")
+        result = original_validate(path, *args, **kwargs)
+        observations.append("validated")
+        return result
+
+    def checked_replace(source, target):
+        assert observations == ["converted", "validated"]
+        assert Path(source).read_bytes() == expected
+        final_mode = 0o644 if existing_mode is None else existing_mode
+        assert stat.S_IMODE(Path(source).stat().st_mode) == final_mode
+        return original_replace(source, target)
+
+    monkeypatch.setattr(pd.DataFrame, "to_csv", checked_csv)
+    monkeypatch.setattr(download, "validate_file", checked_validate)
+    monkeypatch.setattr(download.os, "replace", checked_replace)
+    previous_mask = os.umask(0o022)
+    try:
+        if failure is None:
+            fetch_file(url, destination=destination, force=True)
+            assert destination.read_bytes() == expected
+        else:
+            with pytest.raises(RuntimeError, match="injected"):
+                fetch_file(url, destination=destination, force=True)
+            if existing_mode is not None:
+                assert destination.read_bytes() == b"old private data"
+                assert stat.S_IMODE(destination.stat().st_mode) == existing_mode
+            else:
+                assert not destination.exists()
+    finally:
+        os.umask(previous_mask)
+    assert not list(tmp_path.glob(".datacache-*"))
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_creation_mode_probe_never_contains_data(tmp_path, monkeypatch, output_source, failed):
+    url, expected = output_source("html")
+    destination = tmp_path / "data.csv"
+    original_open = download._open_staging_file
+    original_fstat = os.fstat
+    readers = []
+    probe_fd = None
+
+    def observed_open(*args, **kwargs):
+        nonlocal probe_fd
+        result = original_open(*args, **kwargs)
+        if kwargs.get("prefix") == ".datacache-mode-":
+            probe_fd = result.fileno()
+            # Model a reader that opened the publicly readable empty file and
+            # retains its descriptor even after it has been unlinked.
+            readers.append(open(result.name, "rb"))
+            assert readers[-1].read() == b""
+        return result
+
+    def checked_fstat(fd):
+        if failed and fd == probe_fd:
+            raise OSError("injected mode-probe failure")
+        return original_fstat(fd)
+
+    monkeypatch.setattr(download, "_open_staging_file", observed_open)
+    monkeypatch.setattr(download.os, "fstat", checked_fstat)
+    try:
+        if failed:
+            with pytest.raises(OSError, match="mode-probe failure"):
+                fetch_file(url, destination=destination)
+            assert not destination.exists()
+        else:
+            fetch_file(url, destination=destination)
+            assert destination.read_bytes() == expected
+        assert len(readers) == 1
+        assert readers[0].read() == b""
+        assert not list(tmp_path.glob(".datacache-*"))
+    finally:
+        for reader in readers:
+            reader.close()
 
 
 @pytest.mark.parametrize("kind", ["raw", "gz", "zip", "html"])

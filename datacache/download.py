@@ -151,17 +151,36 @@ def _remove_staging_file(path):
         pass
 
 
-def _publish_staged_file(staged_path, full_path):
+def _normal_creation_mode(directory):
+    """Measure ordinary creation permissions using an empty, disposable file.
+
+    Never put data in this file: another user might open it before removal.
+    Actual download/conversion files remain private through validation.
+    """
+    probe_path = None
+    try:
+        with _open_staging_file(
+                directory=directory, prefix=".datacache-mode-", mode=0o666) as probe:
+            probe_path = probe.name
+            return stat.S_IMODE(os.fstat(probe.fileno()).st_mode) & 0o777
+    finally:
+        if probe_path is not None:
+            _remove_staging_file(probe_path)
+
+
+def _publish_staged_file(staged_path, full_path, normal_creation_mode=False):
     """Preserve an existing regular file's access mode before atomic replacement."""
     try:
         existing = os.stat(full_path)
     except FileNotFoundError:
-        pass
+        mode = _normal_creation_mode(os.path.dirname(full_path) or ".") if normal_creation_mode else None
     else:
         if not stat.S_ISREG(existing.st_mode):
             raise FileValidationError(full_path, "expected a regular file")
         # Preserve rwx permissions, not setuid/setgid/sticky bits on new content.
-        os.chmod(staged_path, stat.S_IMODE(existing.st_mode) & 0o777)
+        mode = stat.S_IMODE(existing.st_mode) & 0o777
+    if mode is not None:
+        os.chmod(staged_path, mode)
     os.replace(staged_path, full_path)
 
 
@@ -173,6 +192,7 @@ def _download_and_decompress_if_necessary(
         progress_callback=None,
         *,
         decompress=None,
+        convert_html=True,
         expected_sha256=None,
         expected_size=None):
     """
@@ -181,6 +201,7 @@ def _download_and_decompress_if_necessary(
 
     decompress=None retains legacy inference from explicit output suffixes;
     True/False explicitly request decompression/archive retention, respectively.
+    convert_html enables conversion only when the explicit output ends in .csv.
     """
     logger.info("Downloading %s to %s", download_url, full_path)
     full_path = os.fspath(full_path)
@@ -192,7 +213,7 @@ def _download_and_decompress_if_necessary(
         decompress = output_suffix != source_suffix
     unzip = source_suffix == ".zip" and decompress
     gunzip = source_suffix == ".gz" and decompress
-    html = source_suffix in (".html", ".htm") and output_suffix == ".csv"
+    html = convert_html and source_suffix in (".html", ".htm") and output_suffix == ".csv"
     tmp_path = _download_to_temp_file(
         download_url=download_url,
         timeout=timeout,
@@ -205,8 +226,7 @@ def _download_and_decompress_if_necessary(
     try:
         if unzip or gunzip or html:
             with _open_staging_file(
-                    directory=out_dir, prefix=".datacache-install-",
-                    mode=0o666 if html else 0o600) as tmp:
+                    directory=out_dir, prefix=".datacache-install-") as tmp:
                 staged_path = tmp.name
             if unzip:
                 with zipfile.ZipFile(tmp_path) as z:
@@ -229,7 +249,7 @@ def _download_and_decompress_if_necessary(
             validate_file(staged_path, expected_sha256, expected_size)
         except FileValidationError as error:
             raise FileValidationError(full_path, "downloaded file " + error.reason) from error
-        _publish_staged_file(staged_path, full_path)
+        _publish_staged_file(staged_path, full_path, normal_creation_mode=html)
     finally:
         if staged_path != tmp_path:
             _remove_staging_file(staged_path)
@@ -337,10 +357,9 @@ def fetch_file(
         raise ValueError("chunk_size must be a positive integer")
     if destination is not None and (filename is not None or subdir is not None):
         raise ValueError("destination cannot be combined with filename or subdir")
-    # Inferred cache keys can end in query text rather than the archive suffix.
-    # Decide retention from caller intent, before deriving that cache filename.
-    archive_decompression = True if decompress else (
-        None if destination is not None or filename else False)
+    # Query/fragment text in an inferred cache key is not an output-format request.
+    explicit_output = destination is not None or bool(filename)
+    archive_decompression = True if decompress else (None if explicit_output else False)
     if use_wget_if_available is not None:
         warnings.warn(
             "use_wget_if_available is deprecated and ignored; datacache now always "
@@ -374,6 +393,7 @@ def fetch_file(
         chunk_size=chunk_size,
         progress_callback=progress_callback,
         decompress=archive_decompression,
+        convert_html=explicit_output,
         expected_sha256=expected_sha256,
         expected_size=expected_size)
     return full_path
