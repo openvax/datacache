@@ -10,19 +10,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from contextlib import closing
 import gzip
 import logging
 import os
 import warnings
-from shutil import copyfileobj, move
+from shutil import copyfileobj
 from tempfile import NamedTemporaryFile
 import zipfile
-import urllib
+import urllib.parse
+import urllib.request
 
 import requests
 import pandas as pd
 
+from . import common
 from .common import build_path, build_local_filename
+from .integrity import FileValidationError, _validate_expectations, validate_file
 
 logger = logging.getLogger(__name__)
 
@@ -67,27 +71,27 @@ def _stream_to_file(
             progress_callback(bytes_downloaded, total_bytes)
 
     if download_url.startswith("http"):
-        response = requests.get(download_url, timeout=timeout, stream=True)
-        response.raise_for_status()
-        total_bytes = _content_length(response.headers.get("Content-Length"))
-        for chunk in response.iter_content(chunk_size=chunk_size):
-            if not chunk:
-                # skip keep-alive chunks that carry no data
-                continue
-            file_handle.write(chunk)
-            bytes_downloaded += len(chunk)
-            report(total_bytes)
+        with closing(requests.get(download_url, timeout=timeout, stream=True)) as response:
+            response.raise_for_status()
+            total_bytes = _content_length(response.headers.get("Content-Length"))
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                if not chunk:
+                    # skip keep-alive chunks that carry no data
+                    continue
+                file_handle.write(chunk)
+                bytes_downloaded += len(chunk)
+                report(total_bytes)
     else:
         req = urllib.request.Request(download_url)
-        response = urllib.request.urlopen(req, data=None, timeout=timeout)
-        total_bytes = _content_length(response.headers.get("Content-Length"))
-        while True:
-            chunk = response.read(chunk_size)
-            if not chunk:
-                break
-            file_handle.write(chunk)
-            bytes_downloaded += len(chunk)
-            report(total_bytes)
+        with urllib.request.urlopen(req, data=None, timeout=timeout) as response:
+            total_bytes = _content_length(response.headers.get("Content-Length"))
+            while True:
+                chunk = response.read(chunk_size)
+                if not chunk:
+                    break
+                file_handle.write(chunk)
+                bytes_downloaded += len(chunk)
+                report(total_bytes)
     return bytes_downloaded
 
 
@@ -97,46 +101,36 @@ def _download_to_temp_file(
         base_name="download",
         ext="tmp",
         chunk_size=DEFAULT_CHUNK_SIZE,
-        progress_callback=None):
+        progress_callback=None,
+        directory=None):
 
     if not download_url:
         raise ValueError("URL not provided")
 
-    with NamedTemporaryFile(
-            suffix='.' + ext,
-            prefix=base_name,
-            delete=False) as tmp:
-        tmp_path = tmp.name
-
-    with open(tmp_path, mode="w+b") as tmp_file:
-        _stream_to_file(
-            download_url,
-            tmp_file,
-            timeout=timeout,
-            chunk_size=chunk_size,
-            progress_callback=progress_callback)
-    return tmp_path
-
-
-def _decompress_to_file(src_stream, full_path):
-    """Stream an already-open decompressed source into ``full_path`` atomically.
-
-    Writes to a sibling temp file and moves it into place, so a corrupt or
-    interrupted decompress (e.g. a gzip CRC failure, which is only detected at
-    end-of-stream) never leaves a partial file at ``full_path`` that a later
-    ``fetch_file`` would mistake for a complete cache hit.
-    """
-    out_dir = os.path.dirname(full_path) or "."
-    with NamedTemporaryFile(dir=out_dir, delete=False) as tmp:
-        tmp_out = tmp.name
+    tmp_path = None
     try:
-        with open(tmp_out, "wb") as dst:
-            copyfileobj(src_stream, dst)
-        move(tmp_out, full_path)
-    finally:
-        # On success the move consumed tmp_out; on failure drop the partial.
-        if os.path.exists(tmp_out):
-            os.remove(tmp_out)
+        with NamedTemporaryFile(
+                dir=directory, suffix='.' + ext, prefix=base_name,
+                delete=False) as tmp:
+            tmp_path = tmp.name
+            _stream_to_file(
+                download_url,
+                tmp,
+                timeout=timeout,
+                chunk_size=chunk_size,
+                progress_callback=progress_callback)
+        return tmp_path
+    except BaseException:
+        if tmp_path is not None:
+            _remove_staging_file(tmp_path)
+        raise
+
+
+def _remove_staging_file(path):
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
 
 
 def _download_and_decompress_if_necessary(
@@ -144,53 +138,63 @@ def _download_and_decompress_if_necessary(
         download_url,
         timeout=None,
         chunk_size=DEFAULT_CHUNK_SIZE,
-        progress_callback=None):
+        progress_callback=None,
+        *,
+        decompress=False,
+        expected_sha256=None,
+        expected_size=None):
     """
-    Downloads remote file at `download_url` to local file at `full_path`
+    Download, transform and validate in sibling staging files, then publish
+    with one atomic replace. Expectations always describe installed bytes.
     """
     logger.info("Downloading %s to %s", download_url, full_path)
-    filename = os.path.split(full_path)[1]
-    base_name, ext = os.path.splitext(filename)
+    full_path = os.fspath(full_path)
+    filename = os.path.basename(full_path)
+    out_dir = os.path.dirname(full_path) or "."
     tmp_path = _download_to_temp_file(
         download_url=download_url,
         timeout=timeout,
-        base_name=base_name,
-        ext=ext,
+        base_name=".datacache-download-",
+        directory=out_dir,
         chunk_size=chunk_size,
         progress_callback=progress_callback)
 
-    if download_url.endswith("zip") and not filename.endswith("zip"):
-        logger.info("Decompressing zip into %s...", filename)
-        with zipfile.ZipFile(tmp_path) as z:
-            infos = z.infolist()
-            if not infos:
-                raise ValueError("Empty zip archive")
-            # Prefer the member matching the local filename; if there's no such
-            # member (e.g. a multi-file archive), fall back to the biggest one.
-            chosen = next(
-                (info for info in infos if info.filename == filename),
-                max(infos, key=lambda info: info.file_size))
-            # Stream the chosen member's *contents* into full_path. We
-            # deliberately avoid ZipFile.extract(), which writes into the
-            # current working directory and recreates the member's stored path
-            # -- a cwd-pollution + path-traversal footgun (a member named e.g.
-            # "../evil" would escape the intended directory).
-            with z.open(chosen) as src:
-                _decompress_to_file(src, full_path)
-        os.remove(tmp_path)
-    elif download_url.endswith("gz") and not filename.endswith("gz"):
-        logger.info("Decompressing gzip into %s...", filename)
-        # Stream the gunzip to disk rather than read the whole (decompressed)
-        # file into memory -- the whole point of the streaming download (#49).
-        with gzip.GzipFile(tmp_path) as src:
-            _decompress_to_file(src, full_path)
-        os.remove(tmp_path)
-    elif download_url.endswith(("html", "htm")) and full_path.endswith(".csv"):
-        logger.info("Extracting HTML table into CSV %s...", filename)
-        df = pd.read_html(tmp_path, header=0)[0]
-        df.to_csv(full_path, sep=',', index=False, encoding='utf-8')
-    else:
-        move(tmp_path, full_path)
+    staged_path = tmp_path
+    try:
+        source_path = urllib.parse.urlsplit(download_url).path
+        unzip = source_path.endswith("zip") and (decompress or not filename.endswith("zip"))
+        gunzip = source_path.endswith("gz") and (decompress or not filename.endswith("gz"))
+        html = source_path.endswith(("html", "htm")) and full_path.endswith(".csv")
+        if unzip or gunzip or html:
+            with NamedTemporaryFile(
+                    dir=out_dir, prefix=".datacache-install-", delete=False) as tmp:
+                staged_path = tmp.name
+            if unzip:
+                with zipfile.ZipFile(tmp_path) as z:
+                    infos = [info for info in z.infolist() if not info.is_dir()]
+                    if not infos:
+                        raise ValueError("Empty zip archive")
+                    # Never extract stored paths: stream one member's contents.
+                    chosen = next(
+                        (info for info in infos if info.filename == filename),
+                        max(infos, key=lambda info: info.file_size))
+                    with z.open(chosen) as src, open(staged_path, "wb") as dst:
+                        copyfileobj(src, dst)
+            elif gunzip:
+                with gzip.GzipFile(tmp_path) as src, open(staged_path, "wb") as dst:
+                    copyfileobj(src, dst)
+            else:
+                df = pd.read_html(tmp_path, header=0)[0]
+                df.to_csv(staged_path, sep=',', index=False, encoding='utf-8')
+        try:
+            validate_file(staged_path, expected_sha256, expected_size)
+        except FileValidationError as error:
+            raise FileValidationError(full_path, "downloaded file " + error.reason) from error
+        os.replace(staged_path, full_path)
+    finally:
+        if staged_path != tmp_path:
+            _remove_staging_file(staged_path)
+        _remove_staging_file(tmp_path)
 
 
 def file_exists(
@@ -216,7 +220,11 @@ def fetch_file(
         timeout=None,
         use_wget_if_available=None,
         chunk_size=DEFAULT_CHUNK_SIZE,
-        progress_callback=None):
+        progress_callback=None,
+        *,
+        destination=None,
+        expected_sha256=None,
+        expected_size=None):
     """
     Download a remote file and store it locally in a cache directory. Don't
     download it again if it's already present (unless `force` is True.)
@@ -231,7 +239,7 @@ def fetch_file(
         filename from the URL.
 
     decompress : bool, optional
-        By default any file whose remote extension is one of (".zip", ".gzip")
+        By default any file whose remote extension is one of (".zip", ".gz")
         and whose local filename lacks this suffix is decompressed. If a local
         filename wasn't provided but you still want to decompress the stored
         data then set this option to True.
@@ -262,26 +270,69 @@ def fetch_file(
         server-reported size or None if unknown. Lets callers render a progress
         bar (e.g. tqdm) without datacache taking on that dependency.
 
+    destination : str or os.PathLike, optional
+        Exact output path, including filename, instead of the default cache.
+        Mutually exclusive with filename and subdir. Parent directories are
+        created only when downloading. With decompress=True, the destination
+        name is kept exactly as supplied while archive contents are installed.
+
+    expected_sha256 : str, optional
+        Trusted SHA-256 hex digest of the installed bytes, after decompression
+        or HTML conversion (not of the compressed archive or HTTP wire bytes).
+        Checked both on cache reuse and before publishing a replacement.
+
+    expected_size : int, optional
+        Expected non-negative byte count of the same installed bytes.
+
+    A corrupt cache hit raises FileValidationError; use force=True for an
+    explicit repair. Missing files are downloaded. Transport, decompression
+    and filesystem exceptions propagate. Failed downloads leave an existing
+    destination unchanged and remove their staging files. Atomic replacement
+    requires a local filesystem supporting os.replace; concurrent writers
+    publish complete files with the last successful replacement winning.
+
     Returns the full path of the local file.
     """
+    _validate_expectations(expected_sha256, expected_size)
+    if not isinstance(chunk_size, int) or isinstance(chunk_size, bool) or chunk_size <= 0:
+        raise ValueError("chunk_size must be a positive integer")
+    if destination is not None and (filename is not None or subdir is not None):
+        raise ValueError("destination cannot be combined with filename or subdir")
     if use_wget_if_available is not None:
         warnings.warn(
             "use_wget_if_available is deprecated and ignored; datacache now always "
             "uses its streaming Python downloader (handles http(s) and ftp).",
             DeprecationWarning,
             stacklevel=2)
-    filename = build_local_filename(download_url, filename, decompress)
-    full_path = build_path(filename, subdir)
-    if not os.path.exists(full_path) or force:
-        logger.info("Fetching %s from URL %s", filename, download_url)
-        _download_and_decompress_if_necessary(
-            full_path=full_path,
-            download_url=download_url,
-            timeout=timeout,
-            chunk_size=chunk_size,
-            progress_callback=progress_callback)
+    if destination is None:
+        filename = build_local_filename(download_url, filename, decompress)
+        full_path = os.path.join(common.get_data_dir(subdir), filename)
     else:
-        logger.info("Cached file %s from URL %s", filename, download_url)
+        full_path = os.fspath(destination)
+        if not isinstance(full_path, str) or not full_path:
+            raise ValueError("destination must be a non-empty text path")
+    if not force:
+        try:
+            validate_file(full_path, expected_sha256, expected_size)
+        except FileNotFoundError:
+            pass
+        except FileValidationError as error:
+            raise FileValidationError(
+                full_path, error.reason + "; use force=True to explicitly replace it") from error
+        else:
+            logger.info("Cached file %s from URL %s", full_path, download_url)
+            return full_path
+    os.makedirs(os.path.dirname(full_path) or ".", exist_ok=True)
+    logger.info("Fetching %s from URL %s", full_path, download_url)
+    _download_and_decompress_if_necessary(
+        full_path=full_path,
+        download_url=download_url,
+        timeout=timeout,
+        chunk_size=chunk_size,
+        progress_callback=progress_callback,
+        decompress=decompress,
+        expected_sha256=expected_sha256,
+        expected_size=expected_size)
     return full_path
 
 

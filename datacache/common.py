@@ -48,7 +48,7 @@ def normalize_filename(filename):
     filename = re.sub(r"/|\\|;|:|\?|=", "_", filename)
 
     if len(filename) > 150:
-        prefix = hashlib.md5(filename).hexdigest()
+        prefix = hashlib.md5(filename.encode('utf-8')).hexdigest()
         filename = prefix + filename[-140:]
 
     return filename

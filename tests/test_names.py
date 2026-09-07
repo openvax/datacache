@@ -14,3 +14,11 @@ def test_multiple_domains_same_file():
     assert "index" in filename_google
     assert "index" in filename_yahoo
     assert filename_yahoo != filename_google
+
+
+def test_long_url_can_be_used_as_cache_key():
+    url = "file:///" + "long-directory/" * 20 + "sequences.fa.gz"
+    filename = build_local_filename(download_url=url)
+    assert filename == build_local_filename(download_url=url)
+    assert filename.endswith("sequences.fa.gz")
+    assert len(filename) < len(url)
