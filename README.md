@@ -50,9 +50,14 @@ Both expectations always describe **installed bytes**, after decompression or
 HTML-to-CSV conversion. They do not describe HTTP wire bytes or a compressed
 archive when its contents are being installed. To verify and retain an archive,
 keep its `.gz` or `.zip` suffix at the destination and leave `decompress=False`.
-As with existing callers, a compressed URL is decompressed automatically when
-the destination lacks its compression suffix. `decompress=True` explicitly
-requests decompression while preserving an explicit destination's exact name.
+With an inferred filename, archives are retained by default, including URLs
+with query strings or fragments; their existing cache keys are preserved.
+`decompress=True` uses a distinct key for the decompressed contents, keeping the
+full URL in the key's digest. With an explicit `filename` or `destination`, a
+missing compression suffix still implies decompression for compatibility.
+`decompress=True` explicitly requests decompression while preserving an explicit
+destination's exact name. Format detection uses the URL path's actual extension
+(case-insensitively), independently of query strings and fragments.
 For ZIP files, the member matching the output filename is selected, falling
 back to the largest non-directory member. No archive paths are extracted.
 
@@ -71,6 +76,16 @@ destination unchanged and cleans up staging files, including on a handled
 keyboard interruption. This avoids `shutil.move`'s cross-filesystem copy and
 metadata fallback (related to [#39](https://github.com/openvax/datacache/issues/39));
 SELinux policy compatibility still needs testing on the target installation.
+
+On replacement, existing files' read/write/execute permission bits are applied
+to the validated staging file before publication. New HTML-to-CSV outputs use
+normal file-creation permissions (`0666` filtered by the process umask); new
+raw or decompressed downloads retain the existing owner-only default. Creating
+staging files exclusively lets the OS apply umask without reading or changing
+it globally. Permission-setting failure preserves the old file and cleans up
+staging files. Atomic replacement creates a new inode: ownership, ACLs, and
+extended attributes of an existing destination are not copied, and special
+setuid/setgid/sticky bits are not preserved.
 
 The publication guarantee assumes a local filesystem supporting atomic
 replacement of sibling files. Concurrent fetches use separate staging files;

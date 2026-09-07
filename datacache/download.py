@@ -14,9 +14,11 @@ from contextlib import closing
 import gzip
 import logging
 import os
+import stat
 import warnings
 from shutil import copyfileobj
-from tempfile import NamedTemporaryFile
+from tempfile import gettempdir
+from uuid import uuid4
 import zipfile
 import urllib.parse
 import urllib.request
@@ -109,9 +111,8 @@ def _download_to_temp_file(
 
     tmp_path = None
     try:
-        with NamedTemporaryFile(
-                dir=directory, suffix='.' + ext, prefix=base_name,
-                delete=False) as tmp:
+        with _open_staging_file(
+                directory=directory, suffix='.' + ext, prefix=base_name) as tmp:
             tmp_path = tmp.name
             _stream_to_file(
                 download_url,
@@ -126,11 +127,42 @@ def _download_to_temp_file(
         raise
 
 
+def _open_staging_file(directory=None, prefix=".datacache-", suffix="", mode=0o600):
+    """Create a unique sibling file exclusively, honoring umask for its mode.
+
+    Unlike chmod after NamedTemporaryFile, exclusive creation with the desired
+    mode lets the OS apply umask without reading/changing process-global state.
+    Callers own cleanup after closing the returned binary file.
+    """
+    directory = gettempdir() if directory is None else directory
+    for _ in range(100):
+        path = os.path.join(directory, prefix + uuid4().hex + suffix)
+        try:
+            return open(path, "x+b", opener=lambda name, flags: os.open(name, flags, mode))
+        except FileExistsError:
+            continue
+    raise FileExistsError("Could not create a unique staging file in %s" % directory)
+
+
 def _remove_staging_file(path):
     try:
         os.remove(path)
     except FileNotFoundError:
         pass
+
+
+def _publish_staged_file(staged_path, full_path):
+    """Preserve an existing regular file's access mode before atomic replacement."""
+    try:
+        existing = os.stat(full_path)
+    except FileNotFoundError:
+        pass
+    else:
+        if not stat.S_ISREG(existing.st_mode):
+            raise FileValidationError(full_path, "expected a regular file")
+        # Preserve rwx permissions, not setuid/setgid/sticky bits on new content.
+        os.chmod(staged_path, stat.S_IMODE(existing.st_mode) & 0o777)
+    os.replace(staged_path, full_path)
 
 
 def _download_and_decompress_if_necessary(
@@ -140,17 +172,27 @@ def _download_and_decompress_if_necessary(
         chunk_size=DEFAULT_CHUNK_SIZE,
         progress_callback=None,
         *,
-        decompress=False,
+        decompress=None,
         expected_sha256=None,
         expected_size=None):
     """
     Download, transform and validate in sibling staging files, then publish
     with one atomic replace. Expectations always describe installed bytes.
+
+    decompress=None retains legacy inference from explicit output suffixes;
+    True/False explicitly request decompression/archive retention, respectively.
     """
     logger.info("Downloading %s to %s", download_url, full_path)
     full_path = os.fspath(full_path)
     filename = os.path.basename(full_path)
     out_dir = os.path.dirname(full_path) or "."
+    source_suffix = os.path.splitext(urllib.parse.urlsplit(download_url).path)[1].lower()
+    output_suffix = os.path.splitext(filename)[1].lower()
+    if decompress is None:
+        decompress = output_suffix != source_suffix
+    unzip = source_suffix == ".zip" and decompress
+    gunzip = source_suffix == ".gz" and decompress
+    html = source_suffix in (".html", ".htm") and output_suffix == ".csv"
     tmp_path = _download_to_temp_file(
         download_url=download_url,
         timeout=timeout,
@@ -161,13 +203,10 @@ def _download_and_decompress_if_necessary(
 
     staged_path = tmp_path
     try:
-        source_path = urllib.parse.urlsplit(download_url).path
-        unzip = source_path.endswith("zip") and (decompress or not filename.endswith("zip"))
-        gunzip = source_path.endswith("gz") and (decompress or not filename.endswith("gz"))
-        html = source_path.endswith(("html", "htm")) and full_path.endswith(".csv")
         if unzip or gunzip or html:
-            with NamedTemporaryFile(
-                    dir=out_dir, prefix=".datacache-install-", delete=False) as tmp:
+            with _open_staging_file(
+                    directory=out_dir, prefix=".datacache-install-",
+                    mode=0o666 if html else 0o600) as tmp:
                 staged_path = tmp.name
             if unzip:
                 with zipfile.ZipFile(tmp_path) as z:
@@ -190,7 +229,7 @@ def _download_and_decompress_if_necessary(
             validate_file(staged_path, expected_sha256, expected_size)
         except FileValidationError as error:
             raise FileValidationError(full_path, "downloaded file " + error.reason) from error
-        os.replace(staged_path, full_path)
+        _publish_staged_file(staged_path, full_path)
     finally:
         if staged_path != tmp_path:
             _remove_staging_file(staged_path)
@@ -239,10 +278,10 @@ def fetch_file(
         filename from the URL.
 
     decompress : bool, optional
-        By default any file whose remote extension is one of (".zip", ".gz")
-        and whose local filename lacks this suffix is decompressed. If a local
-        filename wasn't provided but you still want to decompress the stored
-        data then set this option to True.
+        With an inferred filename, archives are retained by default, including
+        for URLs with query strings or fragments. Set True to decompress them
+        under a distinct cache key. An explicit filename or destination lacking
+        the source's .zip/.gz suffix still implies decompression for compatibility.
 
     subdir : str, optional
         Group downloads in a single subdirectory.
@@ -298,6 +337,10 @@ def fetch_file(
         raise ValueError("chunk_size must be a positive integer")
     if destination is not None and (filename is not None or subdir is not None):
         raise ValueError("destination cannot be combined with filename or subdir")
+    # Inferred cache keys can end in query text rather than the archive suffix.
+    # Decide retention from caller intent, before deriving that cache filename.
+    archive_decompression = True if decompress else (
+        None if destination is not None or filename else False)
     if use_wget_if_available is not None:
         warnings.warn(
             "use_wget_if_available is deprecated and ignored; datacache now always "
@@ -330,7 +373,7 @@ def fetch_file(
         timeout=timeout,
         chunk_size=chunk_size,
         progress_callback=progress_callback,
-        decompress=decompress,
+        decompress=archive_decompression,
         expected_sha256=expected_sha256,
         expected_size=expected_size)
     return full_path
