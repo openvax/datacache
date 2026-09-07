@@ -11,6 +11,7 @@
 # limitations under the License.
 
 from .download import fetch_file, fetch_and_transform, fetch_csv_dataframe
+from .integrity import FileValidationError, validate_file
 from .database_helpers import (
     db_from_dataframe,
     db_from_dataframes,
@@ -31,6 +32,8 @@ from .version import __version__
 __all__ = [
     '__version__',
     'fetch_file',
+    'FileValidationError',
+    'validate_file',
     'fetch_and_transform',
     'fetch_csv_dataframe',
     'db_from_dataframe',

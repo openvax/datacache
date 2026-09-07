@@ -15,12 +15,6 @@
 from datacache import fetch_file
 import gzip
 
-URL = "".join([
-    'ftp://ftp.ensembl.org/pub/release-75',
-    '/fasta/homo_sapiens/dna/Homo_sapiens.GRCh37.75',
-    '.dna_rm.chromosome.MT.fa.gz',
-])
-
 def fetch_fasta_dict(path_or_url):
     path = fetch_file(path_or_url)
     d = {}
@@ -46,6 +40,11 @@ def fetch_fasta_dict(path_or_url):
     return d
 
 
-def test_download_fasta_dict():
-    d = fetch_fasta_dict(URL)
-    assert len(d) > 0
+def test_download_fasta_dict(tmp_path, monkeypatch):
+    from datacache import common
+
+    source = tmp_path / "sequences.fa.gz"
+    source.write_bytes(gzip.compress(b">first\nACGT\n>second\nTGCA\n"))
+    monkeypatch.setattr(
+        common, "get_data_dir", lambda subdir=None: str(tmp_path / "cache"))
+    assert fetch_fasta_dict(source.as_uri()) == {"first": "ACGT", "second": "TGCA"}

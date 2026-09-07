@@ -2,11 +2,23 @@ from os import remove
 from os.path import exists
 from unittest.mock import patch
 
-from datacache import Cache
+import pytest
+
+from datacache import Cache, common
 
 CACHE_DIR = "datacache_test"
 TEST_URL = "http://www.google.com"
 TEST_FILENAME = "google"
+
+
+@pytest.fixture(autouse=True)
+def offline_cache(tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    source.write_text("local cache fixture")
+    monkeypatch.setitem(globals(), "TEST_URL", source.as_uri())
+    monkeypatch.setattr(
+        common, "get_data_dir",
+        lambda subdir=None, envkey=None: str(tmp_path / (subdir or "datacache")))
 
 def eq_(x, y):
     assert x == y
