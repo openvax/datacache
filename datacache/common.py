@@ -11,15 +11,32 @@
 # limitations under the License.
 
 import hashlib
+import os
 from os import makedirs, environ
 from os.path import join, exists, split, splitext
 import re
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 from shutil import rmtree
 import appdirs
 
 COMPRESSION_SUFFIXES = (".gz", ".zip")
+
+
+def _source_suffix(download_url):
+    """Prefer a supported path suffix, then a filename in the final query value.
+
+    This supports IEDB/pepdata download endpoints without interpreting bare
+    format hints such as ?format=.gz or fragments as a file format.
+    """
+    supported = COMPRESSION_SUFFIXES + (".html", ".htm")
+    parsed = urlsplit(download_url)
+    path_suffix = splitext(parsed.path)[1].lower()
+    if path_suffix in supported:
+        return path_suffix
+    query = parse_qsl(parsed.query, keep_blank_values=True)
+    query_suffix = splitext(query[-1][1])[1].lower() if query else ""
+    return query_suffix if query_suffix in supported else path_suffix
 
 def ensure_dir(path):
     if not exists(path):
@@ -34,10 +51,21 @@ def get_data_dir(subdir=None, envkey=None):
             return envdir
     return appdirs.user_cache_dir(subdir if subdir else "datacache")
 
-def build_path(filename, subdir=None):
-    data_dir = get_data_dir(subdir)
-    ensure_dir(data_dir)
-    return join(data_dir, filename)
+def resolve_path(filename, subdir=None, *, cache_root=None):
+    """Resolve a cache path without filesystem access or directory creation.
+
+    cache_root is the directory containing cached files, overriding the appdirs
+    location selected by subdir. Relative roots remain relative to the cwd.
+    """
+    data_dir = get_data_dir(subdir) if cache_root is None else os.fspath(cache_root)
+    return join(data_dir, os.fspath(filename))
+
+
+def build_path(filename, subdir=None, *, cache_root=None):
+    """Resolve a writable cache path, creating its parent when necessary."""
+    full_path = resolve_path(filename, subdir, cache_root=cache_root)
+    os.makedirs(os.path.dirname(full_path) or ".", exist_ok=True)
+    return full_path
 
 def clear_cache(subdir=None):
     data_dir = get_data_dir(subdir)
@@ -65,6 +93,7 @@ def build_local_filename(download_url=None, filename=None, decompress=False):
     if not (download_url or filename):
         raise ValueError("Either filename or URL must be specified")
 
+    inferred = not filename
     # if no filename provided, use the original filename on the server
     if not filename:
         digest = hashlib.md5(download_url.encode('utf-8')).hexdigest()
@@ -85,5 +114,9 @@ def build_local_filename(download_url=None, filename=None, decompress=False):
         (base, ext) = splitext(filename)
         if ext.lower() in COMPRESSION_SUFFIXES:
             filename = base
+        elif inferred and _source_suffix(download_url) in COMPRESSION_SUFFIXES:
+            # Endpoint filenames may be encoded or followed by a fragment.
+            # Keep raw and decompressed contents under different cache keys.
+            filename += ".decompressed"
 
     return filename

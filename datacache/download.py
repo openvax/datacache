@@ -27,8 +27,9 @@ import requests
 import pandas as pd
 
 from . import common
-from .common import build_path, build_local_filename
+from .common import _source_suffix, build_path, build_local_filename
 from .integrity import FileValidationError, _validate_expectations, validate_file
+from .inspection import path_exists
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +185,21 @@ def _publish_staged_file(staged_path, full_path, normal_creation_mode=False):
     os.replace(staged_path, full_path)
 
 
+def _decompress_to_file(src_stream, full_path):
+    """Compatibility entry point for atomically copying a decompressed stream."""
+    staged_path = None
+    try:
+        with _open_staging_file(
+                directory=os.path.dirname(full_path) or ".",
+                prefix=".datacache-decompress-") as output:
+            staged_path = output.name
+            copyfileobj(src_stream, output)
+        _publish_staged_file(staged_path, full_path)
+    finally:
+        if staged_path is not None:
+            _remove_staging_file(staged_path)
+
+
 def _download_and_decompress_if_necessary(
         full_path,
         download_url,
@@ -192,28 +208,33 @@ def _download_and_decompress_if_necessary(
         progress_callback=None,
         *,
         decompress=None,
-        convert_html=True,
+        convert_html=None,
         expected_sha256=None,
         expected_size=None):
     """
     Download, transform and validate in sibling staging files, then publish
     with one atomic replace. Expectations always describe installed bytes.
 
-    decompress=None retains legacy inference from explicit output suffixes;
-    True/False explicitly request decompression/archive retention, respectively.
-    convert_html enables conversion only when the explicit output ends in .csv.
+    Unspecified transform flags retain the pre-1.8 literal-URL heuristics for
+    downstream callers (including pyensembl) using this private entry point.
+    Explicit flags use the parsed URL format, including download endpoints.
     """
     logger.info("Downloading %s to %s", download_url, full_path)
     full_path = os.fspath(full_path)
     filename = os.path.basename(full_path)
     out_dir = os.path.dirname(full_path) or "."
-    source_suffix = os.path.splitext(urllib.parse.urlsplit(download_url).path)[1].lower()
+    source_suffix = _source_suffix(download_url)
     output_suffix = os.path.splitext(filename)[1].lower()
     if decompress is None:
-        decompress = output_suffix != source_suffix
-    unzip = source_suffix == ".zip" and decompress
-    gunzip = source_suffix == ".gz" and decompress
-    html = convert_html and source_suffix in (".html", ".htm") and output_suffix == ".csv"
+        unzip = download_url.endswith("zip") and not filename.endswith("zip")
+        gunzip = download_url.endswith("gz") and not filename.endswith("gz")
+    else:
+        unzip = source_suffix == ".zip" and decompress
+        gunzip = source_suffix == ".gz" and decompress
+    if convert_html is None:
+        html = download_url.endswith(("html", "htm")) and full_path.endswith(".csv")
+    else:
+        html = convert_html and source_suffix in (".html", ".htm") and output_suffix == ".csv"
     tmp_path = _download_to_temp_file(
         download_url=download_url,
         timeout=timeout,
@@ -256,18 +277,46 @@ def _download_and_decompress_if_necessary(
         _remove_staging_file(tmp_path)
 
 
-def file_exists(
-        download_url,
+def expected_path(
+        download_url=None,
         filename=None,
         decompress=False,
-        subdir=None):
+        subdir=None,
+        *,
+        destination=None,
+        cache_root=None):
+    """Resolve the fetch destination without filesystem access or mutations.
+
+    cache_root overrides the appdirs location selected by subdir. destination
+    is an exact path and cannot be combined with filename, subdir, or cache_root.
     """
-    Return True if a local file corresponding to these arguments
-    exists.
-    """
+    if destination is not None:
+        if filename is not None or subdir is not None or cache_root is not None:
+            raise ValueError("destination cannot be combined with filename, subdir, or cache_root")
+        result = os.fspath(destination)
+        if not isinstance(result, str) or not result:
+            raise ValueError("destination must be a non-empty text path")
+        return result
     filename = build_local_filename(download_url, filename, decompress)
-    full_path = build_path(filename, subdir)
-    return os.path.exists(full_path)
+    return common.resolve_path(filename, subdir, cache_root=cache_root)
+
+
+def file_exists(
+        download_url=None,
+        filename=None,
+        decompress=False,
+        subdir=None,
+        *,
+        destination=None,
+        cache_root=None):
+    """Check presence without writes/network; permission errors propagate.
+
+    This does not check file type, readability, or integrity. Use inspect_file
+    or validate_file on expected_path(...) for those checks.
+    """
+    return path_exists(expected_path(
+        download_url, filename, decompress, subdir,
+        destination=destination, cache_root=cache_root))
 
 
 def fetch_file(
@@ -282,6 +331,7 @@ def fetch_file(
         progress_callback=None,
         *,
         destination=None,
+        cache_root=None,
         expected_sha256=None,
         expected_size=None):
     """
@@ -331,9 +381,13 @@ def fetch_file(
 
     destination : str or os.PathLike, optional
         Exact output path, including filename, instead of the default cache.
-        Mutually exclusive with filename and subdir. Parent directories are
+        Mutually exclusive with filename, subdir, and cache_root. Parent directories are
         created only when downloading. With decompress=True, the destination
         name is kept exactly as supplied while archive contents are installed.
+
+    cache_root : str or os.PathLike, optional
+        Directory containing cached files, overriding the location selected by
+        subdir. Cannot be combined with destination.
 
     expected_sha256 : str, optional
         Trusted SHA-256 hex digest of the installed bytes, after decompression
@@ -355,24 +409,17 @@ def fetch_file(
     _validate_expectations(expected_sha256, expected_size)
     if not isinstance(chunk_size, int) or isinstance(chunk_size, bool) or chunk_size <= 0:
         raise ValueError("chunk_size must be a positive integer")
-    if destination is not None and (filename is not None or subdir is not None):
-        raise ValueError("destination cannot be combined with filename or subdir")
     # Query/fragment text in an inferred cache key is not an output-format request.
     explicit_output = destination is not None or bool(filename)
-    archive_decompression = True if decompress else (None if explicit_output else False)
     if use_wget_if_available is not None:
         warnings.warn(
             "use_wget_if_available is deprecated and ignored; datacache now always "
             "uses its streaming Python downloader (handles http(s) and ftp).",
             DeprecationWarning,
             stacklevel=2)
-    if destination is None:
-        filename = build_local_filename(download_url, filename, decompress)
-        full_path = os.path.join(common.get_data_dir(subdir), filename)
-    else:
-        full_path = os.fspath(destination)
-        if not isinstance(full_path, str) or not full_path:
-            raise ValueError("destination must be a non-empty text path")
+    full_path = expected_path(
+        download_url, filename, decompress, subdir,
+        destination=destination, cache_root=cache_root)
     if not force:
         try:
             validate_file(full_path, expected_sha256, expected_size)
@@ -384,6 +431,9 @@ def fetch_file(
         else:
             logger.info("Cached file %s from URL %s", full_path, download_url)
             return full_path
+    source_suffix = _source_suffix(download_url)
+    output_suffix = os.path.splitext(full_path)[1].lower()
+    archive_decompression = bool(decompress or (explicit_output and output_suffix != source_suffix))
     os.makedirs(os.path.dirname(full_path) or ".", exist_ok=True)
     logger.info("Fetching %s from URL %s", full_path, download_url)
     _download_and_decompress_if_necessary(

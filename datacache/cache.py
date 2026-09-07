@@ -10,22 +10,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from os.path import exists, join
-from os import remove
+from os.path import abspath, join
+from os import fspath, remove
+from shutil import rmtree
 
 from . import common
 from . import download
+from .download import expected_path
 from .database_helpers import db_from_dataframe
+from .inspection import inspect_file, path_exists
 
 
 class Cache(object):
-    def __init__(self, subdir="datacache"):
+    def __init__(self, subdir="datacache", *, cache_root=None):
+        """Select a cache directory without creating it.
+
+        cache_root overrides the platform cache location selected by subdir.
+        """
         if not subdir:
             raise ValueError("Cache subdir must be a non-empty string")
         self.subdir = subdir
-        self.cache_directory_path = common.get_data_dir(subdir)
+        self.cache_directory_path = (
+            common.get_data_dir(subdir) if cache_root is None else fspath(cache_root))
 
-        # dictionary mapping from (URL, decompress) pair to local paths
+        # Track explicit filenames as well as inferred names for deletion.
         # TODO: handle decompression separately from download,
         # so we can use copies of compressed files we've already downloaded
         self._local_paths = {}
@@ -34,39 +42,35 @@ class Cache(object):
         """
         Delete local files downloaded from given URL
         """
-        # file may exist locally in compressed and decompressed states
-        # delete both
-        for decompress in [False, True]:
-            key = (url, decompress)
-            if key in self._local_paths:
-                path = self._local_paths[key]
+        keys = [key for key in self._local_paths if key[0] == url]
+        paths = {self._local_paths[key] for key in keys}
+        # Include inferred paths created by another Cache instance or fetch_file.
+        paths.update(self.local_path(url, decompress=value) for value in (False, True))
+        for path in paths:
+            try:
                 remove(path)
-                del self._local_paths[key]
-
-            # possible that file was downloaded via the download module without
-            # using the Cache object, this wouldn't end up in the local_paths
-            # but should still be deleted
-            path = self.local_path(
-                url, decompress=decompress, download=False)
-
-            if exists(path):
-                remove(path)
+            except FileNotFoundError:
+                pass
+        for key in keys:
+            del self._local_paths[key]
 
     def delete_all(self):
         self._local_paths.clear()
-        common.clear_cache(self.cache_directory_path)
+        rmtree(self.cache_directory_path)
         common.ensure_dir(self.cache_directory_path)
 
-    def exists(self, url, filename=None, decompress=False):
+    def exists(self, url=None, filename=None, decompress=False):
         """
-        Return True if a local file corresponding to these arguments
-        exists.
+        Check presence without writes or network. Permission errors propagate.
         """
-        return download.file_exists(
-            url,
-            filename=filename,
-            decompress=decompress,
-            subdir=self.subdir)
+        return path_exists(self.local_path(url, filename, decompress))
+
+    def inspect(self, url=None, filename=None, decompress=False, *,
+                expected_sha256=None, expected_size=None):
+        """Report availability/integrity without writes, network, or repair."""
+        return inspect_file(
+            self.local_path(url, filename, decompress),
+            expected_sha256=expected_sha256, expected_size=expected_size)
 
     def fetch(
             self,
@@ -75,7 +79,12 @@ class Cache(object):
             decompress=False,
             force=False,
             timeout=None,
-            use_wget_if_available=None):
+            use_wget_if_available=None,
+            *,
+            chunk_size=download.DEFAULT_CHUNK_SIZE,
+            progress_callback=None,
+            expected_sha256=None,
+            expected_size=None):
         """
         Return the local path to the downloaded copy of a given URL.
         Don't download the file again if it's already present,
@@ -84,21 +93,20 @@ class Cache(object):
         `use_wget_if_available` is deprecated and ignored (datacache always uses
         its streaming Python downloader now); passing it emits a warning.
         """
-        key = (url, decompress)
-        if not force and key in self._local_paths:
-            path = self._local_paths[key]
-            if exists(path):
-                return path
-            else:
-                del self._local_paths[key]
+        key = (url, filename, decompress)
         path = download.fetch_file(
             url,
             filename=filename,
             decompress=decompress,
             subdir=self.subdir,
+            cache_root=self.cache_directory_path,
             force=force,
             timeout=timeout,
-            use_wget_if_available=use_wget_if_available)
+            use_wget_if_available=use_wget_if_available,
+            chunk_size=chunk_size,
+            progress_callback=progress_callback,
+            expected_sha256=expected_sha256,
+            expected_size=expected_size)
 
         self._local_paths[key] = path
         return path
@@ -114,15 +122,15 @@ class Cache(object):
         """
         return common.build_local_filename(url, filename, decompress)
 
-    def local_path(self, url, filename=None, decompress=False, download=False):
+    def local_path(self, url=None, filename=None, decompress=False, download=False):
         """
         What will the full local path be if we download the given file?
         """
         if download:
             return self.fetch(url=url, filename=filename, decompress=decompress)
         else:
-            filename = self.local_filename(url, filename, decompress)
-            return join(self.cache_directory_path, filename)
+            return expected_path(
+                url, filename, decompress, cache_root=self.cache_directory_path)
 
     def db_from_dataframe(
             self,
@@ -131,7 +139,7 @@ class Cache(object):
             df,
             key_column_name=None):
         return db_from_dataframe(
-            db_filename=db_filename,
+            db_filename=abspath(join(self.cache_directory_path, db_filename)),
             table_name=table_name,
             df=df,
             primary_key=key_column_name,
