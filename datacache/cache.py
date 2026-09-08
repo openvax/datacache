@@ -94,11 +94,17 @@ class Cache(object):
             chunk_size=download.DEFAULT_CHUNK_SIZE,
             progress_callback=None,
             expected_sha256=None,
-            expected_size=None):
+            expected_size=None,
+            max_retries=download.DEFAULT_MAX_RETRIES,
+            retry_backoff=download.DEFAULT_RETRY_BACKOFF,
+            retry_max_delay=download.DEFAULT_RETRY_MAX_DELAY):
         """
         Return the local path to the downloaded copy of a given URL.
         Don't download the file again if it's already present,
         unless `force` is True.
+
+        Retry options have the same meanings as in fetch_file; max_retries=0
+        disables automatic retries of transient HTTP failures.
 
         `use_wget_if_available` is deprecated and ignored (datacache always uses
         its streaming Python downloader now); passing it emits a warning.
@@ -116,7 +122,10 @@ class Cache(object):
             chunk_size=chunk_size,
             progress_callback=progress_callback,
             expected_sha256=expected_sha256,
-            expected_size=expected_size)
+            expected_size=expected_size,
+            max_retries=max_retries,
+            retry_backoff=retry_backoff,
+            retry_max_delay=retry_max_delay)
 
         self._local_paths[key] = path
         return path

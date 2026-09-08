@@ -108,6 +108,57 @@ the old file is preserved. This does not provide multi-file transactions,
 distributed coordination, or durability/recovery after power loss or an
 unhandled process termination, which may leave staging files behind.
 
+## Transient HTTP failures
+
+HTTP and HTTPS downloads retry temporary failures by default, with at most
+three attempts (the initial request plus two retries). This includes HTTP
+408, 429, 500, 502, 503, and 504 responses, connection failures, timeouts, and
+interrupted response streams. Configure the policy on `fetch_file` or
+`Cache.fetch`:
+
+```python
+path = fetch_file(
+    "https://example.org/releases/v1/records.tsv.gz",
+    destination="/data/references/v1/records.tsv",
+    decompress=True,
+    expected_sha256=release_metadata["installed_sha256"],
+    timeout=30,
+    max_retries=2,
+    retry_backoff=1.0,
+    retry_max_delay=30.0,
+)
+```
+
+`max_retries` counts additional attempts; set it to `0` to disable retries.
+`retry_backoff` is the first delay in seconds and doubles after each retry,
+capped by `retry_max_delay`. Defaults therefore wait one second and then two
+seconds. `Retry-After` supports both integer seconds and HTTP dates. When its
+wait fits within `retry_max_delay`, the larger of that wait and the backoff is
+used. If the server requests a longer wait, the original error is raised
+immediately instead of retrying sooner than requested. Malformed header values
+are ignored. Both delay settings must be finite non-negative real numbers;
+accepted values are normalized to Python floats before use.
+
+Each attempt downloads from the beginning into a fresh private staging file.
+Failed responses are closed and partial files are removed before waiting or
+retrying. An existing destination remains intact until a successful transfer
+has been transformed, validated, and published. Retry warnings report the
+attempt count, failure category, and delay; exhaustion raises the original
+Requests exception, preserving its response and cause.
+
+Permanent HTTP failures such as 404, TLS errors (including proxy-wrapped TLS
+failures), local filesystem errors,
+progress callback exceptions, and transformation/integrity/publication errors
+are not retried. Local file and FTP transfers remain single attempts. Cache
+reuse and read-only inspection make no requests and do not wait. Existing
+pyensembl calls through `_download_and_decompress_if_necessary` receive the same
+default policy without changes to downstream code.
+
+Progress byte counts describe the current attempt and may decrease after a
+restart. The same `timeout` is passed to each request; Requests timeouts govern
+connection/read inactivity, not an overall elapsed-time deadline. Retry count
+and waiting time are bounded independently of the transfer duration.
+
 ## Read-only cache inspection
 
 Path lookup, presence, and integrity checks have different contracts:

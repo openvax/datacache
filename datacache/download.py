@@ -15,6 +15,7 @@ import gzip
 import logging
 import os
 import stat
+import time
 import warnings
 from shutil import copyfileobj
 from tempfile import gettempdir
@@ -30,6 +31,10 @@ from . import common
 from .common import _source_suffix, build_path, build_local_filename
 from .integrity import FileValidationError, _validate_expectations, validate_file
 from .inspection import path_exists
+from .retries import (
+    DEFAULT_MAX_RETRIES, DEFAULT_RETRY_BACKOFF, DEFAULT_RETRY_MAX_DELAY,
+    error_description, is_retryable_http_error, retry_delay, validate_retry_options,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +64,9 @@ def _stream_to_file(
     handle, one chunk at a time, so the entire payload never has to be held in
     memory at once.
 
+    This performs one attempt. _download_to_temp_file owns retries and creates
+    a fresh staging file for each attempt.
+
     If `progress_callback` is given it is called as
     ``progress_callback(bytes_downloaded, total_bytes)`` after each chunk is
     written, where `total_bytes` is taken from the server's Content-Length
@@ -73,7 +81,7 @@ def _stream_to_file(
         if progress_callback is not None:
             progress_callback(bytes_downloaded, total_bytes)
 
-    if download_url.startswith("http"):
+    if urllib.parse.urlsplit(download_url).scheme.lower() in ("http", "https"):
         with closing(requests.get(download_url, timeout=timeout, stream=True)) as response:
             response.raise_for_status()
             total_bytes = _content_length(response.headers.get("Content-Length"))
@@ -105,27 +113,60 @@ def _download_to_temp_file(
         ext="tmp",
         chunk_size=DEFAULT_CHUNK_SIZE,
         progress_callback=None,
-        directory=None):
+        directory=None,
+        *,
+        max_retries=DEFAULT_MAX_RETRIES,
+        retry_backoff=DEFAULT_RETRY_BACKOFF,
+        retry_max_delay=DEFAULT_RETRY_MAX_DELAY):
 
+    retry_backoff, retry_max_delay = validate_retry_options(max_retries, retry_backoff, retry_max_delay)
     if not download_url:
         raise ValueError("URL not provided")
 
-    tmp_path = None
-    try:
-        with _open_staging_file(
-                directory=directory, suffix='.' + ext, prefix=base_name) as tmp:
-            tmp_path = tmp.name
-            _stream_to_file(
-                download_url,
-                tmp,
-                timeout=timeout,
-                chunk_size=chunk_size,
-                progress_callback=progress_callback)
-        return tmp_path
-    except BaseException:
-        if tmp_path is not None:
-            _remove_staging_file(tmp_path)
-        raise
+    http = urllib.parse.urlsplit(download_url).scheme.lower() in ("http", "https")
+    backoff = min(retry_backoff, retry_max_delay)
+    for attempt in range(max_retries + 1):
+        tmp_path = None
+        callback_failed = False
+
+        def report(done, total):
+            nonlocal callback_failed
+            try:
+                progress_callback(done, total)
+            except BaseException:
+                callback_failed = True
+                raise
+
+        try:
+            with _open_staging_file(
+                    directory=directory, suffix='.' + ext, prefix=base_name) as tmp:
+                tmp_path = tmp.name
+                _stream_to_file(
+                    download_url,
+                    tmp,
+                    timeout=timeout,
+                    chunk_size=chunk_size,
+                    progress_callback=report if progress_callback is not None else None)
+            return tmp_path
+        except BaseException as error:
+            if tmp_path is not None:
+                _remove_staging_file(tmp_path)
+            if not http or callback_failed or not is_retryable_http_error(error):
+                raise
+            if attempt == max_retries:
+                logger.warning("HTTP download failed after %d attempt(s): %s",
+                               attempt + 1, error_description(error))
+                raise
+            delay = retry_delay(error, backoff, retry_max_delay)
+            if delay is None:
+                logger.warning("HTTP download attempt %d/%d failed (%s); Retry-After exceeds retry_max_delay",
+                               attempt + 1, max_retries + 1, error_description(error))
+                raise
+            logger.warning("HTTP download attempt %d/%d failed (%s); retrying in %.3g seconds",
+                           attempt + 1, max_retries + 1, error_description(error), delay)
+            if delay:
+                time.sleep(delay)
+            backoff = min(backoff * 2, retry_max_delay)
 
 
 def _open_staging_file(directory=None, prefix=".datacache-", suffix="", mode=0o600):
@@ -210,7 +251,10 @@ def _download_and_decompress_if_necessary(
         decompress=None,
         convert_html=None,
         expected_sha256=None,
-        expected_size=None):
+        expected_size=None,
+        max_retries=DEFAULT_MAX_RETRIES,
+        retry_backoff=DEFAULT_RETRY_BACKOFF,
+        retry_max_delay=DEFAULT_RETRY_MAX_DELAY):
     """
     Download, transform and validate in sibling staging files, then publish
     with one atomic replace. Expectations always describe installed bytes.
@@ -241,7 +285,10 @@ def _download_and_decompress_if_necessary(
         base_name=".datacache-download-",
         directory=out_dir,
         chunk_size=chunk_size,
-        progress_callback=progress_callback)
+        progress_callback=progress_callback,
+        max_retries=max_retries,
+        retry_backoff=retry_backoff,
+        retry_max_delay=retry_max_delay)
 
     staged_path = tmp_path
     try:
@@ -333,7 +380,10 @@ def fetch_file(
         destination=None,
         cache_root=None,
         expected_sha256=None,
-        expected_size=None):
+        expected_size=None,
+        max_retries=DEFAULT_MAX_RETRIES,
+        retry_backoff=DEFAULT_RETRY_BACKOFF,
+        retry_max_delay=DEFAULT_RETRY_MAX_DELAY):
     """
     Download a remote file and store it locally in a cache directory. Don't
     download it again if it's already present (unless `force` is True.)
@@ -397,6 +447,19 @@ def fetch_file(
     expected_size : int, optional
         Expected non-negative byte count of the same installed bytes.
 
+    max_retries : int, optional
+        Additional attempts after transient HTTP/transport failures, default 2.
+        Set 0 to disable retries. File and FTP transfers are not retried.
+
+    retry_backoff : float, optional
+        Initial retry delay in seconds, default 1. Doubles after each retry,
+        capped by retry_max_delay. Progress counts restart for each attempt.
+
+    retry_max_delay : float, optional
+        Maximum delay between attempts, default 30 seconds. Retry-After is
+        honored when within this limit; longer server waits stop retries.
+        timeout still applies per attempt, not as a total download deadline.
+
     A corrupt cache hit raises FileValidationError; use force=True for an
     explicit repair. Missing files are downloaded. Transport, decompression
     and filesystem exceptions propagate. Failed downloads leave an existing
@@ -407,6 +470,7 @@ def fetch_file(
     Returns the full path of the local file.
     """
     _validate_expectations(expected_sha256, expected_size)
+    retry_backoff, retry_max_delay = validate_retry_options(max_retries, retry_backoff, retry_max_delay)
     if not isinstance(chunk_size, int) or isinstance(chunk_size, bool) or chunk_size <= 0:
         raise ValueError("chunk_size must be a positive integer")
     # Query/fragment text in an inferred cache key is not an output-format request.
@@ -445,7 +509,10 @@ def fetch_file(
         decompress=archive_decompression,
         convert_html=explicit_output,
         expected_sha256=expected_sha256,
-        expected_size=expected_size)
+        expected_size=expected_size,
+        max_retries=max_retries,
+        retry_backoff=retry_backoff,
+        retry_max_delay=retry_max_delay)
     return full_path
 
 
