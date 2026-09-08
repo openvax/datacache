@@ -382,7 +382,7 @@ def test_http_timeout_progress_and_response_cleanup(tmp_path, monkeypatch, faile
 
     monkeypatch.setattr(download.requests, "get", get)
     progress = []
-    kwargs = dict(destination=destination, timeout=3, chunk_size=8,
+    kwargs = dict(destination=destination, timeout=3, chunk_size=8, max_retries=0,
                   progress_callback=lambda done, total: progress.append((done, total)))
     if failed:
         with pytest.raises(requests.ConnectionError):
