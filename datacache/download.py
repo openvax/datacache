@@ -119,7 +119,7 @@ def _download_to_temp_file(
         retry_backoff=DEFAULT_RETRY_BACKOFF,
         retry_max_delay=DEFAULT_RETRY_MAX_DELAY):
 
-    validate_retry_options(max_retries, retry_backoff, retry_max_delay)
+    retry_backoff, retry_max_delay = validate_retry_options(max_retries, retry_backoff, retry_max_delay)
     if not download_url:
         raise ValueError("URL not provided")
 
@@ -470,7 +470,7 @@ def fetch_file(
     Returns the full path of the local file.
     """
     _validate_expectations(expected_sha256, expected_size)
-    validate_retry_options(max_retries, retry_backoff, retry_max_delay)
+    retry_backoff, retry_max_delay = validate_retry_options(max_retries, retry_backoff, retry_max_delay)
     if not isinstance(chunk_size, int) or isinstance(chunk_size, bool) or chunk_size <= 0:
         raise ValueError("chunk_size must be a positive integer")
     # Query/fragment text in an inferred cache key is not an output-format request.

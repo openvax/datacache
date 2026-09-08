@@ -136,7 +136,8 @@ seconds. `Retry-After` supports both integer seconds and HTTP dates. When its
 wait fits within `retry_max_delay`, the larger of that wait and the backoff is
 used. If the server requests a longer wait, the original error is raised
 immediately instead of retrying sooner than requested. Malformed header values
-are ignored. Both delay settings must be finite non-negative numbers.
+are ignored. Both delay settings must be finite non-negative real numbers;
+accepted values are normalized to Python floats before use.
 
 Each attempt downloads from the beginning into a fresh private staging file.
 Failed responses are closed and partial files are removed before waiting or
@@ -145,7 +146,8 @@ has been transformed, validated, and published. Retry warnings report the
 attempt count, failure category, and delay; exhaustion raises the original
 Requests exception, preserving its response and cause.
 
-Permanent HTTP failures such as 404, TLS errors, local filesystem errors,
+Permanent HTTP failures such as 404, TLS errors (including proxy-wrapped TLS
+failures), local filesystem errors,
 progress callback exceptions, and transformation/integrity/publication errors
 are not retried. Local file and FTP transfers remain single attempts. Cache
 reuse and read-only inspection make no requests and do not wait. Existing

@@ -2,15 +2,20 @@
 
 from datetime import datetime, timezone
 from email.utils import format_datetime
+from fractions import Fraction
 import gzip
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import ssl
 import stat
 import threading
+from time import sleep as real_sleep
 
+import numpy as np
 import pytest
 import requests
+from requests.packages.urllib3 import exceptions as urllib3_errors
 
 from datacache import Cache, FileValidationError, fetch_file
 from datacache import download, retries
@@ -175,6 +180,28 @@ def test_configurable_backoff_is_capped(http_server, tmp_path, waits):
     assert len(server.requests) == 5
 
 
+@pytest.mark.parametrize("number", [Fraction, np.float32], ids=["fraction", "numpy-float32"])
+@pytest.mark.parametrize("option", ["retry_backoff", "retry_max_delay"])
+def test_real_valued_delays_work_with_actual_sleep(http_server, tmp_path, monkeypatch, number, option):
+    server = http_server({"status": 504}, {"status": 504}, {})
+    options = dict(retry_backoff=0.001, retry_max_delay=0.002)
+    options[option] = number("0.001")
+    delays = []
+
+    def sleep(delay):
+        # Keep the real sleep's numeric conversion; an append-only fake hid
+        # the TypeError for Fraction and numpy.float32. Waits stay under 2ms.
+        real_sleep(delay)
+        delays.append(delay)
+
+    monkeypatch.setattr(download.time, "sleep", sleep)
+    fetch_file(server.url, destination=tmp_path / "data", **options)
+    expected = [0.001, 0.002] if option == "retry_backoff" else [0.001, 0.001]
+    assert delays == pytest.approx(expected)
+    assert len(server.requests) == 3
+    assert (tmp_path / "data").read_bytes() == PAYLOAD
+
+
 @pytest.mark.parametrize("status,max_retries", [(504, 0), (401, 2), (403, 2), (404, 2), (410, 2), (501, 2)])
 def test_disabled_retries_and_permanent_http_errors(http_server, tmp_path, waits, status, max_retries):
     server = http_server({"status": status})
@@ -235,6 +262,53 @@ def test_non_transient_request_failures_are_not_retried(tmp_path, monkeypatch, w
         fetch_file("https://host/file", destination=tmp_path / "data")
     assert len(attempts) == 1
     assert waits == []
+
+
+@pytest.mark.parametrize("cause_type", [
+    ssl.SSLCertVerificationError, urllib3_errors.SSLError, requests.exceptions.SSLError,
+    ConnectionRefusedError,
+])
+def test_proxy_retry_policy_uses_wrapped_cause(tmp_path, monkeypatch, waits, cause_type):
+    cause = cause_type("HTTPS proxy connection failed")
+    # The actual Requests / urllib3 layout: args -> reason -> original_error.
+    proxy = urllib3_errors.ProxyError("Unable to connect to proxy", cause)
+    wrapped = urllib3_errors.MaxRetryError(None, "https://host/file", proxy)
+    error = requests.exceptions.ProxyError(wrapped)
+    attempts = []
+    destination = tmp_path / "data"
+    destination.write_bytes(PAYLOAD)
+
+    def get(*args, **kwargs):
+        attempts.append(1)
+        raise error
+
+    monkeypatch.setattr(download.requests, "get", get)
+    with pytest.raises(requests.exceptions.ProxyError) as caught:
+        fetch_file("https://host/file", destination=destination, force=True)
+    transient = cause_type is ConnectionRefusedError
+    assert len(attempts) == (3 if transient else 1)
+    assert waits == ([1, 2] if transient else [])
+    assert caught.value is error
+    assert destination.read_bytes() == PAYLOAD
+    assert list(tmp_path.iterdir()) == [destination]
+
+
+@pytest.mark.parametrize("chain", ["cause", "context", "suppressed", "overridden", "cycle"])
+def test_tls_cause_inspection_respects_exception_chaining(chain):
+    error = requests.ConnectionError("outer transport failure")
+    tls = ssl.SSLError("certificate verification failed")
+    if chain == "cause":
+        error.__cause__ = tls
+    elif chain == "cycle":
+        wrapped = requests.exceptions.ProxyError(error)
+        error.__cause__ = wrapped
+    else:
+        error.__context__ = tls
+        if chain == "suppressed":
+            error.__suppress_context__ = True
+        elif chain == "overridden":
+            error.__cause__ = ConnectionRefusedError("active cause")
+    assert retries.is_retryable_http_error(error) == (chain in ("suppressed", "overridden", "cycle"))
 
 
 @pytest.mark.parametrize("error_type", [requests.ConnectionError, RuntimeError, KeyboardInterrupt])

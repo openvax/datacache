@@ -2,11 +2,13 @@
 
 from datetime import timezone
 from email.utils import parsedate_to_datetime
+import math
 from numbers import Real
-import sys
+import ssl
 import time
 
 import requests
+from requests.packages.urllib3.exceptions import SSLError as Urllib3SSLError
 
 
 DEFAULT_MAX_RETRIES = 2
@@ -16,21 +18,49 @@ RETRYABLE_HTTP_STATUSES = frozenset((408, 429, 500, 502, 503, 504))
 
 
 def validate_retry_options(max_retries, retry_backoff, retry_max_delay):
+    """Validate settings and return built-in float delays for arithmetic/sleep."""
     if isinstance(max_retries, bool) or not isinstance(max_retries, int) or max_retries < 0:
         raise ValueError("max_retries must be a non-negative integer")
+    delays = []
     for name, value in (("retry_backoff", retry_backoff), ("retry_max_delay", retry_max_delay)):
-        if (isinstance(value, bool) or not isinstance(value, Real) or
-                not (0 <= value <= sys.float_info.max)):
-            raise ValueError("%s must be a finite non-negative number" % name)
+        message = "%s must be a finite non-negative number" % name
+        if isinstance(value, bool) or not isinstance(value, Real) or value < 0:
+            raise ValueError(message)
+        try:
+            delay = float(value)
+        except (OverflowError, TypeError, ValueError) as error:
+            raise ValueError(message) from error
+        if not math.isfinite(delay):
+            raise ValueError(message)
+        delays.append(delay)
+    return tuple(delays)
+
+
+def _contains_tls_error(error):
+    """Follow active causes and Requests/urllib3 wrappers, guarding cycles."""
+    pending, seen = [error], set()
+    while pending:
+        current = pending.pop()
+        if not isinstance(current, BaseException) or id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, (ssl.SSLError, requests.exceptions.SSLError, Urllib3SSLError)):
+            return True
+        pending.extend(current.args)
+        pending.extend((getattr(current, "reason", None), getattr(current, "original_error", None)))
+        if current.__cause__ is not None:
+            pending.append(current.__cause__)
+        elif not current.__suppress_context__:
+            pending.append(current.__context__)
+    return False
 
 
 def is_retryable_http_error(error):
-    if isinstance(error, requests.exceptions.SSLError):
-        return False
     if isinstance(error, requests.HTTPError):
         return error.response is not None and error.response.status_code in RETRYABLE_HTTP_STATUSES
-    return isinstance(error, (
+    transient = isinstance(error, (
         requests.ConnectionError, requests.Timeout, requests.exceptions.ChunkedEncodingError))
+    return transient and not _contains_tls_error(error)
 
 
 def retry_delay(error, backoff, max_delay):
@@ -60,7 +90,7 @@ def retry_delay(error, backoff, max_delay):
             pass
     if retry_after > max_delay:
         return None
-    return max(min(backoff, max_delay), retry_after)
+    return float(max(min(backoff, max_delay), retry_after))
 
 
 def error_description(error):
