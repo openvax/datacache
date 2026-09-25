@@ -13,6 +13,8 @@
 from __future__ import print_function, division, absolute_import
 
 import os
+import errno
+import stat
 from os.path import splitext, lexists
 import logging
 
@@ -78,6 +80,28 @@ def _cached_connection(db_path, table_names, version):
     connection.close()
     return None
 
+
+def _database_target_path(db_path):
+    """Follow final symlinks so publication creates their target, not a new link.
+
+    Keep parent components intact: normalizing ``symlink/..`` or ``missing/..``
+    lexically could select a different directory than the filesystem would.
+    """
+    original = db_path
+    for depth in range(41):
+        try:
+            info = os.lstat(db_path)
+        except FileNotFoundError:
+            return db_path
+        if not stat.S_ISLNK(info.st_mode):
+            return db_path
+        if depth == 40:
+            break
+        target = os.readlink(db_path)
+        db_path = target if os.path.isabs(target) else os.path.join(os.path.dirname(db_path), target)
+    raise OSError(errno.ELOOP, "Too many symbolic links", original)
+
+
 def _create_cached_db(
         db_path,
         tables,
@@ -116,6 +140,7 @@ def _create_cached_db(
            for name in table_names):
         raise ValueError("Database table name is reserved for metadata")
 
+    db_path = _database_target_path(db_path)
     if not lexists(db_path):
         # Readers never see an empty/partial new database. Hard-link publication
         # is atomic and does not clobber a concurrent creator's database.
@@ -157,7 +182,7 @@ def _create_cached_db(
             with db.connection:
                 db.connection.execute("BEGIN IMMEDIATE")
                 if not reusable():
-                    db.drop_all_tables(commit=False)
+                    db.drop_all_tables(commit=False, include_views=overwrite)
                     logger.info("Creating database %s containing: %s", db_path, ", ".join(table_names))
                     db.create(tables, version, show_progress=show_progress)
     except BaseException:

@@ -1,12 +1,16 @@
 # Changelog
 
-## Unreleased
+## 1.10.0
 
 - Publish new downloads and decompressed files with normal creation permissions
   for shared caches; keep staging private and preserve existing modes (#68).
 - Roll back failed SQLite rebuilds, including explicit overwrites, and publish
   new databases only after successful construction. Close rejected version
   lookup connections and support explicit read-only lookup.
+- Remove existing views during explicit SQLite overwrites in the same
+  transaction, restoring views and their triggers if rebuilding fails.
+- Create databases through dangling symlinks by staging and publishing at
+  their targets, preserving the links and cleaning up failed builds.
 - Preserve integer types and precision; support nullable pandas scalars and
   empty tables. Normalize column constraints consistently and reject ambiguous
   names. Insert rows incrementally in bounded batches.

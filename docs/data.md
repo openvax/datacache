@@ -66,12 +66,23 @@ lock-timeout error, which leaves the previous database intact. Connections
 may be used across threads, but applications must coordinate simultaneous use
 of the same connection and should use separate connections for concurrent work.
 
+An explicit `overwrite=True` also removes existing views and their triggers
+so their names can be used for replacement tables. These removals are part of
+the transaction: failure restores the previous views and triggers as well as
+the tables. Ordinary cache hits and version rebuilds retain existing views.
+
 New databases are built in private sibling files, closed, and published using
 an atomic hard link that cannot overwrite a concurrent creator. A losing
 creator checks the winner's tables/version and reuses or transactionally
 rebuilds it. Failed builds remove their staging files. This requires a local
 filesystem supporting hard links and SQLite locking; unsupported publication
 fails without installing a partial database.
+
+A database path may be a symlink, including one whose target does not yet
+exist. Creation stages and publishes the database beside that target without
+replacing the symlink; the target's parent directory must already exist.
+Relative and chained links keep their filesystem meaning. Failed creation
+leaves the symlink intact and does not install a partial target database.
 
 `connect_if_correct_version(path, version)` returns `None` for a missing file
 or mismatched metadata, without creating an empty database. It closes rejected

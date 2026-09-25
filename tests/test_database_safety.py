@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 
 from datacache import connect_if_correct_version, db_from_dataframe
-from datacache.database import Database
+from datacache.database import Database, quote_identifier
 from datacache.database_helpers import _create_cached_db, db_from_dataframes_with_absolute_path
 from datacache.database_table import DatabaseTable
 
@@ -137,8 +137,78 @@ def test_successful_rebuild_keeps_existing_inode_and_readers(tmp_path, overwrite
         assert path.stat().st_ino == inode
 
 
-def test_concurrent_new_database_creators_reuse_winner(tmp_path):
+def database_with_views(path, view_name="records"):
+    quoted_view = quote_identifier(view_name)
+    with closing(db_from_dataframe(path, "legacy", pd.DataFrame({"value": [42]}))) as connection:
+        connection.execute("CREATE VIEW %s AS SELECT value FROM legacy" % quoted_view)
+        connection.execute("CREATE VIEW summary AS SELECT * FROM %s" % quoted_view)
+        connection.execute("CREATE TRIGGER remove_summary INSTEAD OF DELETE ON summary "
+                           "BEGIN DELETE FROM legacy WHERE value = OLD.value; END")
+        connection.commit()
+    path.chmod(0o640)
+    return path.stat()
+
+
+@pytest.mark.parametrize("view_name", ["records", 'records "view"'])
+def test_explicit_overwrite_replaces_views_with_tables(tmp_path, view_name):
     path = tmp_path / "data.db"
+    before = database_with_views(path, view_name)
+    with closing(db_from_dataframe(path, view_name, pd.DataFrame({"value": [99]}),
+                                   overwrite=True, version=2)) as connection:
+        assert connection.execute("SELECT * FROM %s" % quote_identifier(view_name)).fetchall() == [(99,)]
+        assert connection.execute("SELECT type, name FROM sqlite_master ORDER BY name").fetchall() == [
+            ("table", "_datacache_metadata"), ("table", view_name)]
+        assert connection.execute("SELECT version FROM _datacache_metadata").fetchone() == (2,)
+    assert path.stat().st_ino == before.st_ino
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640
+
+
+@pytest.mark.parametrize("failure", ["constraint", "interrupt"])
+def test_failed_overwrite_restores_views_and_triggers(tmp_path, monkeypatch, failure):
+    path = tmp_path / "data.db"
+    before = database_with_views(path)
+    original_bytes = path.read_bytes()
+    error = sqlite3.IntegrityError
+    if failure == "interrupt":
+        def interrupt(*args, **kwargs):
+            raise KeyboardInterrupt()
+
+        monkeypatch.setattr(Database, "_create_indices", interrupt)
+        error = KeyboardInterrupt
+    with pytest.raises(error):
+        db_from_dataframe(path, "records", pd.DataFrame({"value": [1, 1]}),
+                          primary_key="value" if failure == "constraint" else None,
+                          overwrite=True, version=2)
+    assert path.read_bytes() == original_bytes
+    assert path.stat().st_ino == before.st_ino
+    assert stat.S_IMODE(path.stat().st_mode) == 0o640
+    with closing(connect_if_correct_version(path, 1)) as connection:
+        assert connection.execute("SELECT * FROM records").fetchall() == [(42,)]
+        assert connection.execute("SELECT * FROM summary").fetchall() == [(42,)]
+        connection.execute("DELETE FROM summary")
+        assert connection.execute("SELECT * FROM legacy").fetchall() == []
+        connection.rollback()
+    assert list(tmp_path.iterdir()) == [path]
+
+
+def test_cache_reuse_and_version_rebuild_preserve_views(tmp_path):
+    path = tmp_path / "data.db"
+    database_with_views(path)
+    original_bytes = path.read_bytes()
+    with closing(db_from_dataframe(path, "legacy", None)) as connection:
+        assert connection.execute("SELECT * FROM summary").fetchall() == [(42,)]
+    assert path.read_bytes() == original_bytes
+    with closing(db_from_dataframe(path, "legacy", pd.DataFrame({"value": [99]}), version=2)) as connection:
+        assert connection.execute("SELECT * FROM records").fetchall() == [(99,)]
+        assert connection.execute("SELECT * FROM summary").fetchall() == [(99,)]
+
+
+@pytest.mark.parametrize("symlink", [False, True])
+def test_concurrent_new_database_creators_reuse_winner(tmp_path, symlink):
+    path = tmp_path / "data.db"
+    target = tmp_path / "target.db"
+    if symlink:
+        path.symlink_to(target.name)
     barrier = threading.Barrier(2, timeout=10)
 
     def create(value):
@@ -155,7 +225,10 @@ def test_concurrent_new_database_creators_reuse_winner(tmp_path):
         first = executor.submit(create, 1)
         second = executor.submit(create, 2)
         assert first.result(timeout=15) == second.result(timeout=15)
-    assert list(tmp_path.iterdir()) == [path]
+    assert set(tmp_path.iterdir()) == ({path, target} if symlink else {path})
+    if symlink:
+        assert path.is_symlink()
+        assert os.readlink(path) == target.name
 
 
 def test_version_lookup_does_not_create_and_can_open_read_only(tmp_path):

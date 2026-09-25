@@ -85,8 +85,17 @@ class Database(object):
         table_names = self.table_names()
         return table_name in table_names
 
-    def drop_all_tables(self, *, commit=True):
-        """Drop all tables in the database"""
+    def drop_all_tables(self, *, commit=True, include_views=False):
+        """Drop tables, optionally removing views for a complete overwrite.
+
+        commit=False lets the caller roll back the entire schema replacement.
+        Ordinary version rebuilds retain views for compatibility.
+        """
+        if include_views:
+            views = self.connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='view'").fetchall()
+            for (view_name,) in views:
+                self.execute_sql("DROP VIEW %s" % quote_identifier(view_name))
         for table_name in self.table_names():
             if not table_name.startswith("sqlite_"):
                 self.execute_sql("DROP TABLE %s" % quote_identifier(table_name))
