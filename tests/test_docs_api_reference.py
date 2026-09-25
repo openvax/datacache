@@ -37,6 +37,34 @@ def reference_text():
     return REFERENCE.read_text()
 
 
+def canonical_annotations(text):
+    """Compare annotations the same way on every supported Python version.
+
+    inspect.signature renders typing.Optional[X] as "Optional[X]" before
+    Python 3.14 and as "X | None" from 3.14 on, and qualifies dataclass
+    references with their module. Reduce both spellings to one form so the
+    reference does not have to name a particular interpreter's formatting.
+    """
+    text = re.sub(r"\s+", "", text).replace("datacache.inspection.", "")
+    while True:
+        start = text.find("Optional[")
+        if start == -1:
+            return text
+        opening = start + len("Optional[") - 1
+        depth = 0
+        for index in range(opening, len(text)):
+            if text[index] == "[":
+                depth += 1
+            elif text[index] == "]":
+                depth -= 1
+                if depth == 0:
+                    inner = text[opening + 1:index]
+                    text = text[:start] + inner + "|None" + text[index + 1:]
+                    break
+        else:
+            return text
+
+
 def test_documented_version_matches_package():
     text = reference_text()
     documented = re.findall(r"in DataCache (\d+\.\d+\.\d+)\.", text)
@@ -75,8 +103,7 @@ def test_documented_signatures_match_code():
             parameters = list(signature.parameters.values())
         actual = str(signature.replace(
             parameters=parameters, return_annotation=inspect.Signature.empty))[1:-1]
-        strip = lambda value: re.sub(r"\s+", "", value).replace("datacache.inspection.", "")
-        if strip(actual) != strip(documented):
+        if canonical_annotations(actual) != canonical_annotations(documented):
             mismatched.append("%s\n  documented: %s\n  actual:     %s" % (name, documented, actual))
     assert not mismatched, "docs/api.md signatures are stale:\n" + "\n".join(mismatched)
 
