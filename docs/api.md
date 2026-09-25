@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.10.1. Import these names from `datacache`.
+public `Cache` method in DataCache 1.10.2. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -580,7 +580,10 @@ if hasattr(os, "fchmod") and hasattr(os, "O_NOFOLLOW"):
 
 All database builders return an open `sqlite3.Connection` owned by the caller.
 Use `contextlib.closing` or call `.close()` explicitly: `with connection:`
-commits/rolls back transactions but does not close the connection.
+commits/rolls back transactions but does not close the connection. Connections
+are opened with `check_same_thread=False`, so Python does not reject cross-thread
+use: applications must serialize simultaneous use of one connection and should
+give independent concurrent workers their own.
 
 A matching version and all requested tables permit reuse without parsing or
 validating new DataFrames, changing old constraints, or rewriting the file.

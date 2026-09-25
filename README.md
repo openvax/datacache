@@ -59,25 +59,27 @@ after installing `datacache[progress]`.
 
 A cache name selects its own application directory; it is not nested inside
 the `datacache` directory. To choose the exact root instead, use
-`Cache("my-project", cache_root="/data/my-project")`. Relative roots are resolved
-from the current working directory.
+`Cache("my-project", cache_root="/data/my-project")`. A relative root stays
+relative and is re-resolved against the working directory on every call, so use
+an absolute root if your program may change directories.
 
 Using the cache from the quickstart:
 
 ```python
-print(cache.cache_directory_path)           # Directory containing cached files.
+print(cache.cache_directory_path)  # Directory containing cached files.
 print(cache.local_path(filename="LICENSE"))  # Computes a path without creating it.
 print(cache.inspect(filename="LICENSE").status)  # available, missing, corrupt, or inaccessible
 
 # Explicit cleanup; uncomment only when you want to remove these cached files:
-# cache.delete_url(url)  # Removes this instance's downloads for this URL.
-# cache.delete_all()     # Removes ALL contents, keeping the root directory.
+# cache.delete_url(url)  # Removes this root's downloads for this URL.
+# cache.delete_all()  # Removes ALL contents, keeping the root directory.
 ```
 
 Inspection works offline and never repairs files. Without an expected SHA-256,
 `available` means readable and regular; it does not prove the bytes are correct.
-`delete_url` also finds URL-derived filenames from other instances, but explicit
-filenames from earlier instances are not recorded persistently. Keep a dedicated
+`delete_url` also finds the URL-derived filenames under this root, whichever
+instance created them, but explicit filenames from earlier instances are not
+recorded persistently. Keep a dedicated
 cache directory: `delete_all()` removes every file and subdirectory in it and
 raises `FileNotFoundError` if the root does not exist. For the default platform
 location, `clear_cache("my-project")` removes the root too. See the
