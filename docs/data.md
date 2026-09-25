@@ -45,6 +45,11 @@ root and also supports `version`, `overwrite`, and `show_progress`.
 - Primary keys cannot be NULL. Duplicate keys fail the build. Empty DataFrames
   with a supported column schema produce valid empty tables.
 
+Index names retain their historical spelling when available. If two requested
+indexes would share a name, the later one gets a numeric suffix so both are
+created. Matching cache hits do not add or rename indexes in existing databases;
+rebuild explicitly to restore an index omitted by an older release.
+
 DataFrame rows are converted as individual scalars and inserted in batches of
 up to 1,000. Building a database does not create another full list of all rows.
 The lower-level `DatabaseTable.rows` property still materializes a list for
@@ -70,6 +75,8 @@ An explicit `overwrite=True` also removes existing views and their triggers
 so their names can be used for replacement tables. These removals are part of
 the transaction: failure restores the previous views and triggers as well as
 the tables. Ordinary cache hits and version rebuilds retain existing views.
+Rebuilds also handle virtual tables, such as SQLite FTS tables, whose internal
+shadow tables disappear automatically when the parent table is dropped.
 
 New databases are built in private sibling files, closed, and published using
 an atomic hard link that cannot overwrite a concurrent creator. A losing
