@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.10.1
+
+- Rebuild databases containing SQLite full-text-search tables without trying
+  to drop already-removed shadow tables. Failed rebuilds still restore the
+  original tables, full-text indexes, data, and version.
+- Create every requested SQLite index when generated names collide, including
+  across tables. Keep historical names where available and reuse equivalent
+  non-partial indexes instead of duplicating them.
+- Keep cache hits unchanged. Existing databases with missing indexes can be
+  rebuilt explicitly with `overwrite=True` or a new database version.
+
 ## 1.10.0
 
 - Publish new downloads and decompressed files with normal creation permissions

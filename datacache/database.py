@@ -98,7 +98,9 @@ class Database(object):
                 self.execute_sql("DROP VIEW %s" % quote_identifier(view_name))
         for table_name in self.table_names():
             if not table_name.startswith("sqlite_"):
-                self.execute_sql("DROP TABLE %s" % quote_identifier(table_name))
+                # Dropping a virtual table also drops its shadow tables. They
+                # may still appear later in this snapshot of sqlite_master.
+                self.execute_sql("DROP TABLE IF EXISTS %s" % quote_identifier(table_name))
         if commit:
             self.connection.commit()
 
@@ -262,11 +264,32 @@ class Database(object):
             "Creating index on %s (%s)",
             table_name,
             ", ".join(index_columns))
-        index_name = "%s_index_%s" % (
+        index_columns = tuple(index_columns)
+        base_name = "%s_index_%s" % (
             table_name,
             "_".join(index_columns))
+        index_name = base_name
+        suffix = 2
+        table_indices = {row[1]: row[4] for row in self.connection.execute(
+            "PRAGMA index_list(%s)" % quote_identifier(table_name))}
+        while True:
+            existing = self.connection.execute(
+                "SELECT name FROM sqlite_master WHERE name = ? COLLATE NOCASE "
+                "AND type IN ('table', 'view', 'index')", (index_name,)).fetchone()
+            if existing is None:
+                break
+            existing_name = existing[0]
+            if existing_name in table_indices and not table_indices[existing_name]:
+                columns = tuple(row[2] for row in self.connection.execute(
+                    "PRAGMA index_info(%s)" % quote_identifier(existing_name)))
+                if columns == index_columns:
+                    return
+            # Keep the legacy name when available, but never silently skip a
+            # different index (even on another table) that shares that name.
+            index_name = "%s_%d" % (base_name, suffix)
+            suffix += 1
         self.connection.execute(
-            "CREATE INDEX IF NOT EXISTS %s ON %s (%s)" % (
+            "CREATE INDEX %s ON %s (%s)" % (
                 quote_identifier(index_name),
                 quote_identifier(table_name),
                 ", ".join(quote_identifier(c) for c in index_columns)))
