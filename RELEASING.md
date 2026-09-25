@@ -3,6 +3,9 @@
 This document explains what to do once your [Pull Request](https://www.atlassian.com/git/tutorials/making-a-pull-request/) has been reviewed and all final changes applied. Now you're ready to merge your branch into master and release it to the world:
 
 1. Bump the [version](http://semver.org/) in `datacache/version.py`, as part of the PR you want to release.
+   Update the matching version named at the top of `docs/api.md` and add a `CHANGELOG.md` section for it.
+   `tests/test_docs_api_reference.py` fails if that version, the documented signatures, or the
+   reference's runnable examples fall out of step with the code.
 2. Merge your branch into master.
 3. From a clean `master`, run `./deploy.sh`. It lint-checks, runs the tests, builds the
    `sdist`/`wheel` with [`build`](https://pypi.org/project/build/), and uploads them to

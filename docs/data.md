@@ -1,5 +1,7 @@
 # SQLite caches and custom transformations
 
+See the [API reference](api.md) for signatures, defaults, return values, and errors.
+
 ## DataFrames to SQLite
 
 Database helpers return **open `sqlite3.Connection` objects**, not file paths.

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.10.2
+
+- Add a complete [public API reference](docs/api.md) covering every name in
+  `datacache.__all__` and every public `Cache` method, with signatures,
+  defaults, return values, exceptions, and runnable offline examples.
+- Lead the README with a copy-pasteable download quickstart and explain how to
+  locate, inspect, and clear a cache directory on each platform.
+- Use absolute documentation links so the PyPI project page resolves them.
+- Check the reference in CI: its version, its coverage of `datacache.__all__` and
+  the public `Cache` methods, its signatures, and its examples are all tested.
+
+No API, behavior, or cache-format changes.
+
 ## 1.10.1
 
 - Rebuild databases containing SQLite full-text-search tables without trying

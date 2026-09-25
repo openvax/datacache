@@ -1,5 +1,7 @@
 # Download and cache reference
 
+See the [API reference](api.md) for signatures, defaults, return values, and errors.
+
 ## Verified downloads
 
 Use `destination` to install a single file at an exact path, including its
