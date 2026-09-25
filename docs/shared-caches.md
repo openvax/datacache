@@ -1,5 +1,7 @@
 # Shared caches
 
+See the [API reference](api.md) for signatures, defaults, return values, and errors.
+
 Select a common root explicitly:
 
 ```python

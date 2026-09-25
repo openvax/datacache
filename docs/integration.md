@@ -1,5 +1,7 @@
 # Building downstream libraries on DataCache
 
+See the [API reference](api.md) for signatures, defaults, return values, and errors.
+
 Use the public `Cache`, `fetch_file`, inspection, and database APIs for new
 integrations. Existing pyensembl calls to
 `_download_and_decompress_if_necessary` retain their legacy URL inference and

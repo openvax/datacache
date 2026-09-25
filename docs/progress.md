@@ -1,5 +1,7 @@
 # Progress and logging
 
+See the [API reference](api.md) for signatures, defaults, return values, and errors.
+
 Install the optional dependency with `python -m pip install "datacache[progress]"`.
 Set `show_progress=True` on `fetch_file`, `Cache.fetch`, or the CSV and database
 helpers. DataCache uses [tqdm.auto](https://tqdm.github.io/docs/shortcuts/), which

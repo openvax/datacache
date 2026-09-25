@@ -27,6 +27,65 @@ current releases on supported Python versions.
 
 ## Quickstart
 
+Download a file once, then reuse its local path on later calls:
+
+```python
+from datacache import Cache
+
+cache = Cache("my-project")
+url = "https://raw.githubusercontent.com/openvax/datacache/master/LICENSE"
+path = cache.fetch(url, filename="LICENSE", timeout=30)
+print(path)
+
+# Reuses the cached file without a network request, even in a later process.
+assert cache.fetch(url, filename="LICENSE") == path
+```
+
+Replace the URL and filename with your dataset. Existing files are reused until
+you explicitly refresh them with `force=True`; DataCache does not check whether
+the remote file has changed. Add `show_progress=True` to display a download bar
+after installing `datacache[progress]`.
+
+### Find, inspect, or clear your cache
+
+`Cache("my-project")` selects a platform cache directory without creating it.
+`Cache()` and top-level helpers without a `subdir` use the name `datacache`.
+
+| Platform | Default directory for `Cache("my-project")` |
+| --- | --- |
+| Linux / Unix | `$XDG_CACHE_HOME/my-project`, or `~/.cache/my-project` when unset |
+| macOS | `~/Library/Caches/my-project` |
+| Windows | `%LOCALAPPDATA%\my-project\my-project\Cache` |
+
+A cache name selects its own application directory; it is not nested inside
+the `datacache` directory. To choose the exact root instead, use
+`Cache("my-project", cache_root="/data/my-project")`. Relative roots are resolved
+from the current working directory.
+
+Using the cache from the quickstart:
+
+```python
+print(cache.cache_directory_path)           # Directory containing cached files.
+print(cache.local_path(filename="LICENSE"))  # Computes a path without creating it.
+print(cache.inspect(filename="LICENSE").status)  # available, missing, corrupt, or inaccessible
+
+# Explicit cleanup; uncomment only when you want to remove these cached files:
+# cache.delete_url(url)  # Removes this instance's downloads for this URL.
+# cache.delete_all()     # Removes ALL contents, keeping the root directory.
+```
+
+Inspection works offline and never repairs files. Without an expected SHA-256,
+`available` means readable and regular; it does not prove the bytes are correct.
+`delete_url` also finds URL-derived filenames from other instances, but explicit
+filenames from earlier instances are not recorded persistently. Keep a dedicated
+cache directory: `delete_all()` removes every file and subdirectory in it and
+raises `FileNotFoundError` if the root does not exist. For the default platform
+location, `clear_cache("my-project")` removes the root too. See the
+[cleanup API](https://github.com/openvax/datacache/blob/master/docs/api.md#cachedelete_all)
+for details.
+
+### Offline example with integrity checking
+
 This example runs entirely offline and cleans up after itself:
 
 ```python
@@ -80,6 +139,9 @@ the file. Failed downloads leave the previous file intact.
 
 ## Choose the right API
 
+The [complete API reference](https://github.com/openvax/datacache/blob/master/docs/api.md)
+lists every public signature, default, return value, exception, and example.
+
 | Task | API | Result |
 | --- | --- | --- |
 | Download or reuse one file | `fetch_file(...)`, `Cache.fetch(...)` | Local path string |
@@ -100,16 +162,19 @@ FASTA files with `fetch_file`, then parse them in the consuming library.
 
 ## Guides
 
-- [Downloads and cache inspection](docs/downloads.md): destinations, naming,
+- [API reference](https://github.com/openvax/datacache/blob/master/docs/api.md):
+  all public functions, `Cache` methods, inspection results, and exceptions.
+- [Downloads and cache inspection](https://github.com/openvax/datacache/blob/master/docs/downloads.md): destinations, naming,
   decompression, integrity, retries, concurrency, and downstream compatibility.
-- [Progress and logging](docs/progress.md): tqdm, callbacks, retries, and
+- [Progress and logging](https://github.com/openvax/datacache/blob/master/docs/progress.md): tqdm, callbacks, retries, and
   independent download options for CSV helpers.
-- [SQLite and transformations](docs/data.md): numeric fidelity, column names,
+- [SQLite and transformations](https://github.com/openvax/datacache/blob/master/docs/data.md): numeric fidelity, column names,
   versioning, rollback, connection ownership, and custom transformations.
-- [Shared caches](docs/shared-caches.md): permissions, read-only use, and
+- [Shared caches](https://github.com/openvax/datacache/blob/master/docs/shared-caches.md): permissions, read-only use, and
   troubleshooting existing installations.
-- [Downstream integration](docs/integration.md): contracts for consuming libraries.
-- [Release notes](CHANGELOG.md) and [release procedure](RELEASING.md).
+- [Downstream integration](https://github.com/openvax/datacache/blob/master/docs/integration.md): contracts for consuming libraries.
+- [Release notes](https://github.com/openvax/datacache/blob/master/CHANGELOG.md) and
+  [release procedure](https://github.com/openvax/datacache/blob/master/RELEASING.md).
 
 ## Guarantees and limits
 
@@ -125,8 +190,8 @@ remote changes or repair previously corrupted caches.
 
 Upgrades keep existing cache names and database metadata compatible. Valid
 cache hits do not rewrite files, change permissions, or apply new schema
-constraints. See [upgrading existing caches](docs/data.md#upgrading-existing-caches)
-and [sharing old private files](docs/shared-caches.md#files-already-downloaded-as-0600).
+constraints. See [upgrading existing caches](https://github.com/openvax/datacache/blob/master/docs/data.md#upgrading-existing-caches)
+and [sharing old private files](https://github.com/openvax/datacache/blob/master/docs/shared-caches.md#files-already-downloaded-as-0600).
 
 File publication requires local filesystem support for atomic replacement;
 new SQLite database publication also requires hard links. SQLite locking and
