@@ -19,6 +19,11 @@ classifiers = [
 readme = "README.md"
 dynamic = ["version", "dependencies"]
 
+[project.optional-dependencies]
+progress = ["tqdm>=4.64"]
+html = ["lxml>=4.9"]
+test = ["pytest>=7", "pytest-cov", "ruff", "tqdm>=4.64", "lxml>=4.9"]
+
 [tool.setuptools.dynamic]
 version = {attr = "datacache.version.__version__"}
 dependencies = {file = ["requirements.txt"]}
@@ -29,6 +34,7 @@ packages = ["datacache"]
 [project.urls]
 "Homepage" = "https://github.com/openvax/datacache"
 "Bug Tracker" = "https://github.com/openvax/datacache/issues"
+"Documentation" = "https://github.com/openvax/datacache#readme"
 
 [tool.ruff.lint]
 select = ["E", "F"]

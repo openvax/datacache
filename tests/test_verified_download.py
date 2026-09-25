@@ -267,7 +267,8 @@ def test_staging_uses_destination_filesystem(source, tmp_path, monkeypatch, comp
     monkeypatch.setattr(download, "_open_staging_file", checked_temp)
     monkeypatch.setattr(download.os, "replace", checked_replace)
     fetch_file(source.as_uri(), destination=destination, expected_sha256=sha256(PAYLOAD))
-    assert len(staging_paths) == (2 if compressed else 1)
+    # Download, optional decompression, and an empty creation-mode probe.
+    assert len(staging_paths) == (3 if compressed else 2)
     assert destination.read_bytes() == PAYLOAD
     assert list(system_temp.iterdir()) == []
     assert list(destination.parent.iterdir()) == [destination]
