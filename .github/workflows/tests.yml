@@ -1,21 +1,28 @@
 # This workflow will install Python dependencies, run tests and lint with a variety of Python versions
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
-# TODO:
-# - cache this directory $HOME/.cache/pyensembl/
-# - update coveralls
-# - get a badge for tests passing
-# - download binary dependencies from conda
 name: Tests
 on: [push, pull_request]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11"]
+        os: [ubuntu-latest]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        dependencies: [current]
+        include:
+          - os: ubuntu-latest
+            python-version: "3.9"
+            dependencies: minimum
+          - os: ubuntu-latest
+            python-version: "3.9"
+            dependencies: legacy
+          - os: macos-latest
+            python-version: "3.12"
+            dependencies: current
 
     steps:
       - name: Checkout repository
@@ -27,15 +34,21 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install ruff pytest pytest-cov coveralls
-          pip install -r requirements.txt
-          pip install .
+          python -m pip install -e ".[test]"
+      - name: Install older supported pandas and tqdm
+        if: matrix.dependencies == 'minimum'
+        run: python -m pip install "pandas==1.5.3" "numpy<2" "tqdm==4.64.0"
+      - name: Check pre-1.5 pandas compatibility
+        if: matrix.dependencies == 'legacy'
+        run: python -m pip install "pandas==1.4.4" "numpy<2" "tqdm==4.64.0"
       - name: Lint with ruff
         run: |
           ./lint.sh
       - name: Run unit tests
         run: |
           ./test.sh
+      - name: Run offline public API example
+        run: python -m examples.basic_usage
       - name: Publish coverage to Coveralls
         # Coverage upload is best-effort: parallel matrix jobs race to post to
         # the same Coveralls build, and the loser gets a "build already closed"

@@ -15,6 +15,8 @@ import os
 import re
 import stat
 
+from .progress import Progress
+
 
 class FileValidationError(ValueError):
     """A local file does not match its supplied integrity expectations."""
@@ -36,7 +38,7 @@ def _validate_expectations(expected_sha256, expected_size):
         raise ValueError("expected_size must be a non-negative integer")
 
 
-def validate_file(path, expected_sha256=None, expected_size=None):
+def validate_file(path, expected_sha256=None, expected_size=None, *, show_progress=False):
     """Check a readable regular file without writes or network access.
 
     Expectations describe the bytes at ``path`` (after any decompression).
@@ -44,6 +46,7 @@ def validate_file(path, expected_sha256=None, expected_size=None):
     ``FileNotFoundError``; permission errors propagate; non-regular files and
     size/hash mismatches raise ``FileValidationError``. Without expectations,
     this only checks that the file is readable and regular, not its integrity.
+    show_progress=True displays optional tqdm progress during SHA-256 hashing.
     """
     _validate_expectations(expected_sha256, expected_size)
     path = os.fspath(path)
@@ -59,8 +62,12 @@ def validate_file(path, expected_sha256=None, expected_size=None):
                     expected_size, info.st_size))
         if expected_sha256 is not None:
             digest = hashlib.sha256()
-            for chunk in iter(lambda: source.read(2 ** 20), b""):
-                digest.update(chunk)
+            with Progress(show_progress, "Verifying", info.st_size) as progress:
+                completed = 0
+                for chunk in iter(lambda: source.read(2 ** 20), b""):
+                    digest.update(chunk)
+                    completed += len(chunk)
+                    progress(completed, info.st_size)
             actual_sha256 = digest.hexdigest()
             if actual_sha256 != expected_sha256.lower():
                 raise FileValidationError(

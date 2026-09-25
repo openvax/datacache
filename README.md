@@ -1,251 +1,146 @@
-[![Tests](https://github.com/openvax/datacache/actions/workflows/tests.yml/badge.svg)](https://github.com/openvax/datacache/actions/workflows/tests.yml)
-<a href="https://coveralls.io/github/openvax/datacache?branch=master">
-<img src="https://coveralls.io/repos/openvax/datacache/badge.svg?branch=master&service=github" alt="Coverage Status" />
-</a>
-<a href="https://pypi.python.org/pypi/datacache/">
-<img src="https://img.shields.io/pypi/v/datacache.svg?maxAge=1000" alt="PyPI" />
-</a>
-
 # DataCache
 
-Helpers for transparently downloading datasets
+[![Tests](https://github.com/openvax/datacache/actions/workflows/tests.yml/badge.svg)](https://github.com/openvax/datacache/actions/workflows/tests.yml)
+[![PyPI](https://img.shields.io/pypi/v/datacache.svg)](https://pypi.org/project/datacache/)
 
-## API
+Download, verify, transform, and cache datasets for Python applications,
+including OpenVax libraries such as pyensembl. DataCache provides streaming
+downloads, gzip/ZIP decompression, reusable local paths, offline inspection,
+and SQLite caches built from pandas DataFrames.
 
-- **fetch_file**(download\_url, filename=_None_, decompress=_False_, subdir=_None_)
-- **fetch_and_transform**(transformed\_filename, transformer, loader, source_filename, source_url, subdir=_None_)
-- **fetch_fasta_dict**(download\_url, filename=_None_, subdir=_None_)
-- **fetch_fasta_db**(table\_name, download_url, fasta_filename=_None_, key\_column = _'id'_, value\_column=_'seq'_, subdir=_None_)
-- **fetch_csv_db**(table\_name, download\_url, csv\_filename=_None_, subdir=_None_, \*\*pandas_kwargs)
+## Install
 
-## Verified downloads
+Python 3.9 or newer is required.
 
-Use `destination` to install a single file at an exact path, including its
-filename. Supply trusted integrity metadata to check both cached files and new
-downloads:
+```sh
+python -m pip install datacache
+# Optional progress bars and HTML-table conversion:
+python -m pip install "datacache[progress,html]"
+```
+
+Progress is opt-in with `show_progress=True`. Normal use does not import tqdm
+or configure your application's logging.
+
+The existing pandas dependency range is unchanged; upgrading DataCache does
+not introduce a pandas 1.5 requirement. CI covers pandas 1.4.4, 1.5.3, and
+current releases on supported Python versions.
+
+## Quickstart
+
+This example runs entirely offline and cleans up after itself:
 
 ```python
-from datacache import fetch_file, validate_file, FileValidationError
+import gzip
+import hashlib
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from datacache import Cache
+
+with TemporaryDirectory() as directory:
+    root = Path(directory)
+    contents = b">reference\nACGT\n"
+    source = root / "reference.fa.gz"
+    source.write_bytes(gzip.compress(contents))
+
+    cache = Cache("references", cache_root=root / "cache")
+    path = cache.fetch(
+        source.as_uri(),  # HTTP, HTTPS, and FTP URLs also work.
+        filename="reference.fa",
+        expected_sha256=hashlib.sha256(contents).hexdigest(),
+    )
+    assert Path(path).read_bytes() == contents
+    source.unlink()
+    assert cache.fetch(source.as_uri(), filename="reference.fa") == path
+    print(cache.inspect(filename="reference.fa").status)  # available
+```
+
+For real releases, get the expected hash from trusted release metadata. Hashes
+describe the installed bytes **after** decompression or conversion. A hash
+computed from an untrusted download does not establish authenticity.
+
+To install at an exact path instead of using a cache key:
+
+```python
+from datacache import fetch_file
 
 path = fetch_file(
     "https://example.org/releases/v1/records.tsv.gz",
-    destination="/data/references/v1/records.tsv",
+    destination="references/v1/records.tsv",
     decompress=True,
-    expected_sha256=release_metadata["installed_sha256"],
-    expected_size=release_metadata["installed_size"],
     timeout=30,
-)
-
-# Read-only validation: no requests, directory creation, locks, or repair.
-validate_file(path, expected_sha256=release_metadata["installed_sha256"])
-```
-
-`destination` accepts a string or `pathlib.Path` and cannot be combined with
-`filename`, `subdir`, or `cache_root`. Existing calls using the default cache continue to work
-and can also supply `expected_sha256` and `expected_size`. Parent directories are
-created only when fetching a missing file or explicitly refreshing it. A valid
-cached file can be reused offline in a readable, non-writable installation.
-
-Both expectations always describe **installed bytes**, after decompression or
-HTML-to-CSV conversion. They do not describe HTTP wire bytes or a compressed
-archive when its contents are being installed. To verify and retain an archive,
-keep its `.gz` or `.zip` suffix at the destination and leave `decompress=False`.
-With an inferred filename, archives are retained by default, including URLs
-with query strings or fragments; their existing cache keys are preserved.
-`decompress=True` uses a distinct key for the decompressed contents, keeping the
-full URL in the key's digest. When a download endpoint's inferred filename
-has no removable archive suffix, `.decompressed` distinguishes its output.
-With an explicit `filename` or `destination`, a
-missing compression suffix still implies decompression for compatibility.
-`decompress=True` explicitly requests decompression while preserving an explicit
-destination's exact name. Format detection prefers a supported extension on
-the URL path (case-insensitively). For download endpoints without a supported
-path extension, a filename in the final query parameter is also recognized
-for compatibility, such as IEDB's `downloader.php?file_name=doc/data.zip`.
-Bare format hints such as `?format=.gz` and fragments do not select a format.
-For ZIP files, the member matching the output filename is selected, falling
-back to the largest non-directory member. No archive paths are extracted.
-HTML-to-CSV conversion requires an explicit `filename` or `destination` ending
-in `.csv`. Query strings and fragments in inferred cache keys never request
-conversion; those downloads retain their original HTML bytes.
-
-A size or SHA-256 mismatch raises `FileValidationError`, with the path and
-expected/actual values in its message. A corrupt cache hit does not trigger a
-download: call `fetch_file(..., force=True)` to explicitly attempt replacement.
-`validate_file` raises `FileNotFoundError` for missing files and propagates
-permission errors; it rejects non-regular files. Fetching propagates transport,
-decompression, and filesystem errors so applications can translate them.
-Expectations are optional; omitting them provides no integrity guarantee.
-
-Downloads and transformed output use unique staging files in the destination
-directory. Only a complete, validated file is published, using `os.replace`.
-Transfer, transformation, validation, or publication failure leaves an existing
-destination unchanged and cleans up staging files, including on a handled
-keyboard interruption. This avoids `shutil.move`'s cross-filesystem copy and
-metadata fallback (related to [#39](https://github.com/openvax/datacache/issues/39));
-SELinux policy compatibility still needs testing on the target installation.
-
-Download and conversion staging files remain owner-only throughout writing and
-validation. On replacement, existing files' read/write/execute permission bits
-are applied to the validated staging file immediately before publication.
-New HTML-to-CSV outputs use
-normal file-creation permissions (`0666` filtered by the process umask); new
-raw or decompressed downloads retain the existing owner-only default. An empty,
-disposable file measures normal creation permissions without reading or changing
-umask globally; that file never contains downloaded or converted data.
-Permission-setting failure preserves the old file and cleans up
-staging files. Atomic replacement creates a new inode: ownership, ACLs, and
-extended attributes of an existing destination are not copied, and special
-setuid/setgid/sticky bits are not preserved.
-
-The publication guarantee assumes a local filesystem supporting atomic
-replacement of sibling files. Concurrent fetches use separate staging files;
-the last successful replacement wins and readers opening the destination see
-complete files. Callers sharing a destination should use the same expectations.
-A returned path is not a permanent snapshot: later fetches may replace its
-contents. Platforms that deny replacing an open file may reject publication;
-the old file is preserved. This does not provide multi-file transactions,
-distributed coordination, or durability/recovery after power loss or an
-unhandled process termination, which may leave staging files behind.
-
-## Transient HTTP failures
-
-HTTP and HTTPS downloads retry temporary failures by default, with at most
-three attempts (the initial request plus two retries). This includes HTTP
-408, 429, 500, 502, 503, and 504 responses, connection failures, timeouts, and
-interrupted response streams. Configure the policy on `fetch_file` or
-`Cache.fetch`:
-
-```python
-path = fetch_file(
-    "https://example.org/releases/v1/records.tsv.gz",
-    destination="/data/references/v1/records.tsv",
-    decompress=True,
-    expected_sha256=release_metadata["installed_sha256"],
-    timeout=30,
-    max_retries=2,
-    retry_backoff=1.0,
-    retry_max_delay=30.0,
+    show_progress=True,  # Requires datacache[progress].
 )
 ```
 
-`max_retries` counts additional attempts; set it to `0` to disable retries.
-`retry_backoff` is the first delay in seconds and doubles after each retry,
-capped by `retry_max_delay`. Defaults therefore wait one second and then two
-seconds. `Retry-After` supports both integer seconds and HTTP dates. When its
-wait fits within `retry_max_delay`, the larger of that wait and the backoff is
-used. If the server requests a longer wait, the original error is raised
-immediately instead of retrying sooner than requested. Malformed header values
-are ignored. Both delay settings must be finite non-negative real numbers;
-accepted values are normalized to Python floats before use.
+Replace the example URL with your dataset URL. Existing files are reused;
+`force=True` explicitly replaces them. When integrity expectations are supplied,
+an invalid cache hit raises `FileValidationError` instead of silently replacing
+the file. Failed downloads leave the previous file intact.
 
-Each attempt downloads from the beginning into a fresh private staging file.
-Failed responses are closed and partial files are removed before waiting or
-retrying. An existing destination remains intact until a successful transfer
-has been transformed, validated, and published. Retry warnings report the
-attempt count, failure category, and delay; exhaustion raises the original
-Requests exception, preserving its response and cause.
+## Choose the right API
 
-Permanent HTTP failures such as 404, TLS errors (including proxy-wrapped TLS
-failures), local filesystem errors,
-progress callback exceptions, and transformation/integrity/publication errors
-are not retried. Local file and FTP transfers remain single attempts. Cache
-reuse and read-only inspection make no requests and do not wait. Existing
-pyensembl calls through `_download_and_decompress_if_necessary` receive the same
-default policy without changes to downstream code.
-
-Progress byte counts describe the current attempt and may decrease after a
-restart. The same `timeout` is passed to each request; Requests timeouts govern
-connection/read inactivity, not an overall elapsed-time deadline. Retry count
-and waiting time are bounded independently of the transfer duration.
-
-## Read-only cache inspection
-
-Path lookup, presence, and integrity checks have different contracts:
-
-```python
-from datacache import Cache, expected_path, file_exists, inspect_file, inspect_files
-
-root = "/data/references/v1"
-path = expected_path(filename="records.tsv", cache_root=root)
-present = file_exists(filename="records.tsv", cache_root=root)
-result = inspect_file(path, expected_sha256=release_metadata["installed_sha256"])
-if result.status == "available" and result.verified:
-    process_records(result.path)
-
-# The object API uses the same paths and validation contract.
-cache = Cache("references", cache_root=root)
-result = cache.inspect(filename="records.tsv",
-                       expected_sha256=release_metadata["installed_sha256"])
-
-# Inventory required files using trusted, caller-supplied metadata.
-installation = inspect_files(root, {
-    "records.tsv": {"expected_sha256": release_metadata["installed_sha256"]},
-    "manifest.json": {"expected_sha256": release_metadata["manifest_sha256"]},
-})
-```
-
-`expected_path`, `resolve_path`, and `Cache.local_path(download=False)` only
-compute paths, with no filesystem access. `file_exists` and `Cache.exists`
-check presence without requiring a readable regular file: directories count as
-present, broken symlinks count as absent, and permission errors propagate.
-None of these operations creates a directory or a lock file.
-
-`inspect_file`, `inspect_files`, and `Cache.inspect` return results with `path`,
-`status`, `verified`, and `error` attributes:
-
-| Status | File inspection | Required-file inventory |
+| Task | API | Result |
 | --- | --- | --- |
-| `available` | Readable regular file matching supplied metadata | Every required file is available |
-| `missing` | File absent | Cache root absent |
-| `corrupt` | Wrong file type or size/hash mismatch | Wrong root type, corrupt file, or incomplete installation |
-| `inaccessible` | Permission or other filesystem error | Root or required file cannot be inspected |
+| Download or reuse one file | `fetch_file(...)`, `Cache.fetch(...)` | Local path string |
+| Compute a path without filesystem access | `expected_path(...)`, `Cache.local_path(...)` | Path string |
+| Check presence | `file_exists(...)`, `Cache.exists(...)` | Boolean; does not establish integrity |
+| Validate bytes, raising on failure | `validate_file(...)` | Path string |
+| Inspect without repair or network access | `inspect_file(...)`, `Cache.inspect(...)` | `FileInspection` |
+| Inspect a set of required files | `inspect_files(root, files)` | `CacheInspection` |
+| Explicitly share an existing private file | `make_file_readable(...)`, `Cache.make_readable(...)` | Path string; POSIX only |
+| Download and parse CSV/TSV | `fetch_csv_dataframe(...)` | pandas DataFrame |
+| Cache a custom file transformation | `fetch_and_transform(...)` | Transformer/loader result |
+| Create a SQLite cache | `db_from_dataframe(...)`, `db_from_dataframes(...)` | Open SQLite connection |
+| Download CSV into SQLite | `fetch_csv_db(...)` | Open SQLite connection |
+| Reopen a database with matching metadata | `connect_if_correct_version(...)` | Connection or `None` |
 
-`verified` is true only when a supplied SHA-256 digest matched; presence,
-readability, or a size check alone does not establish verified integrity.
-`error` retains the original filesystem or validation exception when unavailable.
-Invalid integrity arguments raise `ValueError` rather than reporting a cache
-problem. `inspect_files` also returns a `files` mapping of individual results;
-for example, a missing manifest makes the installation `corrupt` while that
-manifest's individual status is `missing`. Inaccessible files take precedence
-over corrupt or missing files in the aggregate result. Required names must be
-normalized relative paths; nested names are supported. Use `{}` or `None` for
-an entry without integrity metadata. The required mapping must be nonempty.
+The library does not export `fetch_fasta_dict` or `fetch_fasta_db`. Download
+FASTA files with `fetch_file`, then parse them in the consuming library.
 
-Inspection only reads local files. It never downloads, writes manifests,
-creates locks, or attempts recovery, so a valid read-only version and a missing
-sibling version can be inspected independently. The caller supplies required
-files and trusted integrity metadata; datacache does not parse manifests or
-discover versions. Symlinks are followed as in ordinary file access. Inventory
-is not a snapshot across concurrent external changes or a multi-file
-installation mechanism; versioned bundle installation is tracked in
-[#59](https://github.com/openvax/datacache/issues/59).
+## Guides
 
-`cache_root` accepts a string or `pathlib.Path` and names the actual directory
-containing cached files, overriding the platform location selected by `subdir`.
-Relative roots remain relative to the current working directory. It is
-supported by `fetch_file`, `expected_path`, `file_exists`, `resolve_path`,
-`build_path`, and `Cache`. An exact `destination` is mutually exclusive with
-`cache_root`. Default cache locations and filename normalization remain the
-same. `build_path` still creates parents; use `resolve_path` for pure lookup.
-Creation and repair remain explicit operations: use `fetch_file` or
-`Cache.fetch`, supplying integrity metadata and `force=True` for replacement.
-`Cache.fetch` validates every reuse and respects different filenames for the
-same URL. Its database and deletion methods also use the selected cache root.
-Database paths preserve the filesystem meaning of symlinks followed by `..`.
-`Cache.delete_all()` clears the root's contents while preserving the directory
-and its permissions, including when the root is `.` or a symlink. Symlinks
-inside the cache are removed without clearing their external targets.
+- [Downloads and cache inspection](docs/downloads.md): destinations, naming,
+  decompression, integrity, retries, concurrency, and downstream compatibility.
+- [Progress and logging](docs/progress.md): tqdm, callbacks, retries, and
+  independent download options for CSV helpers.
+- [SQLite and transformations](docs/data.md): numeric fidelity, column names,
+  versioning, rollback, connection ownership, and custom transformations.
+- [Shared caches](docs/shared-caches.md): permissions, read-only use, and
+  troubleshooting existing installations.
+- [Downstream integration](docs/integration.md): contracts for consuming libraries.
+- [Release notes](CHANGELOG.md) and [release procedure](RELEASING.md).
 
-## Downstream compatibility
+## Guarantees and limits
 
-The private `_download_and_decompress_if_necessary` entry point, used by
-pyensembl, retains its pre-1.8 literal-URL format inference when transform flags
-are omitted. In particular, query/fragment-bearing archive URLs retain the
-same bytes under pyensembl's existing cache keys. Explicit transform flags and
-the public `fetch_file` API retain the parsed-URL behavior documented above.
-The IEDB download endpoints used by pepdata continue to decompress archives
-named at the end of the URL query into the requested CSV filenames.
-The `_decompress_to_file` helper remains available and uses failure-safe atomic
-publication. New integrations should use the public download and inspection
-APIs.
+Downloads are staged privately and published atomically after validation.
+New files respect the process umask; replacements preserve existing access
+permissions. This includes pyensembl's private download helpers.
+
+Custom single-file transformations publish only successful output. Existing
+SQLite caches rebuild in a transaction: failure rolls back both schema and
+rows. New databases are built privately before publication. Cached data is
+reused by path or database version; DataCache does not automatically discover
+remote changes or repair previously corrupted caches.
+
+Upgrades keep existing cache names and database metadata compatible. Valid
+cache hits do not rewrite files, change permissions, or apply new schema
+constraints. See [upgrading existing caches](docs/data.md#upgrading-existing-caches)
+and [sharing old private files](docs/shared-caches.md#files-already-downloaded-as-0600).
+
+File publication requires local filesystem support for atomic replacement;
+new SQLite database publication also requires hard links. SQLite locking and
+transactions govern database rebuilds. These are single-file guarantees, not
+a multi-file release installer or a distributed lock service.
+
+## Development
+
+```sh
+python -m pip install -e ".[test]"
+./lint-and-test.sh
+python -m examples.basic_usage
+```
+
+Tests use local files, mocked responses, and local HTTP servers. They do not
+depend on external dataset servers. See CI for the Python, dependency, and
+operating-system combinations exercised.

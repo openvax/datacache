@@ -18,7 +18,7 @@ import stat
 import time
 import warnings
 from shutil import copyfileobj
-from tempfile import gettempdir
+from tempfile import gettempdir, TemporaryDirectory
 from uuid import uuid4
 import zipfile
 import urllib.parse
@@ -28,9 +28,10 @@ import requests
 import pandas as pd
 
 from . import common
-from .common import _source_suffix, build_path, build_local_filename
+from .common import _source_suffix, build_local_filename
 from .integrity import FileValidationError, _validate_expectations, validate_file
 from .inspection import path_exists
+from .progress import Progress
 from .retries import (
     DEFAULT_MAX_RETRIES, DEFAULT_RETRY_BACKOFF, DEFAULT_RETRY_MAX_DELAY,
     error_description, is_retryable_http_error, retry_delay, validate_retry_options,
@@ -48,7 +49,8 @@ def _content_length(header_value):
     if header_value is None:
         return None
     try:
-        return int(header_value)
+        length = int(header_value)
+        return length if length >= 0 else None
     except (TypeError, ValueError):
         return None
 
@@ -84,7 +86,11 @@ def _stream_to_file(
     if urllib.parse.urlsplit(download_url).scheme.lower() in ("http", "https"):
         with closing(requests.get(download_url, timeout=timeout, stream=True)) as response:
             response.raise_for_status()
-            total_bytes = _content_length(response.headers.get("Content-Length"))
+            # Requests decodes content encoding before yielding chunks; a wire
+            # length is not a valid total for the bytes we write in that case.
+            encoding = response.headers.get("Content-Encoding", "identity").lower()
+            total_bytes = (_content_length(response.headers.get("Content-Length"))
+                           if encoding == "identity" else None)
             for chunk in response.iter_content(chunk_size=chunk_size):
                 if not chunk:
                     # skip keep-alive chunks that carry no data
@@ -117,7 +123,8 @@ def _download_to_temp_file(
         *,
         max_retries=DEFAULT_MAX_RETRIES,
         retry_backoff=DEFAULT_RETRY_BACKOFF,
-        retry_max_delay=DEFAULT_RETRY_MAX_DELAY):
+        retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
+        show_progress=False):
 
     retry_backoff, retry_max_delay = validate_retry_options(max_retries, retry_backoff, retry_max_delay)
     if not download_url:
@@ -132,21 +139,25 @@ def _download_to_temp_file(
         def report(done, total):
             nonlocal callback_failed
             try:
-                progress_callback(done, total)
+                progress(done, total)
+                if progress_callback is not None:
+                    progress_callback(done, total)
             except BaseException:
                 callback_failed = True
                 raise
 
         try:
-            with _open_staging_file(
+            with Progress(show_progress, "Downloading") as progress, _open_staging_file(
                     directory=directory, suffix='.' + ext, prefix=base_name) as tmp:
                 tmp_path = tmp.name
-                _stream_to_file(
+                count = _stream_to_file(
                     download_url,
                     tmp,
                     timeout=timeout,
                     chunk_size=chunk_size,
-                    progress_callback=report if progress_callback is not None else None)
+                    progress_callback=report if progress_callback is not None or show_progress else None)
+                if count == 0:
+                    progress(0, 0)
             return tmp_path
         except BaseException as error:
             if tmp_path is not None:
@@ -210,19 +221,23 @@ def _normal_creation_mode(directory):
             _remove_staging_file(probe_path)
 
 
-def _publish_staged_file(staged_path, full_path, normal_creation_mode=False):
-    """Preserve an existing regular file's access mode before atomic replacement."""
+def _publish_staged_file(staged_path, full_path):
+    """Apply normal creation or existing access permissions before publication.
+
+    Call only after writing and validation, so staging data stays private until
+    it is ready to publish. New files honor the destination's creation mode;
+    replacements preserve the existing regular file's access permissions.
+    """
     try:
         existing = os.stat(full_path)
     except FileNotFoundError:
-        mode = _normal_creation_mode(os.path.dirname(full_path) or ".") if normal_creation_mode else None
+        mode = _normal_creation_mode(os.path.dirname(full_path) or ".")
     else:
         if not stat.S_ISREG(existing.st_mode):
             raise FileValidationError(full_path, "expected a regular file")
         # Preserve rwx permissions, not setuid/setgid/sticky bits on new content.
         mode = stat.S_IMODE(existing.st_mode) & 0o777
-    if mode is not None:
-        os.chmod(staged_path, mode)
+    os.chmod(staged_path, mode)
     os.replace(staged_path, full_path)
 
 
@@ -241,6 +256,20 @@ def _decompress_to_file(src_stream, full_path):
             _remove_staging_file(staged_path)
 
 
+def _copy_with_progress(source, destination, show_progress, total=None):
+    if not show_progress:
+        return copyfileobj(source, destination)
+    with Progress(True, "Decompressing", total) as progress:
+        completed = 0
+        while True:
+            chunk = source.read(DEFAULT_CHUNK_SIZE)
+            if not chunk:
+                break
+            destination.write(chunk)
+            completed += len(chunk)
+            progress(completed, total)
+
+
 def _download_and_decompress_if_necessary(
         full_path,
         download_url,
@@ -254,7 +283,8 @@ def _download_and_decompress_if_necessary(
         expected_size=None,
         max_retries=DEFAULT_MAX_RETRIES,
         retry_backoff=DEFAULT_RETRY_BACKOFF,
-        retry_max_delay=DEFAULT_RETRY_MAX_DELAY):
+        retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
+        show_progress=False):
     """
     Download, transform and validate in sibling staging files, then publish
     with one atomic replace. Expectations always describe installed bytes.
@@ -288,7 +318,8 @@ def _download_and_decompress_if_necessary(
         progress_callback=progress_callback,
         max_retries=max_retries,
         retry_backoff=retry_backoff,
-        retry_max_delay=retry_max_delay)
+        retry_max_delay=retry_max_delay,
+        show_progress=show_progress)
 
     staged_path = tmp_path
     try:
@@ -306,18 +337,21 @@ def _download_and_decompress_if_necessary(
                         (info for info in infos if info.filename == filename),
                         max(infos, key=lambda info: info.file_size))
                     with z.open(chosen) as src, open(staged_path, "wb") as dst:
-                        copyfileobj(src, dst)
+                        _copy_with_progress(src, dst, show_progress, chosen.file_size)
             elif gunzip:
                 with gzip.GzipFile(tmp_path) as src, open(staged_path, "wb") as dst:
-                    copyfileobj(src, dst)
+                    _copy_with_progress(src, dst, show_progress)
             else:
                 df = pd.read_html(tmp_path, header=0)[0]
                 df.to_csv(staged_path, sep=',', index=False, encoding='utf-8')
         try:
-            validate_file(staged_path, expected_sha256, expected_size)
+            if show_progress:
+                validate_file(staged_path, expected_sha256, expected_size, show_progress=True)
+            else:
+                validate_file(staged_path, expected_sha256, expected_size)
         except FileValidationError as error:
             raise FileValidationError(full_path, "downloaded file " + error.reason) from error
-        _publish_staged_file(staged_path, full_path, normal_creation_mode=html)
+        _publish_staged_file(staged_path, full_path)
     finally:
         if staged_path != tmp_path:
             _remove_staging_file(staged_path)
@@ -383,7 +417,8 @@ def fetch_file(
         expected_size=None,
         max_retries=DEFAULT_MAX_RETRIES,
         retry_backoff=DEFAULT_RETRY_BACKOFF,
-        retry_max_delay=DEFAULT_RETRY_MAX_DELAY):
+        retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
+        show_progress=False):
     """
     Download a remote file and store it locally in a cache directory. Don't
     download it again if it's already present (unless `force` is True.)
@@ -429,6 +464,11 @@ def fetch_file(
         server-reported size or None if unknown. Lets callers render a progress
         bar (e.g. tqdm) without datacache taking on that dependency.
 
+    show_progress : bool, optional
+        Show tqdm download, decompression, and hash-verification progress.
+        Requires datacache[progress]. Defaults to False; cache hits are quiet.
+        Can be combined with progress_callback. Each retry starts a fresh bar.
+
     destination : str or os.PathLike, optional
         Exact output path, including filename, instead of the default cache.
         Mutually exclusive with filename, subdir, and cache_root. Parent directories are
@@ -466,10 +506,17 @@ def fetch_file(
     destination unchanged and remove their staging files. Atomic replacement
     requires a local filesystem supporting os.replace; concurrent writers
     publish complete files with the last successful replacement winning.
+    Staging files remain private until publication. New files use normal
+    creation permissions (0666 filtered by umask); replacements preserve the
+    existing file's read/write/execute permission bits.
 
     Returns the full path of the local file.
     """
     _validate_expectations(expected_sha256, expected_size)
+    if not isinstance(show_progress, bool):
+        raise ValueError("show_progress must be a boolean")
+    if progress_callback is not None and not callable(progress_callback):
+        raise ValueError("progress_callback must be callable")
     retry_backoff, retry_max_delay = validate_retry_options(max_retries, retry_backoff, retry_max_delay)
     if not isinstance(chunk_size, int) or isinstance(chunk_size, bool) or chunk_size <= 0:
         raise ValueError("chunk_size must be a positive integer")
@@ -512,7 +559,8 @@ def fetch_file(
         expected_size=expected_size,
         max_retries=max_retries,
         retry_backoff=retry_backoff,
-        retry_max_delay=retry_max_delay)
+        retry_max_delay=retry_max_delay,
+        show_progress=show_progress)
     return full_path
 
 
@@ -522,24 +570,76 @@ def fetch_and_transform(
         loader,
         source_filename,
         source_url,
-        subdir=None):
+        subdir=None,
+        *,
+        force=False,
+        cache_root=None,
+        download_options=None,
+        show_progress=False):
     """
-    Fetch a remote file from `source_url`, save it locally as `source_filename` and then use
-    the `loader` and `transformer` function arguments to turn this saved data into an in-memory
-    object.
+    Download a source and cache a successful single-file transformation.
+
+    transformer(source_path, output_path) must create and close output_path.
+    It receives an absent path in a private sibling directory, with the final
+    basename and extension. Its result is returned on success; cache hits call
+    loader(final_path). A directly returned output path is remapped to the
+    final path. Prefer in-memory results over objects containing staged paths.
+
+    force rebuilds the transformed output while reusing the source. Set
+    download_options={"force": True} to refresh the source too. Other fetch_file
+    settings (timeouts, retries, hashes, callbacks) go in download_options.
+    cache_root selects the root for both artifacts. For legacy compatibility,
+    a nonempty subdir also defaults source decompression to True; override it
+    explicitly in download_options. Existing sources misplaced in the default
+    cache by older versions can be reused without moving them. Failed
+    transformations preserve previous output and remove their partial files.
     """
-    transformed_path = build_path(transformed_filename, subdir)
-    if not os.path.exists(transformed_path):
-        source_path = fetch_file(source_url, source_filename, subdir)
+    transformed_path = common.resolve_path(transformed_filename, subdir, cache_root=cache_root)
+    try:
+        if force:
+            raise FileNotFoundError(transformed_path)
+        validate_file(transformed_path)
+    except FileNotFoundError:
+        options = dict(download_options or {})
+        options.setdefault("cache_root", cache_root)
+        options.setdefault("show_progress", show_progress)
+        options.setdefault("decompress", bool(subdir))
+        source_path = None
+        # Older versions accidentally passed subdir as decompress and cached
+        # the source in the default root. Check only that exact legacy path,
+        # after preferring the requested root, and never move/chmod it.
+        if (subdir and options["cache_root"] is None and not options.get("force") and
+                "destination" not in options):
+            current = expected_path(source_url, source_filename, options["decompress"], subdir)
+            legacy = expected_path(source_url, source_filename, options["decompress"])
+            if not path_exists(current):
+                try:
+                    validate_file(legacy, options.get("expected_sha256"), options.get("expected_size"))
+                except FileNotFoundError:
+                    pass
+                else:
+                    source_path = legacy
+        if source_path is None:
+            source_path = fetch_file(source_url, filename=source_filename, subdir=subdir, **options)
         logger.info("Generating data file %s from %s", transformed_path, source_path)
-        result = transformer(source_path, transformed_path)
+        os.makedirs(os.path.dirname(transformed_path) or ".", exist_ok=True)
+        # A private directory keeps arbitrary transformer output private while
+        # preserving the filename/extension and the absent-output contract.
+        with TemporaryDirectory(
+                dir=os.path.dirname(transformed_path) or ".",
+                prefix=".datacache-transform-") as staging_directory:
+            staged_path = os.path.join(staging_directory, os.path.basename(transformed_path))
+            result = transformer(source_path, staged_path)
+            try:
+                validate_file(staged_path)
+            except FileNotFoundError as error:
+                raise RuntimeError("Transformer did not create %s" % transformed_path) from error
+            _publish_staged_file(staged_path, transformed_path)
+            if isinstance(result, (str, os.PathLike)) and os.fspath(result) == staged_path:
+                result = type(result)(transformed_path)
     else:
         logger.info("Cached data file: %s", transformed_path)
         result = loader(transformed_path)
-    if not os.path.exists(transformed_path):
-        raise RuntimeError(
-            "Expected transformed file %s to exist after fetch_and_transform" % (
-                transformed_path,))
     return result
 
 
@@ -547,14 +647,25 @@ def fetch_csv_dataframe(
         download_url,
         filename=None,
         subdir=None,
+        *,
+        download_options=None,
+        show_progress=False,
         **pandas_kwargs):
     """
     Download a remote file from `download_url` and save it locally as `filename`.
     Load that local file as a CSV into Pandas using extra keyword arguments such as sep='\t'.
+
+    Archives are decompressed before parsing. Pass fetch_file settings such as
+    cache_root, timeout, expected_sha256, and progress_callback in a separate
+    download_options dictionary. show_progress enables optional tqdm displays.
+    The remaining keyword arguments are passed only to pandas.read_csv.
     """
+    options = dict(download_options or {})
+    options.setdefault("show_progress", show_progress)
     path = fetch_file(
         download_url=download_url,
         filename=filename,
         decompress=True,
-        subdir=subdir)
+        subdir=subdir,
+        **options)
     return pd.read_csv(path, **pandas_kwargs)

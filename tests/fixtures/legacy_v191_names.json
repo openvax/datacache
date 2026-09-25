@@ -1,0 +1,45 @@
+{
+  "filenames": [
+    {
+      "url": "https://example.org/records.csv.gz",
+      "decompress": false,
+      "filename": "9a93c4e951e0435f9f8d2c8581dd3781.https___example.org_records.csv.gz"
+    },
+    {
+      "url": "https://example.org/records.csv.gz",
+      "decompress": true,
+      "filename": "9a93c4e951e0435f9f8d2c8581dd3781.https___example.org_records.csv"
+    },
+    {
+      "url": "https://example.org/records.csv.gz?token=release",
+      "decompress": false,
+      "filename": "c78256efb732d73b536dcb23168c0276.https___example.org_records.csv.gz_token_release"
+    },
+    {
+      "url": "https://example.org/records.csv.gz?token=release",
+      "decompress": true,
+      "filename": "c78256efb732d73b536dcb23168c0276.https___example.org_records.csv"
+    },
+    {
+      "url": "https://example.org/records.zip#release",
+      "decompress": false,
+      "filename": "05c7653f9eb755fc99fd432248bd948d.https___example.org_records.zip#release"
+    },
+    {
+      "url": "https://example.org/records.zip#release",
+      "decompress": true,
+      "filename": "05c7653f9eb755fc99fd432248bd948d.https___example.org_records"
+    },
+    {
+      "url": "https://example.org/records.csv",
+      "decompress": false,
+      "filename": "87fe5f7f54237b64f37559e773d70008.https___example.org_records.csv"
+    },
+    {
+      "url": "https://example.org/records.csv",
+      "decompress": true,
+      "filename": "87fe5f7f54237b64f37559e773d70008.https___example.org_records.csv"
+    }
+  ],
+  "csv_database_filename": "records.csv_nrows2.id_INT.label_TEXT.db"
+}
