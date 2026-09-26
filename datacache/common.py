@@ -89,6 +89,11 @@ def clear_cache(subdir=None):
     data_dir = get_data_dir(subdir)
     rmtree(data_dir)
 
+def name_digest(text):
+    """MD5 hex digest used in cache names: a key, not a security measure."""
+    return hashlib.md5(text.encode("utf-8", "surrogatepass"), usedforsecurity=False).hexdigest()
+
+
 def normalize_filename(filename):
     """
     Remove special characters and shorten if name is too long
@@ -97,7 +102,7 @@ def normalize_filename(filename):
     filename = re.sub(r"/|\\|;|:|\?|=", "_", filename)
 
     if len(filename) > 150:
-        prefix = hashlib.md5(filename.encode('utf-8'), usedforsecurity=False).hexdigest()
+        prefix = name_digest(filename)
         filename = prefix + filename[-140:]
 
     return filename
@@ -114,7 +119,7 @@ def build_local_filename(download_url=None, filename=None, decompress=False):
     inferred = not filename
     # if no filename provided, use the original filename on the server
     if not filename:
-        digest = hashlib.md5(download_url.encode('utf-8'), usedforsecurity=False).hexdigest()
+        digest = name_digest(download_url)
         filename_url = download_url
         if decompress:
             parsed = urlsplit(download_url)

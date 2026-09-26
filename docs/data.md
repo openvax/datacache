@@ -132,9 +132,10 @@ room for SQLite's `-journal` file; otherwise the schema is named by a digest.
 Column names therefore never add directories or leave the cache directory
 (earlier releases turned a column named `m/z` into a subdirectory). A matching
 database an older release stored under its historical name is still reused in
-place, and a new `version` rebuilds it under the new name. An explicit
-`db_filename` also works without `csv_filename`. Supply parser options directly
-and download options in `download_options`, as described in the
+place; a new `version` rebuilds it under the new name and removes the superseded
+copy, along with any directories it alone occupied. An explicit `db_filename`
+also works without `csv_filename`. Supply parser options directly and download
+options in `download_options`, as described in the
 [progress guide](progress.md#csv-options). A `cache_root` in that dictionary is
 used for both the downloaded CSV and its database.
 

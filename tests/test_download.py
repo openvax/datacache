@@ -21,6 +21,7 @@ cached state -- the two sources of flakiness in the old live-Ensembl test (#42).
 """
 
 import gzip
+import logging
 import os
 import zipfile
 
@@ -161,3 +162,45 @@ def test_use_wget_if_available_is_deprecated(isolated_cache):
     with pytest.warns(DeprecationWarning, match="use_wget_if_available is deprecated"):
         path = fetch_file(url, filename="w.fa.gz", decompress=True, use_wget_if_available=True)
     assert path.endswith("w.fa")
+
+
+def test_fetch_decompress_zip_matches_member_names_ignoring_case(isolated_cache, caplog):
+    archive = isolated_cache / "cased.zip"
+    with zipfile.ZipFile(str(archive), "w") as z:
+        z.writestr("Data.CSV", "the wanted member\n")
+        z.writestr("notes.txt", "a much larger member\n" * 100)
+    with caplog.at_level(logging.WARNING, logger="datacache.download"):
+        path = fetch_file("file://" + str(archive), filename="data.csv", decompress=True)
+    with open(path) as f:
+        assert f.read() == "the wanted member\n"
+    assert not caplog.records
+
+
+def test_fetch_decompress_zip_prefers_the_copy_nearest_the_root(isolated_cache):
+    archive = isolated_cache / "nested.zip"
+    with zipfile.ZipFile(str(archive), "w") as z:
+        z.writestr("release/data.csv", "current\n")
+        z.writestr("release/archive/2019/data.csv", "older and larger\n" * 100)
+    path = fetch_file("file://" + str(archive), filename="data.csv", decompress=True)
+    with open(path) as f:
+        assert f.read() == "current\n"
+
+
+def test_fetch_decompress_zip_warns_only_when_guessing_among_members(isolated_cache, caplog):
+    several = isolated_cache / "several.zip"
+    with zipfile.ZipFile(str(several), "w") as z:
+        z.writestr("readme.txt", "short\n")
+        z.writestr("table.tsv", "the largest member\n" * 10)
+    single = isolated_cache / "single.zip"
+    with zipfile.ZipFile(str(single), "w") as z:
+        z.writestr("anything.bin", "the only member\n")
+    with caplog.at_level(logging.WARNING, logger="datacache.download"):
+        guessed = fetch_file("file://" + str(several), filename="guessed.csv", decompress=True)
+        assert "table.tsv" in caplog.text
+        caplog.clear()
+        only = fetch_file("file://" + str(single), filename="only.csv", decompress=True)
+        assert not caplog.records
+    with open(guessed) as f:
+        assert f.read().startswith("the largest member")
+    with open(only) as f:
+        assert f.read() == "the only member\n"

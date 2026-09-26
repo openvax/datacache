@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 
 from datacache import connect_if_correct_version, db_from_dataframe, db_from_dataframes
-from datacache.database import Database, quote_identifier
+from datacache.database import Database, fold_identifier, quote_identifier
 from datacache.database_helpers import _create_cached_db, db_from_dataframes_with_absolute_path
 from datacache.database_table import DatabaseTable
 
@@ -392,3 +392,41 @@ def test_from_fasta_dict_is_deprecated_but_still_works():
     assert table.primary_key == "id"
     assert table.rows == [("first", "ACGT")]
 
+
+def test_names_without_room_for_the_journal_are_refused_but_still_reused(tmp_path):
+    # SQLite rebuilds through "<name>-journal", so a longer name could be
+    # built once and never rebuilt. Refuse to build one; still reuse one that
+    # an older release created.
+    frame = pd.DataFrame({"id": [1]})
+    long_name = "r" * 250 + ".db"
+    with pytest.raises(ValueError, match="journal"):
+        db_from_dataframe(long_name, "t", frame, cache_root=tmp_path)
+    assert not (tmp_path / long_name).exists()
+    with closing(db_from_dataframe("staged.db", "t", frame, cache_root=tmp_path)):
+        pass
+    os.link(tmp_path / "staged.db", tmp_path / long_name)
+    with closing(db_from_dataframe(long_name, "t", frame, cache_root=tmp_path)) as connection:
+        assert connection.execute("SELECT id FROM t").fetchall() == [(1,)]
+    with pytest.raises(ValueError, match="journal"):
+        db_from_dataframe(long_name, "t", frame, cache_root=tmp_path, version=2)
+
+
+def test_an_empty_request_still_reuses_an_existing_database(tmp_path):
+    path = tmp_path / "existing.db"
+    with closing(db_from_dataframes_with_absolute_path(path, {"t": pd.DataFrame({"id": [1]})})):
+        pass
+    with closing(db_from_dataframes_with_absolute_path(path, {})) as connection:
+        assert connection.execute("SELECT id FROM t").fetchall() == [(1,)]
+
+
+def test_python_and_sqlite_compare_names_alike():
+    # Validation folds names in Python before a database exists; lookups ask
+    # SQLite. Both must agree on which names are the same.
+    names = ["Records", "records", "RECORDS", "Éclair", "éclair", "ÉCLAIR",
+             "\u212a", "k", "K", "straße", "STRASSE", "İstanbul", "istanbul"]
+    with closing(sqlite3.connect(":memory:")) as connection:
+        for left in names:
+            for right in names:
+                same_in_sqlite = connection.execute(
+                    "SELECT ? = ? COLLATE NOCASE", (left, right)).fetchone()[0]
+                assert (fold_identifier(left) == fold_identifier(right)) == bool(same_in_sqlite), (left, right)

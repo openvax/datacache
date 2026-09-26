@@ -90,10 +90,12 @@ replacement leaves the previous file intact.
 | `retry_max_delay` | Maximum retry delay in seconds, finite and non-negative. A server `Retry-After` exceeding this limit stops retries. |
 | `show_progress` | Boolean enabling optional tqdm download, decompression, and hash bars. Requires `datacache[progress]` when a bar is needed. Cache hits are quiet. |
 
-ZIP downloads select the member whose stored path matches the output name, then
-a member in a folder with that name (the largest, if several), and otherwise the
-largest non-directory member. HTML-to-CSV conversion is enabled by an explicit
-`.csv` output for an HTML source and requires `datacache[html]`. See
+ZIP downloads install the member stored at the output name; otherwise a member
+with that name in any folder (exact letter case first), preferring the one
+nearest the archive root, then the largest. If none matches, the largest
+non-directory member is installed, with a logged warning when the archive has
+several. HTML-to-CSV conversion is enabled by an explicit `.csv` output for an
+HTML source and requires `datacache[html]`. See
 [format selection](downloads.md#verified-downloads) and
 [HTTP retry behavior](downloads.md#transient-http-failures).
 
@@ -594,10 +596,13 @@ validating new DataFrames, changing old constraints, or rewriting the file.
 Table names match as SQLite compares them, ignoring the case of ASCII letters.
 Data changes are not detected automatically. Change `version` (an integer) or
 use `overwrite=True` where available to rebuild. A rebuild replaces the
-database's tables, not just the named table, and rolls back on failure.
-Explicit overwrites also remove views; version-only rebuilds retain views.
-New databases are staged before publication. See [reuse and replacement](data.md#reuse-and-replacement)
-for locking, symlink, and filesystem requirements.
+database's tables, not just the named table, and rolls back on failure. Explicit
+overwrites also remove views; version-only rebuilds retain views. New databases
+are staged before publication. A database filename must leave room for SQLite's
+`-journal` file, so building one longer than 247 bytes (UTF-16 code units on
+Windows) raises `ValueError`; an existing database with such a name is still
+reused. See [reuse and replacement](data.md#reuse-and-replacement) for locking,
+symlink, and filesystem requirements.
 
 Table names must be nonempty strings, distinct ignoring the case of ASCII
 letters (as SQLite compares names), and must not be the reserved metadata name
@@ -717,15 +722,16 @@ Download/parse a CSV and build or reuse `table_name` in SQLite. `download_url`,
 `csv_filename`, `subdir`, `download_options`, and `**pandas_kwargs` follow
 `fetch_csv_dataframe`. `csv_filename=None` infers a download key from the URL;
 `db_filename=None` infers a database name from the CSV name, row count, column
-names, and dtypes. Column names are spelled out only when every character is
-allowed in file names on all supported platforms (no `/`, `\`, `:`, `*`, `?`,
-`"`, `<`, `>`, `|`, or control characters) and the name leaves room for SQLite's
+names, and dtypes. That name is spelled out only when every character is allowed
+in file names on all supported platforms (no `/`, `\`, `:`, `*`, `?`, `"`, `<`,
+`>`, `|`, or control characters) and the name leaves room for SQLite's
 `-journal` file within the filesystem's name-length limit. Otherwise the schema
-is named by a digest, shortening a very long CSV filename if needed, so column
-names never add directories or leave the cache directory; directories in an
-explicit `csv_filename` are kept. A matching database an older release stored
-under the historical name is still reused in place, and a new `version` rebuilds
-it under the new name. An explicit `db_filename` works independently of
+is named by a digest, forbidden characters from the CSV filename become `_`, and
+a very long CSV filename is shortened, so column names never add directories or
+leave the cache directory; directories in an explicit `csv_filename` are kept. A
+matching database an older release stored under the historical name is still
+reused in place. A new `version` rebuilds it under the new name and then removes
+the superseded database. An explicit `db_filename` works independently of
 `csv_filename`. A `cache_root` inside `download_options` applies to both files.
 Parser options must produce a DataFrame with non-empty string column names: do
 not pass `chunksize` or `iterator`, and pair `header=None` with `names=`.

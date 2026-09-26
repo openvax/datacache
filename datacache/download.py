@@ -270,6 +270,30 @@ def _copy_with_progress(source, destination, show_progress, total=None):
             progress(completed, total)
 
 
+def _choose_zip_member(infos, filename):
+    """Pick the archive member to install as filename.
+
+    Prefer the member stored at exactly that name, then members whose name
+    matches in any folder (exact case first), taking the one closest to the
+    archive root and then the largest. Otherwise install the largest member,
+    warning when that was a guess among several.
+    """
+    chosen = next((info for info in infos if info.filename == filename), None)
+    if chosen is not None:
+        return chosen
+    paths = {info: info.filename.replace("\\", "/") for info in infos}
+    names = {info: path.rsplit("/", 1)[-1] for info, path in paths.items()}
+    named = ([info for info in infos if names[info] == filename] or
+             [info for info in infos if names[info].casefold() == filename.casefold()])
+    if named:
+        return min(named, key=lambda info: (paths[info].count("/"), -info.file_size))
+    chosen = max(infos, key=lambda info: info.file_size)
+    if len(infos) > 1:
+        logger.warning("No ZIP member is named %s; installing the largest of %d members, %s",
+                       filename, len(infos), chosen.filename)
+    return chosen
+
+
 def _download_and_decompress_if_necessary(
         full_path,
         download_url,
@@ -333,13 +357,7 @@ def _download_and_decompress_if_necessary(
                     if not infos:
                         raise ValueError("Empty zip archive")
                     # Never extract stored paths: stream one member's contents.
-                    # Prefer the exact stored path, then a member in a folder
-                    # with the output's name, then the largest member.
-                    chosen = next((info for info in infos if info.filename == filename), None)
-                    if chosen is None:
-                        named = [info for info in infos
-                                 if info.filename.replace("\\", "/").rsplit("/", 1)[-1] == filename]
-                        chosen = max(named or infos, key=lambda info: info.file_size)
+                    chosen = _choose_zip_member(infos, filename)
                     with z.open(chosen) as src, open(staged_path, "wb") as dst:
                         _copy_with_progress(src, dst, show_progress, chosen.file_size)
             elif gunzip:

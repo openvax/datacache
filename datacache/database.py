@@ -36,17 +36,18 @@ def fold_identifier(name):
     """Fold an identifier's case the way SQLite compares names: ASCII only.
 
     SQLite treats "Records" and "records" as one table but "Éclair" and
-    "éclair" as two, so str.lower() would match tables SQLite considers
-    absent. Non-string values are returned unchanged and match nothing.
+    "éclair" as two, so str.lower() would merge names SQLite keeps apart.
+    Use this to validate names before a database exists; with a connection,
+    let SQLite compare them (see tables_exist).
     """
-    return name.translate(_ASCII_LOWERCASE) if isinstance(name, str) else name
+    return name.translate(_ASCII_LOWERCASE)
 
 
 def tables_exist(connection, table_names):
-    """Are all table_names present, compared as SQLite compares names?"""
-    existing = {fold_identifier(row[0]) for row in connection.execute(
-        "SELECT name FROM sqlite_master WHERE type='table'")}
-    return all(fold_identifier(name) in existing for name in table_names)
+    """Are all table_names present? SQLite's NOCASE compares them as it does."""
+    return all(connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ? COLLATE NOCASE",
+        (name,)).fetchone() for name in table_names)
 
 
 def quote_identifier(identifier):

@@ -15,7 +15,8 @@ import pandas as pd
 
 from datacache import common, fetch_and_transform, fetch_csv_dataframe, fetch_csv_db
 from datacache.common import build_local_filename
-from datacache.database_helpers import _db_filenames_from_dataframe, _name_length
+from datacache import database_helpers
+from datacache.database_helpers import _db_filenames_from_dataframe, _name_length, _truncate_name
 
 
 @pytest.fixture
@@ -212,15 +213,17 @@ def test_nested_database_from_an_older_release_is_reused_in_place(tmp_path, mz_s
 
 
 def test_new_version_of_a_nested_database_is_built_flat(tmp_path, mz_source):
+    # The rebuilt database supersedes the older one, which is removed along
+    # with the directory its nested name created.
     cache_root = tmp_path / "cache"
     legacy = cache_root / "mz_nrows1.peptide_TEXT.m" / "z_FLOAT.db"
     _write_legacy_database(legacy, 1, [("OLD", 9.5)])
-    before = legacy.read_bytes()
     with closing(fetch_csv_db("records", mz_source.as_uri(), csv_filename="mz.csv", version=2,
                               download_options={"cache_root": cache_root})) as connection:
         assert connection.execute("SELECT * FROM records").fetchall() == [("AAA", 1.5)]
-    assert legacy.read_bytes() == before
-    assert len(list(cache_root.glob("*.db"))) == 1
+    assert not legacy.parent.exists()
+    assert [path.name for path in cache_root.iterdir() if path.suffix == ".db"] != []
+    assert [path for path in cache_root.iterdir() if path.is_dir()] == []
 
 
 def test_legacy_lookup_never_opens_a_database_outside_the_cache(tmp_path):
@@ -350,3 +353,73 @@ def test_cache_names_work_where_md5_is_disabled_for_security(monkeypatch):
     assert build_local_filename("https://example.org/data?id=1")
     assert len(build_local_filename(filename="x" * 200)) < 200
     assert _db_filenames_from_dataframe("records", pd.DataFrame({"m/z": [1.5]}))[0].endswith(".db")
+
+
+def test_a_locked_older_database_is_not_duplicated(tmp_path, mz_source, monkeypatch):
+    # An older release may be writing to its database. Building a second copy
+    # beside it would let the two diverge, so the lock error propagates.
+    cache_root = tmp_path / "cache"
+    legacy = cache_root / "mz_nrows1.peptide_TEXT.m" / "z_FLOAT.db"
+    _write_legacy_database(legacy, 1, [("OLD", 9.5)])
+    real_cached_connection = database_helpers._cached_connection
+
+    def locked(path, *args):
+        if os.fspath(path) == str(legacy):
+            raise sqlite3.OperationalError("database is locked")
+        return real_cached_connection(path, *args)
+
+    monkeypatch.setattr(database_helpers, "_cached_connection", locked)
+    with pytest.raises(sqlite3.OperationalError, match="locked"):
+        fetch_csv_db("records", mz_source.as_uri(), csv_filename="mz.csv",
+                     download_options={"cache_root": cache_root})
+    assert list(cache_root.glob("*.db")) == []
+
+
+@pytest.mark.parametrize("contents", ["sqlite without metadata", "not a database"])
+def test_only_superseded_datacache_databases_are_removed(tmp_path, mz_source, contents):
+    cache_root = tmp_path / "cache"
+    other = cache_root / "mz_nrows1.peptide_TEXT.m" / "z_FLOAT.db"
+    other.parent.mkdir(parents=True)
+    if contents == "not a database":
+        other.write_text("someone else's file")
+    else:
+        with closing(sqlite3.connect(other)) as connection:
+            connection.executescript("CREATE TABLE records (x);")
+    before = other.read_bytes()
+    with closing(fetch_csv_db("records", mz_source.as_uri(), csv_filename="mz.csv",
+                              download_options={"cache_root": cache_root})) as connection:
+        assert connection.execute("SELECT * FROM records").fetchall() == [("AAA", 1.5)]
+    assert other.read_bytes() == before
+
+
+def test_csv_filename_characters_some_platform_forbids_stay_out_of_names(tmp_path):
+    source = tmp_path / "run.csv"
+    source.write_text("id\n1\n")
+    cache_root = tmp_path / "cache"
+    with closing(fetch_csv_db("records", source.as_uri(), csv_filename="run:2.csv",
+                              download_options={"cache_root": cache_root})) as connection:
+        assert connection.execute("SELECT * FROM records").fetchall() == [(1,)]
+    [database] = cache_root.glob("*.db")
+    assert database.name.startswith("run_2_nrows1.") and ":" not in database.name
+
+
+@pytest.mark.skipif(os.name == "nt", reason="':' names an alternate data stream on Windows")
+def test_database_named_after_a_csv_filename_with_a_colon_is_reused(tmp_path):
+    cache_root = tmp_path / "cache"
+    _write_legacy_database(cache_root / "run:2_nrows1.peptide_TEXT.mass_FLOAT.db", 1, [("OLD", 9.5)])
+    source = tmp_path / "run.csv"
+    source.write_text("peptide,mass\nAAA,1.5\n")
+    with closing(fetch_csv_db("records", source.as_uri(), csv_filename="run:2.csv",
+                              download_options={"cache_root": cache_root})) as connection:
+        assert connection.execute("SELECT * FROM records").fetchall() == [("OLD", 9.5)]
+
+
+def test_database_names_need_named_columns():
+    with pytest.raises(ValueError, match="non-empty strings"):
+        _db_filenames_from_dataframe("records", pd.DataFrame())
+
+
+def test_truncation_counts_multibyte_characters():
+    assert _truncate_name("abc", 5) == "abc"
+    unit = _name_length("é")
+    assert _truncate_name("é" * 10, 3 * unit - 1) == "éé"

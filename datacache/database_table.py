@@ -36,6 +36,12 @@ def _sqlite_value(value):
         return value.isoformat()
     return value
 
+def validate_column_names(columns):
+    """Require the non-empty string column names a database table needs."""
+    if len(columns) == 0 or not all(isinstance(column, str) and column for column in columns):
+        raise ValueError("DataFrame columns must be non-empty strings")
+
+
 class DatabaseTable(object):
     """Converts between a DataFrame and a sqlite3 database table"""
 
@@ -69,8 +75,7 @@ class DatabaseTable(object):
     def from_dataframe(cls, name, df, indices, primary_key=None):
         """Infer types and normalize column/constraint names consistently."""
 
-        if len(df.columns) == 0 or not all(isinstance(column, str) and column for column in df.columns):
-            raise ValueError("DataFrame columns must be non-empty strings")
+        validate_column_names(df.columns)
         normalized = [column.replace(" ", "_") for column in df.columns]
         if len(set(fold_identifier(column) for column in normalized)) != len(normalized):
             raise ValueError("DataFrame column names collide after normalization")
@@ -134,12 +139,6 @@ class DatabaseTable(object):
             "datacache 2.0; build a DataFrame and use db_from_dataframe instead.",
             DeprecationWarning,
             stacklevel=2)
-        key_list = list(fasta_dict.keys())
-        key_set = set(key_list)
-        if len(key_set) != len(key_list):
-            raise ValueError(
-                "FASTA file contains %d non-unique sequence identifiers" %
-                (len(key_list) - len(key_set)))
         column_types = [(key_column, "TEXT"), (value_column, "TEXT")]
 
         def make_rows():
