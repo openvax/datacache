@@ -2,6 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
+import errno
 import os
 import sqlite3
 import stat
@@ -10,8 +11,9 @@ import threading
 import pandas as pd
 import pytest
 
-from datacache import connect_if_correct_version, db_from_dataframe
-from datacache.database import Database, quote_identifier
+from datacache import connect_if_correct_version, db_from_dataframe, db_from_dataframes
+from datacache.database import Database, fold_identifier, quote_identifier
+from datacache import database_helpers
 from datacache.database_helpers import _create_cached_db, db_from_dataframes_with_absolute_path
 from datacache.database_table import DatabaseTable
 
@@ -336,3 +338,153 @@ def test_new_failed_creator_does_not_remove_concurrent_winner(tmp_path):
     with closing(connect_if_correct_version(path, 1)) as connection:
         assert connection.execute("SELECT id FROM records").fetchall() == [(1,)]
     assert list(tmp_path.iterdir()) == [path]
+
+
+def test_reuse_matches_table_names_ignoring_ascii_case(tmp_path):
+    # SQLite treats "Records" and "records" as one table, so a caller spelling
+    # it differently must reuse the database instead of rebuilding it.
+    with closing(db_from_dataframe("cased.db", "Records", pd.DataFrame({"id": [1]}), cache_root=tmp_path)):
+        pass
+    with closing(db_from_dataframe(
+            "cased.db", "records", pd.DataFrame({"id": [2]}), cache_root=tmp_path)) as connection:
+        assert connection.execute("SELECT id FROM records").fetchall() == [(1,)]
+
+
+def test_reuse_keeps_non_ascii_case_distinct_like_sqlite(tmp_path):
+    # SQLite folds ASCII letters only: "Éclair" and "éclair" are two tables.
+    # Matching them with str.lower() would reuse a table SQLite cannot find.
+    with closing(db_from_dataframe("accented.db", "Éclair", pd.DataFrame({"id": [1]}), cache_root=tmp_path)):
+        pass
+    with closing(db_from_dataframe(
+            "accented.db", "éclair", pd.DataFrame({"id": [2]}), cache_root=tmp_path)) as connection:
+        assert connection.execute('SELECT id FROM "éclair"').fetchall() == [(2,)]
+
+
+@pytest.mark.parametrize("name", ["_datacache_metadata", "_Datacache_Metadata", "SQLite_Sequence"])
+def test_reserved_table_names_are_rejected_even_when_a_database_exists(tmp_path, name):
+    # Reuse must never hand back the version metadata as if it were data.
+    with closing(db_from_dataframe("reserved.db", "records", pd.DataFrame({"id": [1]}), cache_root=tmp_path)):
+        pass
+    with pytest.raises(ValueError, match="reserved"):
+        db_from_dataframe("reserved.db", name, pd.DataFrame({"id": [2]}), cache_root=tmp_path)
+
+
+def test_names_are_distinct_exactly_when_sqlite_says_so(tmp_path):
+    frames = {"Éclair": pd.DataFrame({"id": [1]}), "éclair": pd.DataFrame({"id": [2]})}
+    with closing(db_from_dataframes("tables.db", frames, cache_root=tmp_path)) as connection:
+        assert connection.execute('SELECT id FROM "Éclair"').fetchall() == [(1,)]
+        assert connection.execute('SELECT id FROM "éclair"').fetchall() == [(2,)]
+    frame = pd.DataFrame({"Éclair": [1], "éclair": [2]})
+    with closing(db_from_dataframe("columns.db", "t", frame, cache_root=tmp_path)) as connection:
+        assert connection.execute('SELECT "Éclair", "éclair" FROM t').fetchall() == [(1, 2)]
+    with pytest.raises(ValueError, match="distinct"):
+        db_from_dataframes("ascii.db", {"Records": frame, "records": frame}, cache_root=tmp_path)
+    with pytest.raises(ValueError, match="collide"):
+        db_from_dataframe("ascii-columns.db", "t", pd.DataFrame({"ID": [1], "id": [2]}), cache_root=tmp_path)
+
+
+def test_from_fasta_dict_is_deprecated_but_still_works():
+    class Record:
+        def __init__(self, seq):
+            self.seq = seq
+
+    with pytest.warns(DeprecationWarning, match="from_fasta_dict"):
+        table = DatabaseTable.from_fasta_dict("sequences", {"first": Record("ACGT")}, "id", "sequence")
+    assert table.column_types == [("id", "TEXT"), ("sequence", "TEXT")]
+    assert table.primary_key == "id"
+    assert table.rows == [("first", "ACGT")]
+
+
+def test_names_without_room_for_the_journal_are_built_and_reused_but_not_rebuilt(tmp_path):
+    # Staged creation works at any valid name, but SQLite rebuilds through
+    # "<name>-journal", which does not fit here. Explain that clearly.
+    frame = pd.DataFrame({"id": [1]})
+    long_name = "r" * 250 + ".db"
+    with closing(db_from_dataframe(long_name, "t", frame, cache_root=tmp_path)) as connection:
+        assert connection.execute("SELECT id FROM t").fetchall() == [(1,)]
+    with closing(db_from_dataframe(long_name, "t", frame, cache_root=tmp_path)) as connection:
+        assert connection.execute("SELECT id FROM t").fetchall() == [(1,)]
+    with pytest.raises(ValueError, match="Cannot rebuild.*journal"):
+        db_from_dataframe(long_name, "t", frame, cache_root=tmp_path, version=2)
+
+
+def test_rebuilds_are_allowed_wherever_the_filesystem_fits_the_journal(tmp_path):
+    # 93 characters but 273 UTF-8 bytes: APFS counts characters and accepts it,
+    # ext4 counts bytes and does not. Where it exists, it must rebuild.
+    name = "數據" * 45 + ".db"
+    try:
+        created = db_from_dataframe(name, "t", pd.DataFrame({"id": [1]}), cache_root=tmp_path)
+    except OSError as error:
+        if error.errno != errno.ENAMETOOLONG:
+            raise
+        pytest.skip("this filesystem limits names in bytes")
+    created.close()
+    with closing(db_from_dataframe(
+            name, "t", pd.DataFrame({"id": [2]}), cache_root=tmp_path, version=2)) as connection:
+        assert connection.execute("SELECT id FROM t").fetchall() == [(2,)]
+
+
+def test_an_empty_request_still_reuses_an_existing_database(tmp_path):
+    path = tmp_path / "existing.db"
+    with closing(db_from_dataframes_with_absolute_path(path, {"t": pd.DataFrame({"id": [1]})})):
+        pass
+    with closing(db_from_dataframes_with_absolute_path(path, {})) as connection:
+        assert connection.execute("SELECT id FROM t").fetchall() == [(1,)]
+
+
+def test_python_and_sqlite_compare_names_alike():
+    # Validation folds names in Python before a database exists; lookups ask
+    # SQLite. Both must agree on which names are the same.
+    names = ["Records", "records", "RECORDS", "Éclair", "éclair", "ÉCLAIR",
+             "\u212a", "k", "K", "straße", "STRASSE", "İstanbul", "istanbul"]
+    with closing(sqlite3.connect(":memory:")) as connection:
+        for left in names:
+            for right in names:
+                same_in_sqlite = connection.execute(
+                    "SELECT ? = ? COLLATE NOCASE", (left, right)).fetchone()[0]
+                assert (fold_identifier(left) == fold_identifier(right)) == bool(same_in_sqlite), (left, right)
+
+
+def test_from_fasta_dict_rejects_repeated_identifiers():
+    # A dict cannot repeat keys, but a pandas Series can.
+    class Record:
+        def __init__(self, seq):
+            self.seq = seq
+
+    records = pd.Series([Record("ACGT"), Record("TTTT")], index=["same", "same"])
+    with pytest.warns(DeprecationWarning), pytest.raises(ValueError, match="1 non-unique"):
+        DatabaseTable.from_fasta_dict("sequences", records, "id", "sequence")
+
+
+def test_a_lock_during_a_rebuild_is_reported_as_a_lock(tmp_path, monkeypatch):
+    # Even when the name leaves no room for the journal, contention for the
+    # lock must surface as SQLite's own error so callers can retry it.
+    real_connect = sqlite3.connect
+    monkeypatch.setattr(sqlite3, "connect", lambda *args, **kwargs: real_connect(*args, **{"timeout": 0.1, **kwargs}))
+    long_name = "r" * 250 + ".db"
+    db_from_dataframe(long_name, "t", pd.DataFrame({"id": [1]}), cache_root=tmp_path).close()
+    holder = sqlite3.connect(tmp_path / long_name, isolation_level=None)
+    holder.execute("BEGIN IMMEDIATE")
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="locked"):
+            db_from_dataframe(long_name, "t", pd.DataFrame({"id": [2]}), cache_root=tmp_path, version=2)
+    finally:
+        holder.execute("ROLLBACK")
+        holder.close()
+
+
+def test_windows_reports_an_overlong_journal_name_too(tmp_path, monkeypatch):
+    # Windows raises ERROR_FILENAME_EXCED_RANGE (206) instead of ENAMETOOLONG.
+    real_stat = os.stat
+
+    def windows_stat(path, *args, **kwargs):
+        if os.fspath(path).endswith("-journal"):
+            error = OSError(errno.ENOENT, "The filename or extension is too long")
+            error.winerror = 206
+            raise error
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(database_helpers.os, "stat", windows_stat)
+    with pytest.raises(ValueError, match="Cannot rebuild"):
+        database_helpers._explain_rebuild_failure(
+            str(tmp_path / "x.db"), sqlite3.OperationalError("unable to open database file"))

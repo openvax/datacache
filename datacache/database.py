@@ -16,6 +16,7 @@ from __future__ import print_function, division, absolute_import
 
 import logging
 import sqlite3
+import string
 from pathlib import Path
 from itertools import chain, islice
 
@@ -27,6 +28,26 @@ from .progress import Progress
 logger = logging.getLogger(__name__)
 
 METADATA_TABLE_NAME = "_datacache_metadata"
+
+_ASCII_LOWERCASE = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
+
+
+def fold_identifier(name):
+    """Fold an identifier's case the way SQLite compares names: ASCII only.
+
+    SQLite treats "Records" and "records" as one table but "Éclair" and
+    "éclair" as two, so str.lower() would merge names SQLite keeps apart.
+    Use this to validate names before a database exists; with a connection,
+    let SQLite compare them (see tables_exist).
+    """
+    return name.translate(_ASCII_LOWERCASE)
+
+
+def tables_exist(connection, table_names):
+    """Are all table_names present? SQLite's NOCASE compares them as it does."""
+    return all(connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ? COLLATE NOCASE",
+        (name,)).fetchone() for name in table_names)
 
 
 def quote_identifier(identifier):
@@ -81,9 +102,8 @@ class Database(object):
         return [result_tuple[0] for result_tuple in results]
 
     def has_table(self, table_name):
-        """Does a table named `table_name` exist in the sqlite database?"""
-        table_names = self.table_names()
-        return table_name in table_names
+        """Does a table named `table_name` exist, comparing case as SQLite does?"""
+        return tables_exist(self.connection, [table_name])
 
     def drop_all_tables(self, *, commit=True, include_views=False):
         """Drop tables, optionally removing views for a complete overwrite.
@@ -113,7 +133,7 @@ class Database(object):
 
     def has_tables(self, table_names):
         """Are all of the given table names present in the database?"""
-        return all(self.has_table(table_name) for table_name in table_names)
+        return tables_exist(self.connection, table_names)
 
     def has_version(self):
         """Does this database have version information?

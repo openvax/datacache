@@ -394,3 +394,17 @@ def test_http_timeout_progress_and_response_cleanup(tmp_path, monkeypatch, faile
         assert destination.read_bytes() == PAYLOAD
         assert progress == [(8, len(PAYLOAD)), (len(PAYLOAD), len(PAYLOAD))]
     assert response.closed
+
+
+def test_force_is_only_suggested_when_it_can_replace_the_path(tmp_path):
+    source = tmp_path / "source.txt"
+    source.write_bytes(b"data")
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
+    (cache_root / "mismatched.txt").write_bytes(b"old")
+    with pytest.raises(FileValidationError, match="use force=True"):
+        fetch_file(source.as_uri(), filename="mismatched.txt", cache_root=cache_root, expected_size=4)
+    (cache_root / "directory.txt").mkdir()
+    with pytest.raises(FileValidationError) as error:
+        fetch_file(source.as_uri(), filename="directory.txt", cache_root=cache_root)
+    assert "force=True" not in str(error.value)

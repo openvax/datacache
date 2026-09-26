@@ -1,5 +1,51 @@
 # Changelog
 
+## 1.11.0
+
+- Keep `fetch_csv_db` database names safe. An inferred name spells out each
+  column, so a header containing `/` created subdirectories (and `..` could
+  place the database outside the cache), characters such as `:` and `?` from
+  headers or the CSV filename are invalid on Windows, and wide CSVs exceeded the
+  255-byte file name limit and failed with `OSError`. Names are now spelled out
+  only when every character is valid on all supported platforms and SQLite's
+  journal still fits, measured the same way everywhere; otherwise the schema is
+  named by a digest. A matching database stored under the historical name is
+  still reused in place. A new `version` rebuilds it under the new name and
+  leaves the older copy alone, since another process may still have it open, and
+  logs a warning naming it.
+- Explain why a database cannot be rebuilt when the filesystem has no room for
+  its SQLite `-journal` file name: a `version` change or `overwrite=True` now
+  raises a clear `ValueError` instead of `unable to open database file`.
+  Creating and reusing such a database still work.
+- Reject the reserved `_datacache_metadata` and `sqlite_` table names before
+  reusing a database. Requesting `_datacache_metadata` for an existing database
+  returned the version table instead of storing the DataFrame.
+- Compare table and column names the way SQLite does, ignoring the case of ASCII
+  letters only: `records` now reuses an existing `Records` table instead of
+  rebuilding the database, and `Éclair` and `éclair` are accepted as distinct.
+- Report non-string column labels (for example `header=None` without `names=`)
+  with the same `ValueError` whether or not `db_filename` is given, instead of
+  an `AttributeError`.
+- Choose ZIP members more carefully: a member with the output's name inside a
+  folder, or differing only in letter case, is installed instead of the largest
+  member, preferring the copy nearest the archive root, then an exact-case
+  match. When nothing matches, the largest member is still installed, now with a
+  logged warning if the output was named explicitly and the archive has several.
+  New downloads of such archives install different bytes, so an
+  `expected_sha256` pinned to the previously installed member fails validation;
+  files already in a cache are unchanged.
+- Suggest `force=True` only when a regular file is present; it cannot replace a
+  directory at the cache path.
+- Store `float16` DataFrame columns as `FLOAT`.
+- Let `ensure_dir` accept a directory that another process creates at the same
+  moment.
+- Declare MD5 cache-key digests as not used for security, so naming works on
+  FIPS-mode Python. Existing cache keys are unchanged.
+- Deprecate `DatabaseTable.from_fasta_dict`; it will be removed in datacache
+  2.0.
+- Correct `fetch_file`'s `subdir` and `timeout` documentation, and document
+  `Cache`, `ensure_dir`, `get_data_dir`, and `clear_cache`.
+
 ## 1.10.2
 
 - Add a complete [public API reference](docs/api.md) covering every name in

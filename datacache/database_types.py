@@ -31,6 +31,7 @@ _dtype_to_db_type_dict = {
     'boolean': 'INT',
 
     'float': 'FLOAT',
+    'float16': 'FLOAT',
     'float32': 'FLOAT',
     'float64': 'FLOAT',
 

@@ -47,8 +47,13 @@ the URL path (case-insensitively). For download endpoints without a supported
 path extension, a filename in the final query parameter is also recognized
 for compatibility, such as IEDB's `downloader.php?file_name=doc/data.zip`.
 Bare format hints such as `?format=.gz` and fragments do not select a format.
-For ZIP files, the member matching the output filename is selected, falling
-back to the largest non-directory member. No archive paths are extracted.
+For ZIP files, the member stored at the output filename is selected; otherwise a
+member with that name in any folder, ignoring letter case (such as
+`release/data.csv` or `Data.CSV` for `data.csv`), preferring the one nearest the
+archive root and then an exact-case match. If no member matches, the largest
+non-directory member is installed, and a warning is logged when the output was
+named explicitly and that was a guess among several. No archive paths are
+extracted.
 HTML-to-CSV conversion requires an explicit `filename` or `destination` ending
 in `.csv`. Query strings and fragments in inferred cache keys never request
 conversion; those downloads retain their original HTML bytes.

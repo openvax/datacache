@@ -270,6 +270,32 @@ def _copy_with_progress(source, destination, show_progress, total=None):
             progress(completed, total)
 
 
+def _choose_zip_member(infos, filename, warn=True):
+    """Pick the archive member to install as filename.
+
+    Prefer the member stored at exactly that name, then a member with that
+    name, ignoring case, in any folder: nearest the archive root first, then
+    exact case, then the largest. Otherwise install the largest member,
+    warning (if warn) when that was a guess among several.
+    """
+    chosen = next((info for info in infos if info.filename == filename), None)
+    if chosen is not None:
+        return chosen
+    paths = {info: info.filename.replace("\\", "/") for info in infos}
+    names = {info: path.rsplit("/", 1)[-1] for info, path in paths.items()}
+    depths = {info: sum(part not in ("", ".") for part in path.split("/")[:-1])
+              for info, path in paths.items()}
+    named = [info for info in infos if names[info].casefold() == filename.casefold()]
+    if named:
+        return min(named, key=lambda info: (
+            depths[info], names[info] != filename, -info.file_size))
+    chosen = max(infos, key=lambda info: info.file_size)
+    if warn and len(infos) > 1:
+        logger.warning("No ZIP member is named %s; installing the largest of %d members, %s",
+                       filename, len(infos), chosen.filename)
+    return chosen
+
+
 def _download_and_decompress_if_necessary(
         full_path,
         download_url,
@@ -279,6 +305,7 @@ def _download_and_decompress_if_necessary(
         *,
         decompress=None,
         convert_html=None,
+        explicit_output=None,
         expected_sha256=None,
         expected_size=None,
         max_retries=DEFAULT_MAX_RETRIES,
@@ -292,6 +319,8 @@ def _download_and_decompress_if_necessary(
     Unspecified transform flags retain the pre-1.8 literal-URL heuristics for
     downstream callers (including pyensembl) using this private entry point.
     Explicit flags use the parsed URL format, including download endpoints.
+    explicit_output=False marks an inferred cache key, which no archive member
+    can match, so installing the largest ZIP member is not reported as a guess.
     """
     logger.info("Downloading %s to %s", download_url, full_path)
     full_path = os.fspath(full_path)
@@ -333,9 +362,7 @@ def _download_and_decompress_if_necessary(
                     if not infos:
                         raise ValueError("Empty zip archive")
                     # Never extract stored paths: stream one member's contents.
-                    chosen = next(
-                        (info for info in infos if info.filename == filename),
-                        max(infos, key=lambda info: info.file_size))
+                    chosen = _choose_zip_member(infos, filename, warn=explicit_output is not False)
                     with z.open(chosen) as src, open(staged_path, "wb") as dst:
                         _copy_with_progress(src, dst, show_progress, chosen.file_size)
             elif gunzip:
@@ -439,15 +466,17 @@ def fetch_file(
         the source's .zip/.gz suffix still implies decompression for compatibility.
 
     subdir : str, optional
-        Group downloads in a single subdirectory.
+        Application name selecting a platform cache directory, "datacache" by
+        default. It is not nested inside the default cache. Ignored when
+        cache_root is supplied.
 
     force : bool, optional
         By default, a remote file is not downloaded if it's already present.
         However, with this argument set to True, it will be overwritten.
 
-    timeout : float, optional
-        Timeout for download in seconds, default is None which uses
-        global timeout.
+    timeout : float or (float, float), optional
+        Per-attempt connect/read timeout in seconds. The default None waits
+        indefinitely. HTTP(S) also accepts a Requests (connect, read) tuple.
 
     use_wget_if_available : bool, optional
         Deprecated and ignored. datacache now always uses its streaming Python
@@ -510,7 +539,7 @@ def fetch_file(
     creation permissions (0666 filtered by umask); replacements preserve the
     existing file's read/write/execute permission bits.
 
-    Returns the full path of the local file.
+    Returns the local path, which is relative when destination or cache_root is.
     """
     _validate_expectations(expected_sha256, expected_size)
     if not isinstance(show_progress, bool):
@@ -537,6 +566,14 @@ def fetch_file(
         except FileNotFoundError:
             pass
         except FileValidationError as error:
+            # force=True replaces a mismatched file, but never a directory or
+            # other non-regular path, so only suggest it when it can help.
+            try:
+                replaceable = stat.S_ISREG(os.stat(full_path).st_mode)
+            except OSError:
+                replaceable = False
+            if not replaceable:
+                raise
             raise FileValidationError(
                 full_path, error.reason + "; use force=True to explicitly replace it") from error
         else:
@@ -555,6 +592,7 @@ def fetch_file(
         progress_callback=progress_callback,
         decompress=archive_decompression,
         convert_html=explicit_output,
+        explicit_output=explicit_output,
         expected_sha256=expected_sha256,
         expected_size=expected_size,
         max_retries=max_retries,
@@ -652,8 +690,8 @@ def fetch_csv_dataframe(
         show_progress=False,
         **pandas_kwargs):
     """
-    Download a remote file from `download_url` and save it locally as `filename`.
-    Load that local file as a CSV into Pandas using extra keyword arguments such as sep='\t'.
+    Download `download_url` (cached under the key `filename`, if given) and
+    load it with pandas.read_csv, passing extra keyword arguments such as sep='\t'.
 
     Archives are decompressed before parsing. Pass fetch_file settings such as
     cache_root, timeout, expected_sha256, and progress_callback in a separate

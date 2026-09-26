@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.10.2. Import these names from `datacache`.
+public `Cache` method in DataCache 1.11.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -90,9 +90,12 @@ replacement leaves the previous file intact.
 | `retry_max_delay` | Maximum retry delay in seconds, finite and non-negative. A server `Retry-After` exceeding this limit stops retries. |
 | `show_progress` | Boolean enabling optional tqdm download, decompression, and hash bars. Requires `datacache[progress]` when a bar is needed. Cache hits are quiet. |
 
-ZIP downloads select the member matching the output name, or the largest
-non-directory member if none matches. HTML-to-CSV conversion is enabled by an
-explicit `.csv` output for an HTML source and requires `datacache[html]`.
+ZIP downloads install the member stored at the output name; otherwise a member
+with that name, ignoring letter case, in any folder: the one nearest the archive
+root, then an exact-case match, then the largest. If none matches, the largest
+non-directory member is installed, with a logged warning when the output was
+named explicitly and the archive has several. HTML-to-CSV conversion is enabled
+by an explicit `.csv` output for an HTML source and requires `datacache[html]`.
 See [format selection](downloads.md#verified-downloads) and
 [HTTP retry behavior](downloads.md#transient-http-failures).
 
@@ -356,12 +359,14 @@ assert Path(writable_path).parent.is_dir()
 ensure_dir(path)
 ```
 
-Create `path` and its parents when the path does not exist. Accepts a string
-or `Path`. An existing path is left alone; this helper does not verify that an
-existing path is a directory.
+Create `path` and its parents unless something already exists there. Accepts a
+string or `Path`. An existing path is left alone; this helper does not verify
+that an existing path is a directory. A directory another process creates at the
+same moment is accepted.
 
 **Returns:** `None`. **Raises:** `OSError` subclasses for directory creation
-failures, including `PermissionError` and races resulting in `FileExistsError`.
+failures, including `PermissionError`, and `FileExistsError` for a broken
+symlink or a file created at `path` concurrently.
 
 ```python
 dc.ensure_dir(root / "extra" / "nested")
@@ -445,7 +450,8 @@ writes or network access. `files` must be a nonempty mapping of normalized
 relative names to dictionaries containing `expected_sha256` and/or
 `expected_size`. Use `{}` or `None` when expectations are unavailable. Nested
 names use `/`; absolute paths, `..`, redundant separators, backslashes, and
-drive-qualified names are rejected. Symlinks are followed during inspection.
+colons (including drive-qualified names) are rejected. Symlinks are followed
+during inspection.
 This checks a caller-supplied inventory; it does not parse a manifest or take
 a snapshot across concurrent changes.
 
@@ -587,20 +593,26 @@ give independent concurrent workers their own.
 
 A matching version and all requested tables permit reuse without parsing or
 validating new DataFrames, changing old constraints, or rewriting the file.
+Table names match as SQLite compares them, ignoring the case of ASCII letters.
 Data changes are not detected automatically. Change `version` (an integer) or
 use `overwrite=True` where available to rebuild. A rebuild replaces the
-database's tables, not just the named table, and rolls back on failure.
-Explicit overwrites also remove views; version-only rebuilds retain views.
-New databases are staged before publication. See [reuse and replacement](data.md#reuse-and-replacement)
-for locking, symlink, and filesystem requirements.
+database's tables, not just the named table, and rolls back on failure. Explicit
+overwrites also remove views; version-only rebuilds retain views. New databases
+are staged before publication. A rebuild writes SQLite's `<name>-journal` file
+beside the database; where the filesystem has no room for that name, rebuilding
+raises a `ValueError` that says so, while creating and reusing the database
+still work. See [reuse and replacement](data.md#reuse-and-replacement) for
+locking, symlink, and filesystem requirements.
 
-For a build, table names must be nonempty strings, distinct ignoring case,
-and must not use the reserved metadata name `_datacache_metadata` or names starting with `sqlite_`.
-DataFrame column names must be nonempty strings; spaces become underscores
-and names must remain distinct ignoring case. Primary keys name one column;
-index specifications are sequences of nonempty column-name sequences, such
-as `[("id",), ("id", "value")]`, not bare strings. Original and normalized
-column spellings are accepted. The pandas row index is not stored.
+Table names must be nonempty strings, distinct ignoring the case of ASCII
+letters (as SQLite compares names), and must not be the reserved metadata name
+`_datacache_metadata` or start with `sqlite_`, in any case. They are checked
+before any reuse. DataFrame column names must be nonempty strings; spaces become
+underscores and names must remain distinct ignoring the case of ASCII letters.
+Primary keys name one column; index specifications are sequences of nonempty
+column-name sequences, such as `[("id",), ("id", "value")]`, not bare strings.
+Original and normalized column spellings are accepted. The pandas row index is
+not stored.
 
 `show_progress=True` enables optional tqdm row-insertion bars; reuse is quiet.
 Signed integers preserve precision, missing values become SQL `NULL`, and
@@ -710,9 +722,21 @@ Download/parse a CSV and build or reuse `table_name` in SQLite. `download_url`,
 `csv_filename`, `subdir`, `download_options`, and `**pandas_kwargs` follow
 `fetch_csv_dataframe`. `csv_filename=None` infers a download key from the URL;
 `db_filename=None` infers a database name from the CSV name, row count, column
-names, and dtypes. An explicit `db_filename` works independently of
-`csv_filename`. A `cache_root` inside `download_options` applies to both files.
-Parser options must produce a DataFrame; do not pass `chunksize` or `iterator`.
+names, and dtypes. That name is spelled out only when every character is allowed
+in file names on all supported platforms (no `/`, `\`, `:`, `*`, `?`, `"`, `<`,
+`>`, `|`, or control characters) and the name leaves room for SQLite's
+`-journal` file within 255 UTF-8 bytes, measured the same way on every platform.
+Otherwise the schema is named by a digest, forbidden characters from the CSV
+filename become `_`, and a very long CSV filename is shortened, so column names
+never add directories or leave the cache directory; directories in an explicit
+`csv_filename` are kept. A matching database an older release stored under the
+historical name is still reused in place. A new `version` rebuilds it under the
+new name and leaves the older copy alone, since another process may still have
+it open, logging a warning that names it. An explicit `db_filename` works
+independently of `csv_filename`. A `cache_root` inside `download_options`
+applies to both files. Parser options must produce a DataFrame with non-empty
+string column names: do not pass `chunksize` or `iterator`, and pair
+`header=None` with `names=`.
 
 With an explicit database filename, matching tables/version can be reused
 without downloading or parsing the source. Supplying `force`, `expected_sha256`,

@@ -60,9 +60,11 @@ compatibility; use `iter_rows()` to consume it incrementally.
 ### Reuse and replacement
 
 A database is reused when its requested tables and version match, even if the
-supplied DataFrame's contents have changed. Increment `version` when changing
-the schema or dataset, or pass `overwrite=True` to rebuild explicitly. Version
-metadata is written in the same transaction after rows and indices succeed.
+supplied DataFrame's contents have changed. Table names match as SQLite compares
+them, so `Records` reuses `records`, but `Éclair` and `éclair` differ. Increment
+`version` when changing the schema or dataset, or pass `overwrite=True` to
+rebuild explicitly. Version metadata is written in the same transaction after
+rows and indices succeed.
 
 Existing databases rebuild in one SQLite transaction. A schema error, duplicate
 key, insertion failure, or handled interruption rolls back the old tables,
@@ -122,18 +124,29 @@ cache version. Unaffected databases need no action.
 
 ## CSV to SQLite
 
-`fetch_csv_db("records", url)` infers both filenames when omitted. An explicit
-`db_filename` also works without `csv_filename`. Supply parser options directly
-and download options in `download_options`, as described in the
-[progress guide](progress.md#csv-options). A `cache_root` in that dictionary
-is used for both the downloaded CSV and its database.
+`fetch_csv_db("records", url)` infers both filenames when omitted. The inferred
+database name records the row count and each column's name and type. Because
+column names come from the downloaded data, they are spelled out only when every
+character is valid in file names on all supported platforms and the name leaves
+room for SQLite's `-journal` file; otherwise the schema is named by a digest.
+Column names therefore never add directories or leave the cache directory
+(earlier releases turned a column named `m/z` into a subdirectory). A matching
+database an older release stored under its historical name is still reused in
+place. A new `version` rebuilds it under the new name and leaves the older copy
+alone, since another process may still have it open; a warning names it, and
+once no older release uses the cache you can remove it by hand or with
+`Cache.delete_all`. An explicit `db_filename` also works without `csv_filename`.
+Supply parser options directly and download options in `download_options`, as
+described in the [progress guide](progress.md#csv-options). A `cache_root` in
+that dictionary is used for both the downloaded CSV and its database.
 
 Explicit CSV filenames keep their historical database key, including names
-ending in `.csv.gz`. If `db_filename` is supplied and its tables/version match,
-the database can be reused offline without a source CSV or parsing it again.
+ending in `.csv.gz`, whenever that key is a valid file name on every supported
+platform. If `db_filename` is supplied and its tables/version match, the
+database can be reused offline without a source CSV or parsing it again.
 Supplying `expected_sha256`, `expected_size`, or `force` in `download_options`
-still requests source validation or refresh. Refreshing a source alone does
-not rebuild a matching database; also increment `version` when its data changes.
+still requests source validation or refresh. Refreshing a source alone does not
+rebuild a matching database; also increment `version` when its data changes.
 
 ## Custom single-file transformations
 

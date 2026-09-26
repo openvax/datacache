@@ -11,10 +11,12 @@
 # limitations under the License.
 
 import datetime
+import warnings
 
 import numpy as np
 import pandas as pd
 
+from .database import fold_identifier
 from .database_types import db_type
 
 # pd.NA was introduced after the original supported pandas versions. Missing
@@ -33,6 +35,12 @@ def _sqlite_value(value):
     if isinstance(value, (datetime.datetime, datetime.date)):
         return value.isoformat()
     return value
+
+def validate_column_names(columns):
+    """Require the non-empty string column names a database table needs."""
+    if len(columns) == 0 or not all(isinstance(column, str) and column for column in columns):
+        raise ValueError("DataFrame columns must be non-empty strings")
+
 
 class DatabaseTable(object):
     """Converts between a DataFrame and a sqlite3 database table"""
@@ -67,10 +75,9 @@ class DatabaseTable(object):
     def from_dataframe(cls, name, df, indices, primary_key=None):
         """Infer types and normalize column/constraint names consistently."""
 
-        if len(df.columns) == 0 or not all(isinstance(column, str) and column for column in df.columns):
-            raise ValueError("DataFrame columns must be non-empty strings")
+        validate_column_names(df.columns)
         normalized = [column.replace(" ", "_") for column in df.columns]
-        if len(set(column.lower() for column in normalized)) != len(normalized):
+        if len(set(fold_identifier(column) for column in normalized)) != len(normalized):
             raise ValueError("DataFrame column names collide after normalization")
         names = dict(zip(df.columns, normalized))
 
@@ -122,11 +129,22 @@ class DatabaseTable(object):
 
     @classmethod
     def from_fasta_dict(cls, name, fasta_dict, key_column, value_column):
+        """Deprecated: build a table from identifiers mapped to sequence records.
+
+        Parse FASTA in the consuming library, then use db_from_dataframe. This
+        helper will be removed in datacache 2.0.
+        """
+        warnings.warn(
+            "DatabaseTable.from_fasta_dict is deprecated and will be removed in "
+            "datacache 2.0; build a DataFrame and use db_from_dataframe instead.",
+            DeprecationWarning,
+            stacklevel=2)
         key_list = list(fasta_dict.keys())
         key_set = set(key_list)
         if len(key_set) != len(key_list):
+            # A dict cannot repeat keys, but a pandas Series or other mapping can.
             raise ValueError(
-                "FASTA file from contains %d non-unique sequence identifiers" %
+                "FASTA file contains %d non-unique sequence identifiers" %
                 (len(key_list) - len(key_set)))
         column_types = [(key_column, "TEXT"), (value_column, "TEXT")]
 
