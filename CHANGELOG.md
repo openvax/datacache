@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- Keep `fetch_csv_db` databases inside their cache directory. An inferred
+  database name is built from the CSV's column headers; a header could add `..`
+  path components, and wide CSVs exceeded the 255-byte filename limit and
+  failed with `OSError`. Such schemas are now named by a digest. Every other
+  inferred name is unchanged, so existing databases are still reused.
+- Report non-string column labels (for example `header=None` without `names=`)
+  with the same `ValueError` whether or not `db_filename` is given, instead of
+  an `AttributeError` when the database name is inferred.
+- Select a ZIP member stored inside a folder when its name matches the output,
+  instead of silently installing the largest member under the requested name.
+- Suggest `force=True` only when a regular file is present; it cannot replace
+  a directory at the cache path.
+- Store `float16` DataFrame columns as `FLOAT`.
+- Correct `fetch_file`'s `subdir` and `timeout` documentation, and document
+  `Cache`, `ensure_dir`, `get_data_dir`, and `clear_cache`.
+- Remove the unused internal `DatabaseTable.from_fasta_dict`.
+
 ## 1.10.2
 
 - Add a complete [public API reference](docs/api.md) covering every name in

@@ -39,10 +39,20 @@ def _source_suffix(download_url):
     return query_suffix if query_suffix in supported else path_suffix
 
 def ensure_dir(path):
+    """Create path and its parents if nothing exists there yet.
+
+    An existing path is left alone, even if it is not a directory.
+    """
     if not exists(path):
         makedirs(path)
 
 def get_data_dir(subdir=None, envkey=None):
+    """Return the platform cache directory for an application, without creating it.
+
+    subdir is the application name, "datacache" when omitted or empty. If the
+    environment variable named by envkey is set and nonempty, its value is the
+    root instead, with subdir appended when supplied.
+    """
     if envkey and environ.get(envkey):
         envdir = environ[envkey]
         if subdir:
@@ -68,6 +78,12 @@ def build_path(filename, subdir=None, *, cache_root=None):
     return full_path
 
 def clear_cache(subdir=None):
+    """Recursively delete an application's entire platform cache directory.
+
+    The directory itself is removed too; subdir=None selects the default
+    "datacache" cache. Use Cache.delete_all to empty an explicit cache_root
+    while keeping it. Raises FileNotFoundError if the directory is absent.
+    """
     data_dir = get_data_dir(subdir)
     rmtree(data_dir)
 

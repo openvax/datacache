@@ -90,8 +90,9 @@ replacement leaves the previous file intact.
 | `retry_max_delay` | Maximum retry delay in seconds, finite and non-negative. A server `Retry-After` exceeding this limit stops retries. |
 | `show_progress` | Boolean enabling optional tqdm download, decompression, and hash bars. Requires `datacache[progress]` when a bar is needed. Cache hits are quiet. |
 
-ZIP downloads select the member matching the output name, or the largest
-non-directory member if none matches. HTML-to-CSV conversion is enabled by an
+ZIP downloads select the member whose stored path matches the output name,
+then a member in a folder with that name (the largest, if several), and
+otherwise the largest non-directory member. HTML-to-CSV conversion is enabled by an
 explicit `.csv` output for an HTML source and requires `datacache[html]`.
 See [format selection](downloads.md#verified-downloads) and
 [HTTP retry behavior](downloads.md#transient-http-failures).
@@ -445,7 +446,8 @@ writes or network access. `files` must be a nonempty mapping of normalized
 relative names to dictionaries containing `expected_sha256` and/or
 `expected_size`. Use `{}` or `None` when expectations are unavailable. Nested
 names use `/`; absolute paths, `..`, redundant separators, backslashes, and
-drive-qualified names are rejected. Symlinks are followed during inspection.
+colons (including drive-qualified names) are rejected. Symlinks are followed
+during inspection.
 This checks a caller-supplied inventory; it does not parse a manifest or take
 a snapshot across concurrent changes.
 
@@ -710,9 +712,13 @@ Download/parse a CSV and build or reuse `table_name` in SQLite. `download_url`,
 `csv_filename`, `subdir`, `download_options`, and `**pandas_kwargs` follow
 `fetch_csv_dataframe`. `csv_filename=None` infers a download key from the URL;
 `db_filename=None` infers a database name from the CSV name, row count, column
-names, and dtypes. An explicit `db_filename` works independently of
-`csv_filename`. A `cache_root` inside `download_options` applies to both files.
-Parser options must produce a DataFrame; do not pass `chunksize` or `iterator`.
+names, and dtypes. Column names that would add a `..` path component, or make a
+name longer than 255 bytes, are replaced by a digest of the schema; other
+inferred names keep their historical spelling. An explicit `db_filename` works
+independently of `csv_filename`. A `cache_root` inside `download_options`
+applies to both files. Parser options must produce a DataFrame with non-empty
+string column names: do not pass `chunksize` or `iterator`, and pair
+`header=None` with `names=`.
 
 With an explicit database filename, matching tables/version can be reused
 without downloading or parsing the source. Supplying `force`, `expected_sha256`,

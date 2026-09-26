@@ -12,8 +12,10 @@
 
 from __future__ import print_function, division, absolute_import
 
+import hashlib
 import os
 import errno
+import re
 import stat
 from os.path import splitext, lexists
 import logging
@@ -35,6 +37,9 @@ from .database_types import db_type
 
 
 logger = logging.getLogger(__name__)
+
+# Longest file or directory name, in bytes, on common local filesystems.
+_MAX_NAME_BYTES = 255
 
 
 def connect_if_correct_version(db_path, version, *, read_only=False):
@@ -310,6 +315,8 @@ def db_from_dataframes(
         Dictionary from table names to list of column name tuples
 
     subdir : str, optional
+        Application name selecting a platform cache directory; ignored when
+        cache_root is supplied.
 
     overwrite : bool, optional
         If the database already exists, overwrite it?
@@ -370,13 +377,27 @@ def _db_filename_from_dataframe(base_filename, df):
     Generate database filename for a sqlite3 database we're going to
     fill with the contents of a DataFrame, using the DataFrame's
     column names and types.
+
+    Column names come from downloaded data. When they would add a ``..`` path
+    component or a name longer than filesystems allow, use a digest of the
+    schema instead. Every other name keeps its historical spelling so that
+    existing databases are still found after an upgrade.
     """
-    db_filename = base_filename + ("_nrows%d" % len(df))
+    schema = ""
     for column_name in df.columns:
+        if not isinstance(column_name, str) or not column_name:
+            raise ValueError("DataFrame columns must be non-empty strings")
         column_db_type = db_type(df[column_name].dtype)
-        column_name = column_name.replace(" ", "_")
-        db_filename += ".%s_%s" % (column_name, column_db_type)
-    return db_filename + ".db"
+        schema += ".%s_%s" % (column_name.replace(" ", "_"), column_db_type)
+    prefix = base_filename + ("_nrows%d" % len(df))
+    db_filename = prefix + schema + ".db"
+    escapes = ".." in re.split(r"[/\\]", schema)
+    too_long = any(len(os.fsencode(part)) > _MAX_NAME_BYTES
+                   for part in db_filename.replace(os.altsep or os.sep, os.sep).split(os.sep))
+    if escapes or too_long:
+        digest = hashlib.md5(schema.encode("utf-8", "surrogatepass")).hexdigest()
+        db_filename = "%s.%s.db" % (prefix, digest)
+    return db_filename
 
 def fetch_csv_db(
         table_name,

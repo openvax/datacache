@@ -119,26 +119,3 @@ class DatabaseTable(object):
             nullable=nullable,
             primary_key=primary_key,
             row_count=len(df))
-
-    @classmethod
-    def from_fasta_dict(cls, name, fasta_dict, key_column, value_column):
-        key_list = list(fasta_dict.keys())
-        key_set = set(key_list)
-        if len(key_set) != len(key_list):
-            raise ValueError(
-                "FASTA file from contains %d non-unique sequence identifiers" %
-                (len(key_list) - len(key_set)))
-        column_types = [(key_column, "TEXT"), (value_column, "TEXT")]
-
-        def make_rows():
-            return [
-                (idx, str(record.seq))
-                for (idx, record)
-                in fasta_dict.items()
-            ]
-
-        return cls(
-            name=name,
-            column_types=column_types,
-            make_rows=make_rows,
-            primary_key=key_column)

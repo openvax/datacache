@@ -333,9 +333,13 @@ def _download_and_decompress_if_necessary(
                     if not infos:
                         raise ValueError("Empty zip archive")
                     # Never extract stored paths: stream one member's contents.
-                    chosen = next(
-                        (info for info in infos if info.filename == filename),
-                        max(infos, key=lambda info: info.file_size))
+                    # Prefer the exact stored path, then a member in a folder
+                    # with the output's name, then the largest member.
+                    chosen = next((info for info in infos if info.filename == filename), None)
+                    if chosen is None:
+                        named = [info for info in infos
+                                 if info.filename.replace("\\", "/").rsplit("/", 1)[-1] == filename]
+                        chosen = max(named or infos, key=lambda info: info.file_size)
                     with z.open(chosen) as src, open(staged_path, "wb") as dst:
                         _copy_with_progress(src, dst, show_progress, chosen.file_size)
             elif gunzip:
@@ -439,15 +443,17 @@ def fetch_file(
         the source's .zip/.gz suffix still implies decompression for compatibility.
 
     subdir : str, optional
-        Group downloads in a single subdirectory.
+        Application name selecting a platform cache directory, "datacache" by
+        default. It is not nested inside the default cache. Ignored when
+        cache_root is supplied.
 
     force : bool, optional
         By default, a remote file is not downloaded if it's already present.
         However, with this argument set to True, it will be overwritten.
 
-    timeout : float, optional
-        Timeout for download in seconds, default is None which uses
-        global timeout.
+    timeout : float or (float, float), optional
+        Per-attempt connect/read timeout in seconds. The default None waits
+        indefinitely. HTTP(S) also accepts a Requests (connect, read) tuple.
 
     use_wget_if_available : bool, optional
         Deprecated and ignored. datacache now always uses its streaming Python
@@ -510,7 +516,7 @@ def fetch_file(
     creation permissions (0666 filtered by umask); replacements preserve the
     existing file's read/write/execute permission bits.
 
-    Returns the full path of the local file.
+    Returns the local path, which is relative when destination or cache_root is.
     """
     _validate_expectations(expected_sha256, expected_size)
     if not isinstance(show_progress, bool):
@@ -537,6 +543,14 @@ def fetch_file(
         except FileNotFoundError:
             pass
         except FileValidationError as error:
+            # force=True replaces a mismatched file, but never a directory or
+            # other non-regular path, so only suggest it when it can help.
+            try:
+                replaceable = stat.S_ISREG(os.stat(full_path).st_mode)
+            except OSError:
+                replaceable = False
+            if not replaceable:
+                raise
             raise FileValidationError(
                 full_path, error.reason + "; use force=True to explicitly replace it") from error
         else:
@@ -652,8 +666,8 @@ def fetch_csv_dataframe(
         show_progress=False,
         **pandas_kwargs):
     """
-    Download a remote file from `download_url` and save it locally as `filename`.
-    Load that local file as a CSV into Pandas using extra keyword arguments such as sep='\t'.
+    Download `download_url` (cached under the key `filename`, if given) and
+    load it with pandas.read_csv, passing extra keyword arguments such as sep='\t'.
 
     Archives are decompressed before parsing. Pass fetch_file settings such as
     cache_root, timeout, expected_sha256, and progress_callback in a separate

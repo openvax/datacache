@@ -122,7 +122,11 @@ cache version. Unaffected databases need no action.
 
 ## CSV to SQLite
 
-`fetch_csv_db("records", url)` infers both filenames when omitted. An explicit
+`fetch_csv_db("records", url)` infers both filenames when omitted. The inferred
+database name records the row count and each column's name and type. Because
+column names come from the downloaded data, a schema that would add a `..` path
+component or exceed the filesystem's 255-byte name limit is named by a digest
+instead, so the database always stays in its cache directory. An explicit
 `db_filename` also works without `csv_filename`. Supply parser options directly
 and download options in `download_options`, as described in the
 [progress guide](progress.md#csv-options). A `cache_root` in that dictionary

@@ -23,6 +23,13 @@ from .permissions import make_file_readable
 
 
 class Cache(object):
+    """Download, inspect, and delete files under one cache directory.
+
+    subdir names the application whose platform cache directory is used;
+    cache_root selects an exact directory instead. A relative cache_root is
+    resolved against the working directory on every call, not at construction.
+    """
+
     def __init__(self, subdir="datacache", *, cache_root=None):
         """Select a cache directory without creating it.
 
@@ -40,8 +47,12 @@ class Cache(object):
         self._local_paths = {}
 
     def delete_url(self, url):
-        """
-        Delete local files downloaded from given URL
+        """Delete this root's local copies of a URL; missing files are ignored.
+
+        Removes files this instance fetched from url, including under explicit
+        filenames, and the URL-derived raw and decompressed paths under this
+        root whichever instance created them. Explicit filenames used by other
+        instances are not recorded and are left in place.
         """
         keys = [key for key in self._local_paths if key[0] == url]
         paths = {self._local_paths[key] for key in keys}

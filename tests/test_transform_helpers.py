@@ -4,11 +4,15 @@ from contextlib import closing
 import gzip
 import hashlib
 from pathlib import Path
+import re
 import stat
 
 import pytest
 
+import pandas as pd
+
 from datacache import common, fetch_and_transform, fetch_csv_dataframe, fetch_csv_db
+from datacache.database_helpers import _db_filename_from_dataframe
 
 
 @pytest.fixture
@@ -114,3 +118,51 @@ def test_real_html_table_conversion(tmp_path):
     fetch_file(source.as_uri(), destination=destination,
                expected_sha256=hashlib.sha256(expected).hexdigest())
     assert destination.read_bytes() == expected
+
+
+def test_inferred_database_names_keep_their_historical_spelling():
+    # Existing databases are found by name, so ordinary schemas must keep
+    # producing exactly the old key, including a column containing a slash.
+    frame = pd.DataFrame({"id": [1], "label": ["x"]})
+    assert _db_filename_from_dataframe("records", frame) == "records_nrows1.id_INT.label_TEXT.db"
+    frame = pd.DataFrame({"peptide": ["AAA"], "m/z": [1.5]})
+    assert _db_filename_from_dataframe("mz", frame) == "mz_nrows1.peptide_TEXT.m/z_FLOAT.db"
+
+
+def test_csv_headers_cannot_place_the_database_outside_the_cache(tmp_path):
+    cache_root = tmp_path / "deep" / "cache"
+    source = tmp_path / "headers.csv"
+    source.write_text('id,"/../../../escaped/x"\n1,2\n')
+    with closing(fetch_csv_db("records", source.as_uri(), csv_filename="headers.csv",
+                              download_options={"cache_root": cache_root})) as connection:
+        assert connection.execute("SELECT * FROM records").fetchall() == [(1, 2)]
+    [database] = tmp_path.rglob("*.db")
+    assert database.parent == cache_root
+
+
+def test_wide_csv_infers_a_database_name_the_filesystem_accepts(tmp_path):
+    columns = ["measurement_%02d" % i for i in range(40)]
+    source = tmp_path / "wide.csv"
+    source.write_text(",".join(columns) + "\n" + ",".join("1" for _ in columns) + "\n")
+    with closing(fetch_csv_db("records", source.as_uri(), csv_filename="wide.csv",
+                              download_options={"cache_root": tmp_path / "cache"})) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM records").fetchone() == (1,)
+    [database] = (tmp_path / "cache").glob("*.db")
+    assert len(database.name) < 255
+
+
+def test_shortened_database_names_still_distinguish_schemas():
+    frame = pd.DataFrame({"a": [1], "/../x": [2]})
+    name = _db_filename_from_dataframe("records", frame)
+    assert re.fullmatch(r"records_nrows1\.[0-9a-f]{32}\.db", name)
+    assert _db_filename_from_dataframe("records", frame) == name
+    assert _db_filename_from_dataframe("records", frame.astype({"a": float})) != name
+
+
+@pytest.mark.parametrize("db_filename", [None, "unnamed.db"])
+def test_unnamed_csv_columns_raise_the_same_clear_error(tmp_path, db_filename):
+    source = tmp_path / "unnamed.csv"
+    source.write_text("1,2\n3,4\n")
+    with pytest.raises(ValueError, match="non-empty strings"):
+        fetch_csv_db("records", source.as_uri(), csv_filename="unnamed.csv", db_filename=db_filename,
+                     download_options={"cache_root": tmp_path / "cache"}, header=None)

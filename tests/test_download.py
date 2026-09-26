@@ -95,6 +95,29 @@ def test_fetch_decompress_zip_picks_named_member(isolated_cache):
     assert not os.path.exists("readme.txt")
 
 
+def test_fetch_decompress_zip_matches_member_inside_a_folder(isolated_cache):
+    # Archives often wrap their files in a top-level folder. The member named
+    # like the output must win over a larger sibling rather than having the
+    # largest member's contents silently installed under the requested name.
+    archive = isolated_cache / "release.zip"
+    with zipfile.ZipFile(str(archive), "w") as z:
+        z.writestr("release/wanted.csv", "the wanted member\n")
+        z.writestr("release/other.csv", "a much larger member\n" * 100)
+    path = fetch_file("file://" + str(archive), filename="wanted.csv", decompress=True)
+    with open(path) as f:
+        assert f.read() == "the wanted member\n"
+
+
+def test_fetch_decompress_zip_prefers_the_exact_member_path(isolated_cache):
+    archive = isolated_cache / "release.zip"
+    with zipfile.ZipFile(str(archive), "w") as z:
+        z.writestr("wanted.csv", "top level\n")
+        z.writestr("nested/wanted.csv", "a larger nested copy\n" * 100)
+    path = fetch_file("file://" + str(archive), filename="wanted.csv", decompress=True)
+    with open(path) as f:
+        assert f.read() == "top level\n"
+
+
 def test_corrupt_gz_leaves_no_partial_cache(isolated_cache):
     # A truncated gzip decompresses partway then fails its trailing CRC check.
     # fetch_file must surface the error and leave NO file at the destination,
