@@ -5,6 +5,7 @@ import gzip
 import hashlib
 from pathlib import Path
 import re
+import sqlite3
 import stat
 
 import pytest
@@ -122,11 +123,10 @@ def test_real_html_table_conversion(tmp_path):
 
 def test_inferred_database_names_keep_their_historical_spelling():
     # Existing databases are found by name, so ordinary schemas must keep
-    # producing exactly the old key, including a column containing a slash.
-    frame = pd.DataFrame({"id": [1], "label": ["x"]})
-    assert _db_filename_from_dataframe("records", frame) == "records_nrows1.id_INT.label_TEXT.db"
-    frame = pd.DataFrame({"peptide": ["AAA"], "m/z": [1.5]})
-    assert _db_filename_from_dataframe("mz", frame) == "mz_nrows1.peptide_TEXT.m/z_FLOAT.db"
+    # producing exactly the old key.
+    frame = pd.DataFrame({"id": [1], "label": ["x"], "with space": [1.5]})
+    assert (_db_filename_from_dataframe("records", frame) ==
+            "records_nrows1.id_INT.label_TEXT.with_space_FLOAT.db")
 
 
 def test_csv_headers_cannot_place_the_database_outside_the_cache(tmp_path):
@@ -166,3 +166,76 @@ def test_unnamed_csv_columns_raise_the_same_clear_error(tmp_path, db_filename):
     with pytest.raises(ValueError, match="non-empty strings"):
         fetch_csv_db("records", source.as_uri(), csv_filename="unnamed.csv", db_filename=db_filename,
                      download_options={"cache_root": tmp_path / "cache"}, header=None)
+
+
+
+def _write_legacy_database(path, version, rows):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with closing(sqlite3.connect(path)) as connection:
+        connection.executescript(
+            'CREATE TABLE records (peptide TEXT, "m/z" FLOAT);'
+            "CREATE TABLE _datacache_metadata (version INT);"
+            "INSERT INTO _datacache_metadata VALUES (%d);" % version)
+        connection.executemany("INSERT INTO records VALUES (?, ?)", rows)
+        connection.commit()
+
+
+@pytest.fixture
+def mz_source(tmp_path):
+    source = tmp_path / "mz.csv"
+    source.write_text("peptide,m/z\nAAA,1.5\n")
+    return source
+
+
+def test_slash_in_a_column_name_does_not_nest_directories(tmp_path, mz_source):
+    cache_root = tmp_path / "cache"
+    with closing(fetch_csv_db("records", mz_source.as_uri(), csv_filename="mz.csv",
+                              download_options={"cache_root": cache_root})) as connection:
+        assert connection.execute('SELECT "m/z" FROM records').fetchall() == [(1.5,)]
+    assert [path for path in cache_root.iterdir() if path.is_dir()] == []
+    assert len(list(cache_root.glob("*.db"))) == 1
+
+
+def test_nested_database_from_an_older_release_is_reused_in_place(tmp_path, mz_source):
+    cache_root = tmp_path / "cache"
+    legacy = cache_root / "mz_nrows1.peptide_TEXT.m" / "z_FLOAT.db"
+    _write_legacy_database(legacy, 1, [("OLD", 9.5)])
+    before = legacy.read_bytes()
+    with closing(fetch_csv_db("records", mz_source.as_uri(), csv_filename="mz.csv",
+                              download_options={"cache_root": cache_root})) as connection:
+        assert connection.execute("SELECT * FROM records").fetchall() == [("OLD", 9.5)]
+    assert legacy.read_bytes() == before
+    assert list(cache_root.glob("*.db")) == []
+
+
+def test_new_version_of_a_nested_database_is_built_flat(tmp_path, mz_source):
+    cache_root = tmp_path / "cache"
+    legacy = cache_root / "mz_nrows1.peptide_TEXT.m" / "z_FLOAT.db"
+    _write_legacy_database(legacy, 1, [("OLD", 9.5)])
+    before = legacy.read_bytes()
+    with closing(fetch_csv_db("records", mz_source.as_uri(), csv_filename="mz.csv", version=2,
+                              download_options={"cache_root": cache_root})) as connection:
+        assert connection.execute("SELECT * FROM records").fetchall() == [("AAA", 1.5)]
+    assert legacy.read_bytes() == before
+    assert len(list(cache_root.glob("*.db"))) == 1
+
+
+def test_legacy_lookup_never_opens_a_database_outside_the_cache(tmp_path):
+    # Even when the directories a hostile header names already exist, an old
+    # nested name is reused only if it stays inside the cache directory.
+    cache_root = tmp_path / "deep" / "cache"
+    (cache_root / "headers_nrows1.a_INT.").mkdir(parents=True)
+    outside = tmp_path / "escaped" / "x_INT.db"
+    outside.parent.mkdir()
+    with closing(sqlite3.connect(outside)) as connection:
+        connection.executescript("CREATE TABLE records (a INT, b INT);"
+                                 "INSERT INTO records VALUES (99, 99);"
+                                 "CREATE TABLE _datacache_metadata (version INT);"
+                                 "INSERT INTO _datacache_metadata VALUES (1);")
+    before = outside.read_bytes()
+    source = tmp_path / "headers.csv"
+    source.write_text('a,"/../../../escaped/x"\n1,2\n')
+    with closing(fetch_csv_db("records", source.as_uri(), csv_filename="headers.csv",
+                              download_options={"cache_root": cache_root})) as connection:
+        assert connection.execute("SELECT * FROM records").fetchall() == [(1, 2)]
+    assert outside.read_bytes() == before

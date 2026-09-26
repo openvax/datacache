@@ -336,3 +336,23 @@ def test_new_failed_creator_does_not_remove_concurrent_winner(tmp_path):
     with closing(connect_if_correct_version(path, 1)) as connection:
         assert connection.execute("SELECT id FROM records").fetchall() == [(1,)]
     assert list(tmp_path.iterdir()) == [path]
+
+
+def test_reuse_matches_table_names_ignoring_ascii_case(tmp_path):
+    # SQLite treats "Records" and "records" as one table, so a caller spelling
+    # it differently must reuse the database instead of rebuilding it.
+    with closing(db_from_dataframe("cased.db", "Records", pd.DataFrame({"id": [1]}), cache_root=tmp_path)):
+        pass
+    with closing(db_from_dataframe(
+            "cased.db", "records", pd.DataFrame({"id": [2]}), cache_root=tmp_path)) as connection:
+        assert connection.execute("SELECT id FROM records").fetchall() == [(1,)]
+
+
+def test_reuse_keeps_non_ascii_case_distinct_like_sqlite(tmp_path):
+    # SQLite folds ASCII letters only: "Éclair" and "éclair" are two tables.
+    # Matching them with str.lower() would reuse a table SQLite cannot find.
+    with closing(db_from_dataframe("accented.db", "Éclair", pd.DataFrame({"id": [1]}), cache_root=tmp_path)):
+        pass
+    with closing(db_from_dataframe(
+            "accented.db", "éclair", pd.DataFrame({"id": [2]}), cache_root=tmp_path)) as connection:
+        assert connection.execute('SELECT id FROM "éclair"').fetchall() == [(2,)]

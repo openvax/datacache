@@ -2,11 +2,15 @@
 
 ## Unreleased
 
-- Keep `fetch_csv_db` databases inside their cache directory. An inferred
-  database name is built from the CSV's column headers; a header could add `..`
-  path components, and wide CSVs exceeded the 255-byte filename limit and
-  failed with `OSError`. Such schemas are now named by a digest. Every other
-  inferred name is unchanged, so existing databases are still reused.
+- Keep `fetch_csv_db` databases directly inside their cache directory. An
+  inferred database name is built from the CSV's column headers: a header
+  containing `/` created subdirectories (a `..` could escape the cache entirely),
+  and wide CSVs exceeded the 255-byte filename limit and failed with `OSError`.
+  Such schemas are now named by a digest. A database an older release nested
+  inside the cache is still reused in place, and every other inferred name is
+  unchanged, so existing databases keep being reused.
+- Reuse a database when a requested table name differs only in the case of
+  ASCII letters, matching how SQLite compares names, instead of rebuilding it.
 - Report non-string column labels (for example `header=None` without `names=`)
   with the same `ValueError` whether or not `db_filename` is given, instead of
   an `AttributeError` when the database name is inferred.

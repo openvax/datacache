@@ -60,9 +60,11 @@ compatibility; use `iter_rows()` to consume it incrementally.
 ### Reuse and replacement
 
 A database is reused when its requested tables and version match, even if the
-supplied DataFrame's contents have changed. Increment `version` when changing
-the schema or dataset, or pass `overwrite=True` to rebuild explicitly. Version
-metadata is written in the same transaction after rows and indices succeed.
+supplied DataFrame's contents have changed. Table names match as SQLite compares
+them, so `Records` reuses `records`, but `Éclair` and `éclair` differ. Increment
+`version` when changing the schema or dataset, or pass `overwrite=True` to
+rebuild explicitly. Version metadata is written in the same transaction after
+rows and indices succeed.
 
 Existing databases rebuild in one SQLite transaction. A schema error, duplicate
 key, insertion failure, or handled interruption rolls back the old tables,
@@ -124,13 +126,16 @@ cache version. Unaffected databases need no action.
 
 `fetch_csv_db("records", url)` infers both filenames when omitted. The inferred
 database name records the row count and each column's name and type. Because
-column names come from the downloaded data, a schema that would add a `..` path
-component or exceed the filesystem's 255-byte name limit is named by a digest
-instead, so the database always stays in its cache directory. An explicit
-`db_filename` also works without `csv_filename`. Supply parser options directly
-and download options in `download_options`, as described in the
-[progress guide](progress.md#csv-options). A `cache_root` in that dictionary
-is used for both the downloaded CSV and its database.
+column names come from the downloaded data, a schema whose column names contain
+`/` or `\`, or that would exceed the filesystem's 255-byte name limit, is named
+by a digest instead, so the database is always a file directly in its cache
+directory. Earlier releases nested such databases in subdirectories (a column
+named `m/z` created one); a nested database that stays inside the cache is still
+reused in place, and a new `version` rebuilds it under the flat name. An
+explicit `db_filename` also works without `csv_filename`. Supply parser options
+directly and download options in `download_options`, as described in the
+[progress guide](progress.md#csv-options). A `cache_root` in that dictionary is
+used for both the downloaded CSV and its database.
 
 Explicit CSV filenames keep their historical database key, including names
 ending in `.csv.gz`. If `db_filename` is supplied and its tables/version match,

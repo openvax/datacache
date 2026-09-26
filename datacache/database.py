@@ -16,6 +16,7 @@ from __future__ import print_function, division, absolute_import
 
 import logging
 import sqlite3
+import string
 from pathlib import Path
 from itertools import chain, islice
 
@@ -27,6 +28,18 @@ from .progress import Progress
 logger = logging.getLogger(__name__)
 
 METADATA_TABLE_NAME = "_datacache_metadata"
+
+_ASCII_LOWERCASE = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
+
+
+def fold_identifier(name):
+    """Fold an identifier's case the way SQLite compares names: ASCII only.
+
+    SQLite treats "Records" and "records" as one table but "Éclair" and
+    "éclair" as two, so str.lower() would match tables SQLite considers
+    absent. Non-string values are returned unchanged and match nothing.
+    """
+    return name.translate(_ASCII_LOWERCASE) if isinstance(name, str) else name
 
 
 def quote_identifier(identifier):
@@ -81,9 +94,9 @@ class Database(object):
         return [result_tuple[0] for result_tuple in results]
 
     def has_table(self, table_name):
-        """Does a table named `table_name` exist in the sqlite database?"""
-        table_names = self.table_names()
-        return table_name in table_names
+        """Does a table named `table_name` exist, comparing case as SQLite does?"""
+        return fold_identifier(table_name) in {
+            fold_identifier(name) for name in self.table_names()}
 
     def drop_all_tables(self, *, commit=True, include_views=False):
         """Drop tables, optionally removing views for a complete overwrite.

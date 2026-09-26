@@ -31,9 +31,10 @@ from .download import (
     fetch_csv_dataframe, _open_staging_file, _normal_creation_mode,
     _remove_staging_file,
 )
-from .database import Database
+from .database import Database, fold_identifier
 from .database_table import DatabaseTable
 from .database_types import db_type
+from .inspection import path_exists
 
 
 logger = logging.getLogger(__name__)
@@ -75,9 +76,9 @@ def _cached_connection(db_path, table_names, version):
     if connection is None:
         return None
     try:
-        existing = {row[0] for row in connection.execute(
+        existing = {fold_identifier(row[0]) for row in connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table'")}
-        if all(name in existing for name in table_names):
+        if all(fold_identifier(name) in existing for name in table_names):
             return connection
     except BaseException:
         connection.close()
@@ -372,32 +373,55 @@ def db_from_dataframe(
         show_progress=show_progress)
 
 
-def _db_filename_from_dataframe(base_filename, df):
-    """
-    Generate database filename for a sqlite3 database we're going to
-    fill with the contents of a DataFrame, using the DataFrame's
-    column names and types.
-
-    Column names come from downloaded data. When they would add a ``..`` path
-    component or a name longer than filesystems allow, use a digest of the
-    schema instead. Every other name keeps its historical spelling so that
-    existing databases are still found after an upgrade.
-    """
+def _schema_filename_parts(base_filename, df):
+    """Split an inferred database name into its row-count prefix and schema."""
     schema = ""
     for column_name in df.columns:
         if not isinstance(column_name, str) or not column_name:
             raise ValueError("DataFrame columns must be non-empty strings")
         column_db_type = db_type(df[column_name].dtype)
         schema += ".%s_%s" % (column_name.replace(" ", "_"), column_db_type)
-    prefix = base_filename + ("_nrows%d" % len(df))
+    return base_filename + ("_nrows%d" % len(df)), schema
+
+
+def _fits_filesystem(filename):
+    """Is every component of filename within the filesystem's name limit?"""
+    return all(len(os.fsencode(part)) <= _MAX_NAME_BYTES
+               for part in filename.replace(os.altsep or os.sep, os.sep).split(os.sep))
+
+
+def _db_filename_from_dataframe(base_filename, df):
+    """
+    Generate database filename for a sqlite3 database we're going to
+    fill with the contents of a DataFrame, using the DataFrame's
+    column names and types.
+
+    Column names come from downloaded data. A schema containing a path
+    separator, or too long for a filename, is named by its digest instead, so
+    the database is always a file directly inside its cache directory. Every
+    other name keeps its historical spelling so existing databases are reused.
+    """
+    prefix, schema = _schema_filename_parts(base_filename, df)
     db_filename = prefix + schema + ".db"
-    escapes = ".." in re.split(r"[/\\]", schema)
-    too_long = any(len(os.fsencode(part)) > _MAX_NAME_BYTES
-                   for part in db_filename.replace(os.altsep or os.sep, os.sep).split(os.sep))
-    if escapes or too_long:
+    if re.search(r"[/\\]", schema) or not _fits_filesystem(db_filename):
         digest = hashlib.md5(schema.encode("utf-8", "surrogatepass")).hexdigest()
         db_filename = "%s.%s.db" % (prefix, digest)
     return db_filename
+
+
+def _legacy_db_filename_from_dataframe(base_filename, df):
+    """Return the nested name older releases used for this schema, or None.
+
+    A column name containing a path separator used to add directories inside
+    the cache. Such a database is still reused where it is, but only when its
+    name stays inside the cache directory and could have been created.
+    """
+    prefix, schema = _schema_filename_parts(base_filename, df)
+    parts = re.split(r"[/\\]", schema)
+    legacy = prefix + schema + ".db"
+    if len(parts) == 1 or ".." in parts or not _fits_filesystem(legacy):
+        return None
+    return legacy
 
 def fetch_csv_db(
         table_name,
@@ -444,6 +468,15 @@ def fetch_csv_db(
                            build_local_filename(download_url, decompress=True))
         base_filename = splitext(source_filename)[0]
         db_filename = _db_filename_from_dataframe(base_filename, df)
+        legacy_filename = _legacy_db_filename_from_dataframe(base_filename, df)
+        if legacy_filename is not None and not path_exists(
+                resolve_path(db_filename, subdir, cache_root=cache_root)):
+            # Reuse a matching database an older release nested in the cache,
+            # without moving it. Version changes rebuild under the new name.
+            connection = _cached_connection(
+                resolve_path(legacy_filename, subdir, cache_root=cache_root), [table_name], version)
+            if connection is not None:
+                return connection
     return db_from_dataframe(
         db_filename,
         table_name,
