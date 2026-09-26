@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.11.0
 
 - Keep `fetch_csv_db` database names safe. An inferred name spells out each
   column, so a header containing `/` created subdirectories (and `..` could
