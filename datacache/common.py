@@ -39,12 +39,14 @@ def _source_suffix(download_url):
     return query_suffix if query_suffix in supported else path_suffix
 
 def ensure_dir(path):
-    """Create path and its parents if nothing exists there yet.
+    """Create path and its parents unless something already exists there.
 
-    An existing path is left alone, even if it is not a directory.
+    An existing path is left alone, even if it is not a directory. A directory
+    another process creates at the same moment is fine; a broken symlink raises
+    FileExistsError, since no directory can be created in its place.
     """
     if not exists(path):
-        makedirs(path)
+        makedirs(path, exist_ok=True)
 
 def get_data_dir(subdir=None, envkey=None):
     """Return the platform cache directory for an application, without creating it.
@@ -95,7 +97,7 @@ def normalize_filename(filename):
     filename = re.sub(r"/|\\|;|:|\?|=", "_", filename)
 
     if len(filename) > 150:
-        prefix = hashlib.md5(filename.encode('utf-8')).hexdigest()
+        prefix = hashlib.md5(filename.encode('utf-8'), usedforsecurity=False).hexdigest()
         filename = prefix + filename[-140:]
 
     return filename
@@ -112,7 +114,7 @@ def build_local_filename(download_url=None, filename=None, decompress=False):
     inferred = not filename
     # if no filename provided, use the original filename on the server
     if not filename:
-        digest = hashlib.md5(download_url.encode('utf-8')).hexdigest()
+        digest = hashlib.md5(download_url.encode('utf-8'), usedforsecurity=False).hexdigest()
         filename_url = download_url
         if decompress:
             parsed = urlsplit(download_url)

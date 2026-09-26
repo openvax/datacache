@@ -3,6 +3,7 @@
 from contextlib import closing
 import gzip
 import hashlib
+import os
 from pathlib import Path
 import re
 import sqlite3
@@ -13,7 +14,8 @@ import pytest
 import pandas as pd
 
 from datacache import common, fetch_and_transform, fetch_csv_dataframe, fetch_csv_db
-from datacache.database_helpers import _db_filename_from_dataframe
+from datacache.common import build_local_filename
+from datacache.database_helpers import _db_filenames_from_dataframe, _name_length
 
 
 @pytest.fixture
@@ -124,9 +126,9 @@ def test_real_html_table_conversion(tmp_path):
 def test_inferred_database_names_keep_their_historical_spelling():
     # Existing databases are found by name, so ordinary schemas must keep
     # producing exactly the old key.
-    frame = pd.DataFrame({"id": [1], "label": ["x"], "with space": [1.5]})
-    assert (_db_filename_from_dataframe("records", frame) ==
-            "records_nrows1.id_INT.label_TEXT.with_space_FLOAT.db")
+    frame = pd.DataFrame({"id": [1], "label": ["x"], "with space": [1.5], "Éclair μ (%)": [2]})
+    assert _db_filenames_from_dataframe("records", frame) == (
+        "records_nrows1.id_INT.label_TEXT.with_space_FLOAT.Éclair_μ_(%)_INT.db", None)
 
 
 def test_csv_headers_cannot_place_the_database_outside_the_cache(tmp_path):
@@ -153,10 +155,11 @@ def test_wide_csv_infers_a_database_name_the_filesystem_accepts(tmp_path):
 
 def test_shortened_database_names_still_distinguish_schemas():
     frame = pd.DataFrame({"a": [1], "/../x": [2]})
-    name = _db_filename_from_dataframe("records", frame)
+    name, historical = _db_filenames_from_dataframe("records", frame)
     assert re.fullmatch(r"records_nrows1\.[0-9a-f]{32}\.db", name)
-    assert _db_filename_from_dataframe("records", frame) == name
-    assert _db_filename_from_dataframe("records", frame.astype({"a": float})) != name
+    assert historical is None  # a name that could leave the cache is never reused
+    assert _db_filenames_from_dataframe("records", frame)[0] == name
+    assert _db_filenames_from_dataframe("records", frame.astype({"a": float}))[0] != name
 
 
 @pytest.mark.parametrize("db_filename", [None, "unnamed.db"])
@@ -239,3 +242,111 @@ def test_legacy_lookup_never_opens_a_database_outside_the_cache(tmp_path):
                               download_options={"cache_root": cache_root})) as connection:
         assert connection.execute("SELECT * FROM records").fetchall() == [(1, 2)]
     assert outside.read_bytes() == before
+
+
+def test_rebuilds_leave_room_for_the_sqlite_journal(tmp_path):
+    # SQLite creates "<database>-journal" to rebuild. A 250-byte name could be
+    # built once but never rebuilt, so such names are shortened up front, even
+    # when a long CSV filename leaves no room for the usual digest name.
+    schema = ".id_INT.value_INT.db"
+    base = "r" * (250 - len("_nrows1") - len(schema))
+    source = tmp_path / "source.csv"
+    source.write_text("id,value\n1,10\n")
+    options = dict(csv_filename=base + ".csv", download_options={"cache_root": tmp_path / "cache"})
+    for version in (1, 2):
+        with closing(fetch_csv_db("records", source.as_uri(), version=version, **options)) as connection:
+            assert connection.execute("SELECT * FROM records").fetchall() == [(1, 10)]
+    [database] = (tmp_path / "cache").glob("*.db")
+    assert len(database.name) <= 255 - len("-journal")
+    assert database.name.startswith("rrrr")
+
+
+def test_database_at_a_name_too_long_to_rebuild_is_still_reused(tmp_path):
+    # Older releases could create a 248-255 byte name. It is still reused in
+    # place; only a rebuild moves to the shorter name.
+    cache_root = tmp_path / "cache"
+    source = tmp_path / "mass.csv"
+    source.write_text("peptide,mass\nAAA,1.5\n")
+    base = "m" * (250 - len("_nrows1") - len(".peptide_TEXT.mass_FLOAT.db"))
+    name, historical = _db_filenames_from_dataframe(base, pd.read_csv(source))
+    assert len(historical) == 250 and len(name) <= 255 - len("-journal")
+    # SQLite cannot write at this name (its journal would not fit), so, like
+    # older releases, build under a short name and publish it with a link.
+    _write_legacy_database(cache_root / "staged.db", 1, [("OLD", 9.5)])
+    os.link(cache_root / "staged.db", cache_root / historical)
+    os.remove(cache_root / "staged.db")
+    with closing(fetch_csv_db("records", source.as_uri(), csv_filename=base + ".csv",
+                              download_options={"cache_root": cache_root})) as connection:
+        assert connection.execute("SELECT * FROM records").fetchall() == [("OLD", 9.5)]
+
+
+def test_characters_some_platform_forbids_are_kept_out_of_names(tmp_path):
+    source = tmp_path / "times.csv"
+    source.write_text('id,time:s,"a?b",c*d,e|f\n1,2,3,4,5\n')
+    cache_root = tmp_path / "cache"
+    with closing(fetch_csv_db("records", source.as_uri(), csv_filename="times.csv",
+                              download_options={"cache_root": cache_root})) as connection:
+        assert connection.execute('SELECT "time:s" FROM records').fetchall() == [(2,)]
+    [database] = cache_root.glob("*.db")
+    assert not set(':?*|<>"') & set(database.name)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="':' names an alternate data stream on Windows")
+def test_database_with_a_colon_from_an_older_release_is_reused(tmp_path):
+    cache_root = tmp_path / "cache"
+    legacy = cache_root / "times_nrows1.peptide_TEXT.m:z_FLOAT.db"
+    _write_legacy_database(legacy, 1, [("OLD", 9.5)])
+    source = tmp_path / "times.csv"
+    source.write_text("peptide,m:z\nAAA,1.5\n")
+    with closing(fetch_csv_db("records", source.as_uri(), csv_filename="times.csv",
+                              download_options={"cache_root": cache_root})) as connection:
+        assert connection.execute("SELECT * FROM records").fetchall() == [("OLD", 9.5)]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="backslash separates paths on Windows")
+def test_backslashes_in_an_older_name_are_ordinary_characters_on_posix(tmp_path):
+    # On POSIX, "a\..\b" was one harmless file name, so it is reused in place.
+    cache_root = tmp_path / "cache"
+    legacy = cache_root / "slashes_nrows1.peptide_TEXT.a\\..\\b_FLOAT.db"
+    _write_legacy_database(legacy, 1, [("OLD", 9.5)])
+    source = tmp_path / "slashes.csv"
+    source.write_text("peptide,a\\..\\b\nAAA,1.5\n")
+    with closing(fetch_csv_db("records", source.as_uri(), csv_filename="slashes.csv",
+                              download_options={"cache_root": cache_root})) as connection:
+        assert connection.execute("SELECT * FROM records").fetchall() == [("OLD", 9.5)]
+
+
+@pytest.mark.parametrize("obstacle", ["file", "directory"])
+def test_anything_else_at_an_older_name_is_not_reused(tmp_path, mz_source, obstacle):
+    # Looking for an older release's database must never stop a new build.
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
+    if obstacle == "file":  # the old name's parent directory is a regular file
+        (cache_root / "mz_nrows1.peptide_TEXT.m").write_text("not a directory")
+    else:  # a directory sits where the old database would be
+        (cache_root / "mz_nrows1.peptide_TEXT.m" / "z_FLOAT.db").mkdir(parents=True)
+    with closing(fetch_csv_db("records", mz_source.as_uri(), csv_filename="mz.csv",
+                              download_options={"cache_root": cache_root})) as connection:
+        assert connection.execute("SELECT * FROM records").fetchall() == [("AAA", 1.5)]
+    assert len(list(cache_root.glob("*.db"))) == 1
+
+
+def test_name_length_matches_each_platforms_limit():
+    # NTFS limits names in UTF-16 code units; POSIX filesystems in bytes.
+    assert _name_length("é" * 200, windows=False) == 400
+    assert _name_length("é" * 200, windows=True) == 200
+
+
+def test_cache_names_work_where_md5_is_disabled_for_security(monkeypatch):
+    # FIPS-mode OpenSSL rejects md5 unless it is declared not to be for security.
+    real_md5 = hashlib.md5
+
+    def fips_md5(*args, usedforsecurity=True, **kwargs):
+        if usedforsecurity:
+            raise ValueError("[digital envelope routines] unsupported")
+        return real_md5(*args, usedforsecurity=False, **kwargs)
+
+    monkeypatch.setattr(hashlib, "md5", fips_md5)
+    assert build_local_filename("https://example.org/data?id=1")
+    assert len(build_local_filename(filename="x" * 200)) < 200
+    assert _db_filenames_from_dataframe("records", pd.DataFrame({"m/z": [1.5]}))[0].endswith(".db")

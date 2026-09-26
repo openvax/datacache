@@ -42,6 +42,13 @@ def fold_identifier(name):
     return name.translate(_ASCII_LOWERCASE) if isinstance(name, str) else name
 
 
+def tables_exist(connection, table_names):
+    """Are all table_names present, compared as SQLite compares names?"""
+    existing = {fold_identifier(row[0]) for row in connection.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    return all(fold_identifier(name) in existing for name in table_names)
+
+
 def quote_identifier(identifier):
     """
     Wrap a SQL identifier (table, column, or index name) in double quotes so
@@ -95,8 +102,7 @@ class Database(object):
 
     def has_table(self, table_name):
         """Does a table named `table_name` exist, comparing case as SQLite does?"""
-        return fold_identifier(table_name) in {
-            fold_identifier(name) for name in self.table_names()}
+        return tables_exist(self.connection, [table_name])
 
     def drop_all_tables(self, *, commit=True, include_views=False):
         """Drop tables, optionally removing views for a complete overwrite.
@@ -126,7 +132,7 @@ class Database(object):
 
     def has_tables(self, table_names):
         """Are all of the given table names present in the database?"""
-        return all(self.has_table(table_name) for table_name in table_names)
+        return tables_exist(self.connection, table_names)
 
     def has_version(self):
         """Does this database have version information?

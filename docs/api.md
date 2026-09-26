@@ -357,12 +357,14 @@ assert Path(writable_path).parent.is_dir()
 ensure_dir(path)
 ```
 
-Create `path` and its parents when the path does not exist. Accepts a string
-or `Path`. An existing path is left alone; this helper does not verify that an
-existing path is a directory.
+Create `path` and its parents unless something already exists there. Accepts a
+string or `Path`. An existing path is left alone; this helper does not verify
+that an existing path is a directory. A directory another process creates at the
+same moment is accepted.
 
 **Returns:** `None`. **Raises:** `OSError` subclasses for directory creation
-failures, including `PermissionError` and races resulting in `FileExistsError`.
+failures, including `PermissionError`, and `FileExistsError` for a broken
+symlink or a file created at `path` concurrently.
 
 ```python
 dc.ensure_dir(root / "extra" / "nested")
@@ -597,13 +599,15 @@ Explicit overwrites also remove views; version-only rebuilds retain views.
 New databases are staged before publication. See [reuse and replacement](data.md#reuse-and-replacement)
 for locking, symlink, and filesystem requirements.
 
-For a build, table names must be nonempty strings, distinct ignoring case,
-and must not use the reserved metadata name `_datacache_metadata` or names starting with `sqlite_`.
-DataFrame column names must be nonempty strings; spaces become underscores
-and names must remain distinct ignoring case. Primary keys name one column;
-index specifications are sequences of nonempty column-name sequences, such
-as `[("id",), ("id", "value")]`, not bare strings. Original and normalized
-column spellings are accepted. The pandas row index is not stored.
+Table names must be nonempty strings, distinct ignoring the case of ASCII
+letters (as SQLite compares names), and must not be the reserved metadata name
+`_datacache_metadata` or start with `sqlite_`, in any case. They are checked
+before any reuse. DataFrame column names must be nonempty strings; spaces become
+underscores and names must remain distinct ignoring the case of ASCII letters.
+Primary keys name one column; index specifications are sequences of nonempty
+column-name sequences, such as `[("id",), ("id", "value")]`, not bare strings.
+Original and normalized column spellings are accepted. The pandas row index is
+not stored.
 
 `show_progress=True` enables optional tqdm row-insertion bars; reuse is quiet.
 Signed integers preserve precision, missing values become SQL `NULL`, and
@@ -713,15 +717,18 @@ Download/parse a CSV and build or reuse `table_name` in SQLite. `download_url`,
 `csv_filename`, `subdir`, `download_options`, and `**pandas_kwargs` follow
 `fetch_csv_dataframe`. `csv_filename=None` infers a download key from the URL;
 `db_filename=None` infers a database name from the CSV name, row count, column
-names, and dtypes. A schema whose column names contain `/` or `\`, or that would
-make a name longer than 255 bytes, is named by a digest instead, so the database
-is always a file directly in the cache directory. A database an older release
-nested inside the cache under such a name is still reused in place when its
-tables and version match. Other inferred names keep their historical spelling.
-An explicit `db_filename` works independently of `csv_filename`. A `cache_root`
-inside `download_options` applies to both files. Parser options must produce a
-DataFrame with non-empty string column names: do not pass `chunksize` or
-`iterator`, and pair `header=None` with `names=`.
+names, and dtypes. Column names are spelled out only when every character is
+allowed in file names on all supported platforms (no `/`, `\`, `:`, `*`, `?`,
+`"`, `<`, `>`, `|`, or control characters) and the name leaves room for SQLite's
+`-journal` file within the filesystem's name-length limit. Otherwise the schema
+is named by a digest, shortening a very long CSV filename if needed, so column
+names never add directories or leave the cache directory; directories in an
+explicit `csv_filename` are kept. A matching database an older release stored
+under the historical name is still reused in place, and a new `version` rebuilds
+it under the new name. An explicit `db_filename` works independently of
+`csv_filename`. A `cache_root` inside `download_options` applies to both files.
+Parser options must produce a DataFrame with non-empty string column names: do
+not pass `chunksize` or `iterator`, and pair `header=None` with `names=`.
 
 With an explicit database filename, matching tables/version can be reused
 without downloading or parsing the source. Supplying `force`, `expected_sha256`,

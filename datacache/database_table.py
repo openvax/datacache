@@ -11,10 +11,12 @@
 # limitations under the License.
 
 import datetime
+import warnings
 
 import numpy as np
 import pandas as pd
 
+from .database import fold_identifier
 from .database_types import db_type
 
 # pd.NA was introduced after the original supported pandas versions. Missing
@@ -70,7 +72,7 @@ class DatabaseTable(object):
         if len(df.columns) == 0 or not all(isinstance(column, str) and column for column in df.columns):
             raise ValueError("DataFrame columns must be non-empty strings")
         normalized = [column.replace(" ", "_") for column in df.columns]
-        if len(set(column.lower() for column in normalized)) != len(normalized):
+        if len(set(fold_identifier(column) for column in normalized)) != len(normalized):
             raise ValueError("DataFrame column names collide after normalization")
         names = dict(zip(df.columns, normalized))
 
@@ -119,3 +121,36 @@ class DatabaseTable(object):
             nullable=nullable,
             primary_key=primary_key,
             row_count=len(df))
+
+    @classmethod
+    def from_fasta_dict(cls, name, fasta_dict, key_column, value_column):
+        """Deprecated: build a table from identifiers mapped to sequence records.
+
+        Parse FASTA in the consuming library, then use db_from_dataframe. This
+        helper will be removed in datacache 2.0.
+        """
+        warnings.warn(
+            "DatabaseTable.from_fasta_dict is deprecated and will be removed in "
+            "datacache 2.0; build a DataFrame and use db_from_dataframe instead.",
+            DeprecationWarning,
+            stacklevel=2)
+        key_list = list(fasta_dict.keys())
+        key_set = set(key_list)
+        if len(key_set) != len(key_list):
+            raise ValueError(
+                "FASTA file contains %d non-unique sequence identifiers" %
+                (len(key_list) - len(key_set)))
+        column_types = [(key_column, "TEXT"), (value_column, "TEXT")]
+
+        def make_rows():
+            return [
+                (idx, str(record.seq))
+                for (idx, record)
+                in fasta_dict.items()
+            ]
+
+        return cls(
+            name=name,
+            column_types=column_types,
+            make_rows=make_rows,
+            primary_key=key_column)

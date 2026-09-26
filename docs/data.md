@@ -126,14 +126,15 @@ cache version. Unaffected databases need no action.
 
 `fetch_csv_db("records", url)` infers both filenames when omitted. The inferred
 database name records the row count and each column's name and type. Because
-column names come from the downloaded data, a schema whose column names contain
-`/` or `\`, or that would exceed the filesystem's 255-byte name limit, is named
-by a digest instead, so the database is always a file directly in its cache
-directory. Earlier releases nested such databases in subdirectories (a column
-named `m/z` created one); a nested database that stays inside the cache is still
-reused in place, and a new `version` rebuilds it under the flat name. An
-explicit `db_filename` also works without `csv_filename`. Supply parser options
-directly and download options in `download_options`, as described in the
+column names come from the downloaded data, they are spelled out only when every
+character is valid in file names on all supported platforms and the name leaves
+room for SQLite's `-journal` file; otherwise the schema is named by a digest.
+Column names therefore never add directories or leave the cache directory
+(earlier releases turned a column named `m/z` into a subdirectory). A matching
+database an older release stored under its historical name is still reused in
+place, and a new `version` rebuilds it under the new name. An explicit
+`db_filename` also works without `csv_filename`. Supply parser options directly
+and download options in `download_options`, as described in the
 [progress guide](progress.md#csv-options). A `cache_root` in that dictionary is
 used for both the downloaded CSV and its database.
 

@@ -16,6 +16,7 @@ import hashlib
 import os
 import errno
 import re
+import sqlite3
 import stat
 from os.path import splitext, lexists
 import logging
@@ -31,7 +32,7 @@ from .download import (
     fetch_csv_dataframe, _open_staging_file, _normal_creation_mode,
     _remove_staging_file,
 )
-from .database import Database, fold_identifier
+from .database import METADATA_TABLE_NAME, Database, fold_identifier, tables_exist
 from .database_table import DatabaseTable
 from .database_types import db_type
 from .inspection import path_exists
@@ -39,8 +40,14 @@ from .inspection import path_exists
 
 logger = logging.getLogger(__name__)
 
-# Longest file or directory name, in bytes, on common local filesystems.
-_MAX_NAME_BYTES = 255
+# Longest file name local filesystems accept. Rebuilding a database creates
+# "<name>-journal" beside it, so database names need that much room to spare.
+_MAX_NAME_LENGTH = 255
+_MAX_DB_NAME_LENGTH = _MAX_NAME_LENGTH - len("-journal")
+# Characters some supported platform forbids in a file name, separators included.
+_UNSAFE_NAME_CHARACTERS = re.compile(r'[\x00-\x1f<>:"/\\|?*\ud800-\udfff]')
+# Separators this platform's filesystem interprets.
+_SEPARATORS = re.compile("[%s]" % re.escape(os.sep + (os.altsep or "")))
 
 
 def connect_if_correct_version(db_path, version, *, read_only=False):
@@ -69,16 +76,31 @@ def connect_if_correct_version(db_path, version, *, read_only=False):
     return None
 
 
+def _validate_table_names(table_names):
+    """Reject table names that no build could create, compared as SQLite does."""
+    if not all(isinstance(name, str) and name for name in table_names):
+        raise ValueError("Database table names must be non-empty strings")
+    folded = [fold_identifier(name) for name in table_names]
+    if not folded or len(set(folded)) != len(folded):
+        raise ValueError("Database requires non-empty, distinct table names")
+    if any(name.startswith("sqlite_") or name == METADATA_TABLE_NAME for name in folded):
+        raise ValueError("Database table name is reserved for metadata")
+
+
 def _cached_connection(db_path, table_names, version):
-    """Reuse a matching installation before validating a new build's inputs."""
+    """Reuse a matching installation before parsing or validating new data.
+
+    Table names are checked first, so reuse can never hand back a table that
+    no build could create, such as the version metadata.
+    """
     require_integer(version, "version")
+    table_names = list(table_names)
+    _validate_table_names(table_names)
     connection = connect_if_correct_version(db_path, version)
     if connection is None:
         return None
     try:
-        existing = {fold_identifier(row[0]) for row in connection.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'")}
-        if all(fold_identifier(name) in existing for name in table_names):
+        if tables_exist(connection, table_names):
             return connection
     except BaseException:
         connection.close()
@@ -138,13 +160,7 @@ def _create_cached_db(
     require_integer(version, "version")
 
     table_names = [table.name for table in tables]
-    if not all(isinstance(name, str) and name for name in table_names):
-        raise ValueError("Database table names must be non-empty strings")
-    if not tables or len({name.lower() for name in table_names}) != len(table_names):
-        raise ValueError("Database requires non-empty, distinct table names")
-    if any(name.lower().startswith("sqlite_") or name.lower() == "_datacache_metadata"
-           for name in table_names):
-        raise ValueError("Database table name is reserved for metadata")
+    _validate_table_names(table_names)
 
     db_path = _database_target_path(db_path)
     if not lexists(db_path):
@@ -373,55 +389,60 @@ def db_from_dataframe(
         show_progress=show_progress)
 
 
-def _schema_filename_parts(base_filename, df):
-    """Split an inferred database name into its row-count prefix and schema."""
+def _name_length(name, windows=os.name == "nt"):
+    """Measure a file name in the units the local filesystem limits.
+
+    NTFS counts UTF-16 code units; POSIX filesystems count encoded bytes.
+    """
+    if windows:
+        return len(name.encode("utf-16-le", "surrogatepass")) // 2
+    return len(name.encode("utf-8", "surrogatepass"))
+
+
+def _digest(text):
+    """Stable short name for text: a cache key, not a security measure."""
+    return hashlib.md5(text.encode("utf-8", "surrogatepass"), usedforsecurity=False).hexdigest()
+
+
+def _db_filenames_from_dataframe(base_filename, df):
+    """
+    Generate database filename for a sqlite3 database we're going to
+    fill with the contents of a DataFrame, using the DataFrame's
+    column names and types.
+
+    Returns the filename and, when it differs, the historical name older
+    releases used for the same schema (otherwise None). Column names come from
+    downloaded data, so they are spelled out only when every character is
+    allowed in file names on all supported platforms and SQLite's journal still
+    fits beside the database. Other schemas are named by a digest, so column
+    names can never add directories or leave the cache directory.
+    """
     schema = ""
     for column_name in df.columns:
         if not isinstance(column_name, str) or not column_name:
             raise ValueError("DataFrame columns must be non-empty strings")
         column_db_type = db_type(df[column_name].dtype)
         schema += ".%s_%s" % (column_name.replace(" ", "_"), column_db_type)
-    return base_filename + ("_nrows%d" % len(df)), schema
-
-
-def _fits_filesystem(filename):
-    """Is every component of filename within the filesystem's name limit?"""
-    return all(len(os.fsencode(part)) <= _MAX_NAME_BYTES
-               for part in filename.replace(os.altsep or os.sep, os.sep).split(os.sep))
-
-
-def _db_filename_from_dataframe(base_filename, df):
-    """
-    Generate database filename for a sqlite3 database we're going to
-    fill with the contents of a DataFrame, using the DataFrame's
-    column names and types.
-
-    Column names come from downloaded data. A schema containing a path
-    separator, or too long for a filename, is named by its digest instead, so
-    the database is always a file directly inside its cache directory. Every
-    other name keeps its historical spelling so existing databases are reused.
-    """
-    prefix, schema = _schema_filename_parts(base_filename, df)
-    db_filename = prefix + schema + ".db"
-    if re.search(r"[/\\]", schema) or not _fits_filesystem(db_filename):
-        digest = hashlib.md5(schema.encode("utf-8", "surrogatepass")).hexdigest()
-        db_filename = "%s.%s.db" % (prefix, digest)
-    return db_filename
-
-
-def _legacy_db_filename_from_dataframe(base_filename, df):
-    """Return the nested name older releases used for this schema, or None.
-
-    A column name containing a path separator used to add directories inside
-    the cache. Such a database is still reused where it is, but only when its
-    name stays inside the cache directory and could have been created.
-    """
-    prefix, schema = _schema_filename_parts(base_filename, df)
-    parts = re.split(r"[/\\]", schema)
-    legacy = prefix + schema + ".db"
-    if len(parts) == 1 or ".." in parts or not _fits_filesystem(legacy):
-        return None
-    return legacy
+    prefix = base_filename + ("_nrows%d" % len(df))
+    historical = prefix + schema + ".db"
+    # An explicit CSV filename may name directories; those are the caller's.
+    cut = max((match.end() for match in _SEPARATORS.finditer(prefix)), default=0)
+    directory, stem = prefix[:cut], prefix[cut:]
+    if (not _UNSAFE_NAME_CHARACTERS.search(schema) and
+            _name_length(stem + schema + ".db") <= _MAX_DB_NAME_LENGTH):
+        return historical, None
+    name = "%s.%s.db" % (stem, _digest(schema))
+    if _name_length(name) > _MAX_DB_NAME_LENGTH:
+        # Only a very long CSV filename gets here: keep its start readable and
+        # let a digest of the whole name distinguish the rest.
+        digest = _digest(stem + schema)
+        while _name_length("%s.%s.db" % (stem, digest)) > _MAX_DB_NAME_LENGTH:
+            stem = stem[:-1]
+        name = "%s.%s.db" % (stem, digest)
+    # A historical name with a ".." component could lie outside the cache, and
+    # one with a NUL could never have been created, so neither is reused.
+    reusable = ".." not in _SEPARATORS.split(schema) and "\x00" not in schema
+    return directory + name, historical if reusable else None
 
 def fetch_csv_db(
         table_name,
@@ -467,14 +488,19 @@ def fetch_csv_db(
         source_filename = (os.fspath(csv_filename) if csv_filename is not None else
                            build_local_filename(download_url, decompress=True))
         base_filename = splitext(source_filename)[0]
-        db_filename = _db_filename_from_dataframe(base_filename, df)
-        legacy_filename = _legacy_db_filename_from_dataframe(base_filename, df)
+        db_filename, legacy_filename = _db_filenames_from_dataframe(base_filename, df)
         if legacy_filename is not None and not path_exists(
                 resolve_path(db_filename, subdir, cache_root=cache_root)):
-            # Reuse a matching database an older release nested in the cache,
-            # without moving it. Version changes rebuild under the new name.
-            connection = _cached_connection(
-                resolve_path(legacy_filename, subdir, cache_root=cache_root), [table_name], version)
+            # Reuse a matching database an older release stored under its
+            # historical name, without moving it; a new version rebuilds under
+            # the new name. Failing to open that name only means there is
+            # nothing to reuse: this platform may reject it, or something else
+            # may be there.
+            try:
+                connection = _cached_connection(
+                    resolve_path(legacy_filename, subdir, cache_root=cache_root), [table_name], version)
+            except (OSError, UnicodeError, sqlite3.Error):
+                connection = None
             if connection is not None:
                 return connection
     return db_from_dataframe(

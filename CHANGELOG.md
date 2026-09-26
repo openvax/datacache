@@ -2,26 +2,43 @@
 
 ## Unreleased
 
-- Keep `fetch_csv_db` databases directly inside their cache directory. An
-  inferred database name is built from the CSV's column headers: a header
-  containing `/` created subdirectories (a `..` could escape the cache entirely),
-  and wide CSVs exceeded the 255-byte filename limit and failed with `OSError`.
-  Such schemas are now named by a digest. A database an older release nested
-  inside the cache is still reused in place, and every other inferred name is
-  unchanged, so existing databases keep being reused.
-- Reuse a database when a requested table name differs only in the case of
-  ASCII letters, matching how SQLite compares names, instead of rebuilding it.
+- Keep `fetch_csv_db` database names safe from their column headers. An inferred
+  name spells out each column, so a header containing `/` created subdirectories
+  (and `..` could place the database outside the cache), characters such as `:`
+  and `?` are invalid on Windows, and wide CSVs exceeded the filename limit and
+  failed with `OSError`. Columns are now spelled out only when every character
+  is valid on all supported platforms and the name leaves room for SQLite's
+  journal; other schemas are named by a digest. A matching database stored under
+  the historical name is still reused in place, and a new `version` rebuilds it
+  under the new name.
+- Rebuild databases whose names are 248 to 255 bytes long. They could be created
+  once, but every later `version` change or `overwrite=True` failed because
+  SQLite's `-journal` file name no longer fit.
+- Reject the reserved `_datacache_metadata` and `sqlite_` table names before
+  reusing a database. Requesting `_datacache_metadata` for an existing database
+  returned the version table instead of storing the DataFrame.
+- Compare table and column names the way SQLite does, ignoring the case of ASCII
+  letters only: `records` now reuses an existing `Records` table instead of
+  rebuilding the database, and `Éclair` and `éclair` are accepted as distinct.
 - Report non-string column labels (for example `header=None` without `names=`)
   with the same `ValueError` whether or not `db_filename` is given, instead of
-  an `AttributeError` when the database name is inferred.
+  an `AttributeError`.
 - Select a ZIP member stored inside a folder when its name matches the output,
   instead of silently installing the largest member under the requested name.
-- Suggest `force=True` only when a regular file is present; it cannot replace
-  a directory at the cache path.
+  New downloads of such archives now install different bytes, so an
+  `expected_sha256` pinned to the previously installed member fails validation;
+  files already in a cache are unchanged.
+- Suggest `force=True` only when a regular file is present; it cannot replace a
+  directory at the cache path.
 - Store `float16` DataFrame columns as `FLOAT`.
+- Let `ensure_dir` accept a directory that another process creates at the same
+  moment.
+- Declare MD5 cache-key digests as not used for security, so naming works on
+  FIPS-mode Python. Existing cache keys are unchanged.
+- Deprecate `DatabaseTable.from_fasta_dict`; it will be removed in datacache
+  2.0.
 - Correct `fetch_file`'s `subdir` and `timeout` documentation, and document
   `Cache`, `ensure_dir`, `get_data_dir`, and `clear_cache`.
-- Remove the unused internal `DatabaseTable.from_fasta_dict`.
 
 ## 1.10.2
 
