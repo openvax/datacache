@@ -273,9 +273,9 @@ def _copy_with_progress(source, destination, show_progress, total=None):
 def _choose_zip_member(infos, filename, warn=True):
     """Pick the archive member to install as filename.
 
-    Prefer the member stored at exactly that name, then members whose name
-    matches in any folder (exact case first), taking the one closest to the
-    archive root and then the largest. Otherwise install the largest member,
+    Prefer the member stored at exactly that name, then a member with that
+    name, ignoring case, in any folder: nearest the archive root first, then
+    exact case, then the largest. Otherwise install the largest member,
     warning (if warn) when that was a guess among several.
     """
     chosen = next((info for info in infos if info.filename == filename), None)
@@ -283,10 +283,10 @@ def _choose_zip_member(infos, filename, warn=True):
         return chosen
     paths = {info: info.filename.replace("\\", "/") for info in infos}
     names = {info: path.rsplit("/", 1)[-1] for info, path in paths.items()}
-    named = ([info for info in infos if names[info] == filename] or
-             [info for info in infos if names[info].casefold() == filename.casefold()])
+    named = [info for info in infos if names[info].casefold() == filename.casefold()]
     if named:
-        return min(named, key=lambda info: (paths[info].count("/"), -info.file_size))
+        return min(named, key=lambda info: (
+            paths[info].count("/"), names[info] != filename, -info.file_size))
     chosen = max(infos, key=lambda info: info.file_size)
     if warn and len(infos) > 1:
         logger.warning("No ZIP member is named %s; installing the largest of %d members, %s",

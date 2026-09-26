@@ -3,6 +3,7 @@
 from contextlib import closing
 import gzip
 import hashlib
+import logging
 import os
 from pathlib import Path
 import re
@@ -334,12 +335,6 @@ def test_anything_else_at_an_older_name_is_not_reused(tmp_path, mz_source, obsta
     assert len(list(cache_root.glob("*.db"))) == 1
 
 
-def test_name_length_matches_each_platforms_limit():
-    # NTFS limits names in UTF-16 code units; POSIX filesystems in bytes.
-    assert _name_length("é" * 200, windows=False) == 400
-    assert _name_length("é" * 200, windows=True) == 200
-
-
 def test_cache_names_work_where_md5_is_disabled_for_security(monkeypatch):
     # FIPS-mode OpenSSL rejects md5 unless it is declared not to be for security.
     real_md5 = hashlib.md5
@@ -408,19 +403,45 @@ def test_database_names_need_named_columns():
         _db_filenames_from_dataframe("records", pd.DataFrame())
 
 
-def test_truncation_counts_multibyte_characters():
+def test_truncation_counts_utf8_bytes_on_every_platform():
     assert _truncate_name("abc", 5) == "abc"
-    unit = _name_length("é")
-    assert _truncate_name("é" * 10, 3 * unit - 1) == "éé"
+    assert _truncate_name("é" * 10, 5) == "éé"  # two bytes each
+    assert _name_length("é" * 130) == 260
 
 
-def test_inferred_names_are_the_same_on_every_platform(monkeypatch):
-    # 130 accented characters are 260 UTF-8 bytes but 130 UTF-16 units. A cache
-    # shared between operating systems must pick the same name on each.
-    real_name_length = database_helpers._name_length
-    frame = pd.DataFrame({"é" * 130: [1]})
-    posix = _db_filenames_from_dataframe("records", frame)
-    monkeypatch.setattr(database_helpers, "_name_length",
-                        lambda name, windows=True: real_name_length(name, windows))
-    assert _db_filenames_from_dataframe("records", frame) == posix
-    assert re.fullmatch(r"records_nrows1\.[0-9a-f]{32}\.db", posix[0])
+def test_inferred_names_measure_utf8_bytes_on_every_platform():
+    # 130 accented characters are 260 UTF-8 bytes but only 130 characters or
+    # UTF-16 units. Every platform must still pick the same (digest) name.
+    name, historical = _db_filenames_from_dataframe("records", pd.DataFrame({"é" * 130: [1]}))
+    assert re.fullmatch(r"records_nrows1\.[0-9a-f]{32}\.db", name)
+    assert historical == "records_nrows1.%s_INT.db" % ("é" * 130)
+
+
+def test_schemas_that_read_alike_get_different_digest_names():
+    # One column "a_INT.b:c" of text and two columns "a" and "b:c" spell out
+    # the same way; their digest names must still differ.
+    one = pd.DataFrame({"a_INT.b:c": ["x"]})
+    two = pd.DataFrame({"a": [1], "b:c": ["x"]})
+    assert _db_filenames_from_dataframe("records", one)[1] == _db_filenames_from_dataframe("records", two)[1]
+    assert _db_filenames_from_dataframe("records", one)[0] != _db_filenames_from_dataframe("records", two)[0]
+
+
+def test_a_superseded_older_database_is_reported_once(tmp_path, mz_source, caplog):
+    cache_root = tmp_path / "cache"
+    legacy = cache_root / "mz_nrows1.peptide_TEXT.m" / "z_FLOAT.db"
+    _write_legacy_database(legacy, 1, [("OLD", 9.5)])
+    options = dict(csv_filename="mz.csv", download_options={"cache_root": cache_root})
+    with caplog.at_level(logging.WARNING, logger="datacache.database_helpers"):
+        fetch_csv_db("records", mz_source.as_uri(), version=2, **options).close()
+        assert str(legacy) in caplog.text and "can be deleted" in caplog.text
+        caplog.clear()
+        fetch_csv_db("records", mz_source.as_uri(), version=3, **options).close()
+        assert not caplog.records
+    assert legacy.exists()
+
+
+def test_no_report_without_an_older_database(tmp_path, mz_source, caplog):
+    with caplog.at_level(logging.WARNING, logger="datacache.database_helpers"):
+        fetch_csv_db("records", mz_source.as_uri(), csv_filename="mz.csv",
+                     download_options={"cache_root": tmp_path / "cache"}).close()
+    assert not caplog.records

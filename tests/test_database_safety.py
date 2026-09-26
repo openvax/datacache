@@ -2,6 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
+import errno
 import os
 import sqlite3
 import stat
@@ -404,6 +405,22 @@ def test_names_without_room_for_the_journal_are_built_and_reused_but_not_rebuilt
         assert connection.execute("SELECT id FROM t").fetchall() == [(1,)]
     with pytest.raises(ValueError, match="Cannot rebuild.*journal"):
         db_from_dataframe(long_name, "t", frame, cache_root=tmp_path, version=2)
+
+
+def test_rebuilds_are_allowed_wherever_the_filesystem_fits_the_journal(tmp_path):
+    # 93 characters but 273 UTF-8 bytes: APFS counts characters and accepts it,
+    # ext4 counts bytes and does not. Where it exists, it must rebuild.
+    name = "數據" * 45 + ".db"
+    try:
+        created = db_from_dataframe(name, "t", pd.DataFrame({"id": [1]}), cache_root=tmp_path)
+    except OSError as error:
+        if error.errno != errno.ENAMETOOLONG:
+            raise
+        pytest.skip("this filesystem limits names in bytes")
+    created.close()
+    with closing(db_from_dataframe(
+            name, "t", pd.DataFrame({"id": [2]}), cache_root=tmp_path, version=2)) as connection:
+        assert connection.execute("SELECT id FROM t").fetchall() == [(2,)]
 
 
 def test_an_empty_request_still_reuses_an_existing_database(tmp_path):

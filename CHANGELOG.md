@@ -11,12 +11,12 @@
   journal still fits, measured the same way everywhere; otherwise the schema is
   named by a digest. A matching database stored under the historical name is
   still reused in place. A new `version` rebuilds it under the new name and
-  leaves the older copy alone, since another process may still have it open.
-- Explain why a database whose filename leaves no room for SQLite's `-journal`
-  file (over 247 bytes) cannot be rebuilt: a `version` change or
-  `overwrite=True` now raises a clear `ValueError` instead of
-  `unable to open database file`. Creating and reusing such a database still
-  work.
+  leaves the older copy alone, since another process may still have it open, and
+  logs a warning naming it.
+- Explain why a database cannot be rebuilt when the filesystem has no room for
+  its SQLite `-journal` file name: a `version` change or `overwrite=True` now
+  raises a clear `ValueError` instead of `unable to open database file`.
+  Creating and reusing such a database still work.
 - Reject the reserved `_datacache_metadata` and `sqlite_` table names before
   reusing a database. Requesting `_datacache_metadata` for an existing database
   returned the version table instead of storing the DataFrame.
@@ -28,12 +28,12 @@
   an `AttributeError`.
 - Choose ZIP members more carefully: a member with the output's name inside a
   folder, or differing only in letter case, is installed instead of the largest
-  member, preferring the copy nearest the archive root. When nothing matches,
-  the largest member is still installed, now with a logged warning if the output
-  was named explicitly and the archive has several. New downloads of such
-  archives install different bytes, so an `expected_sha256` pinned to the
-  previously installed member fails validation; files already in a cache are
-  unchanged.
+  member, preferring the copy nearest the archive root, then an exact-case
+  match. When nothing matches, the largest member is still installed, now with a
+  logged warning if the output was named explicitly and the archive has several.
+  New downloads of such archives install different bytes, so an
+  `expected_sha256` pinned to the previously installed member fails validation;
+  files already in a cache are unchanged.
 - Suggest `force=True` only when a regular file is present; it cannot replace a
   directory at the cache path.
 - Store `float16` DataFrame columns as `FLOAT`.

@@ -91,8 +91,8 @@ replacement leaves the previous file intact.
 | `show_progress` | Boolean enabling optional tqdm download, decompression, and hash bars. Requires `datacache[progress]` when a bar is needed. Cache hits are quiet. |
 
 ZIP downloads install the member stored at the output name; otherwise a member
-with that name in any folder (exact letter case first), preferring the one
-nearest the archive root, then the largest. If none matches, the largest
+with that name, ignoring letter case, in any folder: the one nearest the archive
+root, then an exact-case match, then the largest. If none matches, the largest
 non-directory member is installed, with a logged warning when the output was
 named explicitly and the archive has several. HTML-to-CSV conversion is enabled
 by an explicit `.csv` output for an HTML source and requires `datacache[html]`.
@@ -598,11 +598,11 @@ Data changes are not detected automatically. Change `version` (an integer) or
 use `overwrite=True` where available to rebuild. A rebuild replaces the
 database's tables, not just the named table, and rolls back on failure. Explicit
 overwrites also remove views; version-only rebuilds retain views. New databases
-are staged before publication. A rebuild needs room for SQLite's `-journal`
-file, so rebuilding a database whose filename is longer than 247 bytes (UTF-16
-code units on Windows) raises `ValueError`; creating and reusing one still work.
-See [reuse and replacement](data.md#reuse-and-replacement) for locking, symlink,
-and filesystem requirements.
+are staged before publication. A rebuild writes SQLite's `<name>-journal` file
+beside the database; where the filesystem has no room for that name, rebuilding
+raises a `ValueError` that says so, while creating and reusing the database
+still work. See [reuse and replacement](data.md#reuse-and-replacement) for
+locking, symlink, and filesystem requirements.
 
 Table names must be nonempty strings, distinct ignoring the case of ASCII
 letters (as SQLite compares names), and must not be the reserved metadata name
@@ -732,10 +732,11 @@ never add directories or leave the cache directory; directories in an explicit
 `csv_filename` are kept. A matching database an older release stored under the
 historical name is still reused in place. A new `version` rebuilds it under the
 new name and leaves the older copy alone, since another process may still have
-it open. An explicit `db_filename` works independently of `csv_filename`. A
-`cache_root` inside `download_options` applies to both files. Parser options
-must produce a DataFrame with non-empty string column names: do not pass
-`chunksize` or `iterator`, and pair `header=None` with `names=`.
+it open, logging a warning that names it. An explicit `db_filename` works
+independently of `csv_filename`. A `cache_root` inside `download_options`
+applies to both files. Parser options must produce a DataFrame with non-empty
+string column names: do not pass `chunksize` or `iterator`, and pair
+`header=None` with `names=`.
 
 With an explicit database filename, matching tables/version can be reused
 without downloading or parsing the source. Supplying `force`, `expected_sha256`,

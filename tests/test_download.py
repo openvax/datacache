@@ -218,3 +218,15 @@ def test_fetch_decompress_zip_is_quiet_for_inferred_names(isolated_cache, caplog
     assert not caplog.records
     with open(path) as f:
         assert f.read().startswith("the largest member")
+
+
+def test_fetch_decompress_zip_prefers_the_root_over_letter_case(isolated_cache):
+    # The dataset at the root wins over a nested sample, even though only the
+    # sample matches the requested name's letter case exactly.
+    archive = isolated_cache / "rooted.zip"
+    with zipfile.ZipFile(str(archive), "w") as z:
+        z.writestr("DATA.CSV", "the dataset\n")
+        z.writestr("docs/examples/data.csv", "a sample\n")
+    path = fetch_file("file://" + str(archive), filename="data.csv", decompress=True)
+    with open(path) as f:
+        assert f.read() == "the dataset\n"
