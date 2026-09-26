@@ -204,3 +204,17 @@ def test_fetch_decompress_zip_warns_only_when_guessing_among_members(isolated_ca
         assert f.read().startswith("the largest member")
     with open(only) as f:
         assert f.read() == "the only member\n"
+
+
+def test_fetch_decompress_zip_is_quiet_for_inferred_names(isolated_cache, caplog):
+    # An inferred cache key can never match a member name, so installing the
+    # largest member is the expected behavior, not a guess worth reporting.
+    archive = isolated_cache / "inferred.zip"
+    with zipfile.ZipFile(str(archive), "w") as z:
+        z.writestr("data.csv", "the largest member\n" * 10)
+        z.writestr("README", "short\n")
+    with caplog.at_level(logging.WARNING, logger="datacache.download"):
+        path = fetch_file("file://" + str(archive), decompress=True)
+    assert not caplog.records
+    with open(path) as f:
+        assert f.read().startswith("the largest member")

@@ -270,13 +270,13 @@ def _copy_with_progress(source, destination, show_progress, total=None):
             progress(completed, total)
 
 
-def _choose_zip_member(infos, filename):
+def _choose_zip_member(infos, filename, warn=True):
     """Pick the archive member to install as filename.
 
     Prefer the member stored at exactly that name, then members whose name
     matches in any folder (exact case first), taking the one closest to the
     archive root and then the largest. Otherwise install the largest member,
-    warning when that was a guess among several.
+    warning (if warn) when that was a guess among several.
     """
     chosen = next((info for info in infos if info.filename == filename), None)
     if chosen is not None:
@@ -288,7 +288,7 @@ def _choose_zip_member(infos, filename):
     if named:
         return min(named, key=lambda info: (paths[info].count("/"), -info.file_size))
     chosen = max(infos, key=lambda info: info.file_size)
-    if len(infos) > 1:
+    if warn and len(infos) > 1:
         logger.warning("No ZIP member is named %s; installing the largest of %d members, %s",
                        filename, len(infos), chosen.filename)
     return chosen
@@ -303,6 +303,7 @@ def _download_and_decompress_if_necessary(
         *,
         decompress=None,
         convert_html=None,
+        explicit_output=None,
         expected_sha256=None,
         expected_size=None,
         max_retries=DEFAULT_MAX_RETRIES,
@@ -316,6 +317,8 @@ def _download_and_decompress_if_necessary(
     Unspecified transform flags retain the pre-1.8 literal-URL heuristics for
     downstream callers (including pyensembl) using this private entry point.
     Explicit flags use the parsed URL format, including download endpoints.
+    explicit_output=False marks an inferred cache key, which no archive member
+    can match, so installing the largest ZIP member is not reported as a guess.
     """
     logger.info("Downloading %s to %s", download_url, full_path)
     full_path = os.fspath(full_path)
@@ -357,7 +360,7 @@ def _download_and_decompress_if_necessary(
                     if not infos:
                         raise ValueError("Empty zip archive")
                     # Never extract stored paths: stream one member's contents.
-                    chosen = _choose_zip_member(infos, filename)
+                    chosen = _choose_zip_member(infos, filename, warn=explicit_output is not False)
                     with z.open(chosen) as src, open(staged_path, "wb") as dst:
                         _copy_with_progress(src, dst, show_progress, chosen.file_size)
             elif gunzip:
@@ -587,6 +590,7 @@ def fetch_file(
         progress_callback=progress_callback,
         decompress=archive_decompression,
         convert_html=explicit_output,
+        explicit_output=explicit_output,
         expected_sha256=expected_sha256,
         expected_size=expected_size,
         max_retries=max_retries,

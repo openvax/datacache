@@ -131,16 +131,16 @@ def _database_target_path(db_path):
 
 
 def _require_rebuildable_name(db_path):
-    """Refuse to build a database that SQLite could never rebuild in place.
+    """Explain, rather than fail obscurely, when SQLite cannot rebuild in place.
 
-    Rebuilding writes "<name>-journal" beside the database, so a name without
-    room for that suffix could be created once but never replaced.
+    Rebuilding writes "<name>-journal" beside the database. Staged creation
+    still works for a name without room for that suffix, but a rebuild never can.
     """
     name = os.path.basename(db_path)
     if _name_length(name) > _MAX_DB_NAME_LENGTH:
         raise ValueError(
-            "Database filename %r is too long: SQLite needs room for %r beside it. "
-            "Use at most %d bytes (UTF-16 code units on Windows)."
+            "Cannot rebuild database %r: SQLite needs room for %r beside it. "
+            "Use a filename of at most %d bytes (UTF-16 code units on Windows)."
             % (name, name + "-journal", _MAX_DB_NAME_LENGTH))
 
 
@@ -178,7 +178,6 @@ def _create_cached_db(
 
     db_path = _database_target_path(db_path)
     if not lexists(db_path):
-        _require_rebuildable_name(db_path)
         # Readers never see an empty/partial new database. Hard-link publication
         # is atomic and does not clobber a concurrent creator's database.
         directory = os.path.dirname(db_path) or "."
@@ -413,10 +412,10 @@ def _name_length(name, windows=os.name == "nt"):
 
 
 def _truncate_name(name, limit):
-    """Return the longest prefix of name that measures at most limit."""
+    """Return the longest prefix of name within limit UTF-8 bytes."""
     used = 0
     for index, character in enumerate(name):
-        used += _name_length(character)
+        used += _name_length(character, windows=False)
         if used > limit:
             return name[:index]
     return name
@@ -433,7 +432,9 @@ def _db_filenames_from_dataframe(base_filename, df):
     spelling is kept only when every character of the file name is allowed on
     all supported platforms and SQLite's journal still fits beside it. Other
     names use a digest, so column names from downloaded data can never add
-    directories or leave the cache directory.
+    directories or leave the cache directory. Lengths are measured in UTF-8
+    bytes on every platform, which never undercounts NTFS's UTF-16 units, so a
+    cache shared between operating systems gets the same names everywhere.
     """
     validate_column_names(df.columns)
     schema = ""
@@ -446,78 +447,44 @@ def _db_filenames_from_dataframe(base_filename, df):
     cut = max((match.end() for match in _SEPARATORS.finditer(prefix)), default=0)
     directory, stem = prefix[:cut], prefix[cut:]
     if (not _UNSAFE_NAME_CHARACTERS.search(stem + schema) and
-            _name_length(stem + schema + ".db") <= _MAX_DB_NAME_LENGTH):
+            _name_length(stem + schema + ".db", windows=False) <= _MAX_DB_NAME_LENGTH):
         return historical, None
     digest = name_digest(stem + "/" + schema)
     safe_stem = _UNSAFE_NAME_CHARACTERS.sub("_", stem)
-    safe_stem = _truncate_name(safe_stem, _MAX_DB_NAME_LENGTH - _name_length(".%s.db" % digest))
+    safe_stem = _truncate_name(safe_stem, _MAX_DB_NAME_LENGTH - len(".%s.db" % digest))
     # A historical name with a ".." component could lie outside the cache, and
     # one with a NUL could never have been created, so neither is reused.
     reusable = ".." not in _SEPARATORS.split(schema) and "\x00" not in historical
     return "%s%s.%s.db" % (directory, safe_stem, digest), historical if reusable else None
 
 
-def _is_datacache_database(path):
-    """Does path hold a database datacache built, with version metadata?"""
-    try:
-        db = Database(path, read_only=True)
-    except sqlite3.Error:
-        return False
-    try:
-        return db.has_version()
-    except sqlite3.Error:
-        return False
-    finally:
-        db.connection.close()
+def _is_lock_error(error):
+    """Is this SQLite's busy or locked error, rather than a failure to open?"""
+    code = getattr(error, "sqlite_errorcode", None)  # Python 3.11+
+    if code is not None:
+        return code & 0xFF in (5, 6)  # SQLITE_BUSY, SQLITE_LOCKED
+    return "locked" in str(error)
 
 
 def _open_legacy_database(path, table_name, version):
-    """Reuse a matching database an older release stored at path.
+    """Reuse a matching database an older release stored at path, or None.
 
-    Returns (connection, superseded): the connection when the database can be
-    reused, and whether a datacache database there will be replaced by the new
-    build. A name this platform rejects, or anything but a SQLite file, only
-    means there is nothing to reuse. A busy or locked database raises instead,
-    since building a second copy beside it would let the two diverge.
+    A name this platform rejects, a file SQLite cannot open, or anything that
+    is not a SQLite database only means there is nothing to reuse. A busy or
+    locked database raises instead: building a second copy beside one that is
+    in use would let the two diverge.
     """
     try:
         if not stat.S_ISREG(os.stat(path).st_mode):
-            return None, False
+            return None
     except (OSError, UnicodeError):
-        return None, False
+        return None
     try:
-        connection = _cached_connection(path, [table_name], version)
-    except sqlite3.OperationalError:
-        raise
-    except sqlite3.DatabaseError:
-        return None, False
-    if connection is not None:
-        return connection, False
-    return None, _is_datacache_database(path)
-
-
-def _remove_superseded_database(path, stop):
-    """Best-effort removal of an older release's database a rebuild replaced.
-
-    Directories its nested name created are removed too, up to stop, while
-    they are empty. Failures (such as a file still open on Windows) are
-    ignored: this only reclaims space.
-    """
-    try:
-        os.remove(path)
-    except OSError:
-        return
-    stop = os.path.normpath(stop or ".")
-    directory = os.path.dirname(path)
-    while directory and os.path.normpath(directory) != stop:
-        try:
-            os.rmdir(directory)
-        except OSError:
-            return
-        parent = os.path.dirname(directory)
-        if parent == directory:
-            return
-        directory = parent
+        return _cached_connection(path, [table_name], version)
+    except sqlite3.DatabaseError as error:
+        if _is_lock_error(error):
+            raise
+        return None
 
 
 def fetch_csv_db(
@@ -542,7 +509,6 @@ def fetch_csv_db(
     """
     options = download_options or {}
     cache_root = options.get("cache_root")
-    superseded = False
     check_source = (options.get("force") or options.get("expected_sha256") is not None or
                     options.get("expected_size") is not None)
     if db_filename is not None and not check_source:
@@ -559,23 +525,23 @@ def fetch_csv_db(
         **pandas_kwargs)
     if db_filename is None:
         # Explicit filenames have always used the caller's spelling here,
-        # including the last compressed suffix and any path components. Keep
-        # that key so upgrades find existing databases. Only the previously
-        # broken csv_filename=None case needs the new inferred name.
+        # including the last compressed suffix and any path components, and
+        # still do whenever that spelling is a valid name on every platform.
         source_filename = (os.fspath(csv_filename) if csv_filename is not None else
                            build_local_filename(download_url, decompress=True))
         base_filename = splitext(source_filename)[0]
         db_filename, legacy_filename = _db_filenames_from_dataframe(base_filename, df)
-        db_path = resolve_path(db_filename, subdir, cache_root=cache_root)
-        if legacy_filename is not None and not path_exists(db_path):
+        if legacy_filename is not None and not path_exists(
+                resolve_path(db_filename, subdir, cache_root=cache_root)):
             # Reuse a matching database an older release stored under its
-            # historical name, without moving it. A new version rebuilds
-            # under the new name and then removes the superseded database.
-            legacy_path = resolve_path(legacy_filename, subdir, cache_root=cache_root)
-            connection, superseded = _open_legacy_database(legacy_path, table_name, version)
+            # historical name, without moving it; a new version rebuilds under
+            # the new name. The older copy is never deleted: another process,
+            # perhaps running an older release, may still have it open.
+            connection = _open_legacy_database(
+                resolve_path(legacy_filename, subdir, cache_root=cache_root), table_name, version)
             if connection is not None:
                 return connection
-    connection = db_from_dataframe(
+    return db_from_dataframe(
         db_filename,
         table_name,
         df,
@@ -583,6 +549,3 @@ def fetch_csv_db(
         version=version,
         cache_root=cache_root,
         show_progress=show_progress)
-    if superseded:
-        _remove_superseded_database(legacy_path, os.path.dirname(db_path))
-    return connection

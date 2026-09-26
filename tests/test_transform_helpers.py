@@ -213,17 +213,17 @@ def test_nested_database_from_an_older_release_is_reused_in_place(tmp_path, mz_s
 
 
 def test_new_version_of_a_nested_database_is_built_flat(tmp_path, mz_source):
-    # The rebuilt database supersedes the older one, which is removed along
-    # with the directory its nested name created.
+    # The older copy is left alone: a process running an older release may
+    # still have it open, and deleting an open SQLite file can corrupt data.
     cache_root = tmp_path / "cache"
     legacy = cache_root / "mz_nrows1.peptide_TEXT.m" / "z_FLOAT.db"
     _write_legacy_database(legacy, 1, [("OLD", 9.5)])
+    before = legacy.read_bytes()
     with closing(fetch_csv_db("records", mz_source.as_uri(), csv_filename="mz.csv", version=2,
                               download_options={"cache_root": cache_root})) as connection:
         assert connection.execute("SELECT * FROM records").fetchall() == [("AAA", 1.5)]
-    assert not legacy.parent.exists()
-    assert [path.name for path in cache_root.iterdir() if path.suffix == ".db"] != []
-    assert [path for path in cache_root.iterdir() if path.is_dir()] == []
+    assert legacy.read_bytes() == before
+    assert len(list(cache_root.glob("*.db"))) == 1
 
 
 def test_legacy_lookup_never_opens_a_database_outside_the_cache(tmp_path):
@@ -355,41 +355,30 @@ def test_cache_names_work_where_md5_is_disabled_for_security(monkeypatch):
     assert _db_filenames_from_dataframe("records", pd.DataFrame({"m/z": [1.5]}))[0].endswith(".db")
 
 
-def test_a_locked_older_database_is_not_duplicated(tmp_path, mz_source, monkeypatch):
-    # An older release may be writing to its database. Building a second copy
-    # beside it would let the two diverge, so the lock error propagates.
+@pytest.mark.parametrize("message", ["database is locked", "unable to open database file"])
+def test_only_a_locked_older_database_stops_a_new_build(tmp_path, mz_source, monkeypatch, message):
+    # An older release may be writing to its database; building a second copy
+    # beside it would let the two diverge, so a lock error propagates. A file
+    # SQLite cannot open at all just means there is nothing to reuse.
     cache_root = tmp_path / "cache"
     legacy = cache_root / "mz_nrows1.peptide_TEXT.m" / "z_FLOAT.db"
     _write_legacy_database(legacy, 1, [("OLD", 9.5)])
     real_cached_connection = database_helpers._cached_connection
 
-    def locked(path, *args):
+    def failing(path, *args):
         if os.fspath(path) == str(legacy):
-            raise sqlite3.OperationalError("database is locked")
+            raise sqlite3.OperationalError(message)
         return real_cached_connection(path, *args)
 
-    monkeypatch.setattr(database_helpers, "_cached_connection", locked)
-    with pytest.raises(sqlite3.OperationalError, match="locked"):
-        fetch_csv_db("records", mz_source.as_uri(), csv_filename="mz.csv",
-                     download_options={"cache_root": cache_root})
-    assert list(cache_root.glob("*.db")) == []
-
-
-@pytest.mark.parametrize("contents", ["sqlite without metadata", "not a database"])
-def test_only_superseded_datacache_databases_are_removed(tmp_path, mz_source, contents):
-    cache_root = tmp_path / "cache"
-    other = cache_root / "mz_nrows1.peptide_TEXT.m" / "z_FLOAT.db"
-    other.parent.mkdir(parents=True)
-    if contents == "not a database":
-        other.write_text("someone else's file")
+    monkeypatch.setattr(database_helpers, "_cached_connection", failing)
+    options = dict(csv_filename="mz.csv", download_options={"cache_root": cache_root})
+    if "locked" in message:
+        with pytest.raises(sqlite3.OperationalError, match="locked"):
+            fetch_csv_db("records", mz_source.as_uri(), **options)
+        assert list(cache_root.glob("*.db")) == []
     else:
-        with closing(sqlite3.connect(other)) as connection:
-            connection.executescript("CREATE TABLE records (x);")
-    before = other.read_bytes()
-    with closing(fetch_csv_db("records", mz_source.as_uri(), csv_filename="mz.csv",
-                              download_options={"cache_root": cache_root})) as connection:
-        assert connection.execute("SELECT * FROM records").fetchall() == [("AAA", 1.5)]
-    assert other.read_bytes() == before
+        with closing(fetch_csv_db("records", mz_source.as_uri(), **options)) as connection:
+            assert connection.execute("SELECT * FROM records").fetchall() == [("AAA", 1.5)]
 
 
 def test_csv_filename_characters_some_platform_forbids_stay_out_of_names(tmp_path):
@@ -423,3 +412,15 @@ def test_truncation_counts_multibyte_characters():
     assert _truncate_name("abc", 5) == "abc"
     unit = _name_length("é")
     assert _truncate_name("é" * 10, 3 * unit - 1) == "éé"
+
+
+def test_inferred_names_are_the_same_on_every_platform(monkeypatch):
+    # 130 accented characters are 260 UTF-8 bytes but 130 UTF-16 units. A cache
+    # shared between operating systems must pick the same name on each.
+    real_name_length = database_helpers._name_length
+    frame = pd.DataFrame({"é" * 130: [1]})
+    posix = _db_filenames_from_dataframe("records", frame)
+    monkeypatch.setattr(database_helpers, "_name_length",
+                        lambda name, windows=True: real_name_length(name, windows))
+    assert _db_filenames_from_dataframe("records", frame) == posix
+    assert re.fullmatch(r"records_nrows1\.[0-9a-f]{32}\.db", posix[0])

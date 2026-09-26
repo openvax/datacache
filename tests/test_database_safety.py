@@ -393,21 +393,16 @@ def test_from_fasta_dict_is_deprecated_but_still_works():
     assert table.rows == [("first", "ACGT")]
 
 
-def test_names_without_room_for_the_journal_are_refused_but_still_reused(tmp_path):
-    # SQLite rebuilds through "<name>-journal", so a longer name could be
-    # built once and never rebuilt. Refuse to build one; still reuse one that
-    # an older release created.
+def test_names_without_room_for_the_journal_are_built_and_reused_but_not_rebuilt(tmp_path):
+    # Staged creation works at any valid name, but SQLite rebuilds through
+    # "<name>-journal", which does not fit here. Explain that clearly.
     frame = pd.DataFrame({"id": [1]})
     long_name = "r" * 250 + ".db"
-    with pytest.raises(ValueError, match="journal"):
-        db_from_dataframe(long_name, "t", frame, cache_root=tmp_path)
-    assert not (tmp_path / long_name).exists()
-    with closing(db_from_dataframe("staged.db", "t", frame, cache_root=tmp_path)):
-        pass
-    os.link(tmp_path / "staged.db", tmp_path / long_name)
     with closing(db_from_dataframe(long_name, "t", frame, cache_root=tmp_path)) as connection:
         assert connection.execute("SELECT id FROM t").fetchall() == [(1,)]
-    with pytest.raises(ValueError, match="journal"):
+    with closing(db_from_dataframe(long_name, "t", frame, cache_root=tmp_path)) as connection:
+        assert connection.execute("SELECT id FROM t").fetchall() == [(1,)]
+    with pytest.raises(ValueError, match="Cannot rebuild.*journal"):
         db_from_dataframe(long_name, "t", frame, cache_root=tmp_path, version=2)
 
 
@@ -430,3 +425,14 @@ def test_python_and_sqlite_compare_names_alike():
                 same_in_sqlite = connection.execute(
                     "SELECT ? = ? COLLATE NOCASE", (left, right)).fetchone()[0]
                 assert (fold_identifier(left) == fold_identifier(right)) == bool(same_in_sqlite), (left, right)
+
+
+def test_from_fasta_dict_rejects_repeated_identifiers():
+    # A dict cannot repeat keys, but a pandas Series can.
+    class Record:
+        def __init__(self, seq):
+            self.seq = seq
+
+    records = pd.Series([Record("ACGT"), Record("TTTT")], index=["same", "same"])
+    with pytest.warns(DeprecationWarning), pytest.raises(ValueError, match="1 non-unique"):
+        DatabaseTable.from_fasta_dict("sequences", records, "id", "sequence")

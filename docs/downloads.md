@@ -51,8 +51,8 @@ For ZIP files, the member stored at the output filename is selected; otherwise a
 member with that name in any folder (such as `release/data.csv` for `data.csv`,
 or `Data.CSV` when no exact-case match exists), preferring the one nearest the
 archive root. If no member matches, the largest non-directory member is
-installed, and a warning is logged when that was a guess among several. No
-archive paths are extracted.
+installed, and a warning is logged when the output was named explicitly and that
+was a guess among several. No archive paths are extracted.
 HTML-to-CSV conversion requires an explicit `filename` or `destination` ending
 in `.csv`. Query strings and fragments in inferred cache keys never request
 conversion; those downloads retain their original HTML bytes.

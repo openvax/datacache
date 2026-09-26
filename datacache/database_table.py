@@ -139,6 +139,13 @@ class DatabaseTable(object):
             "datacache 2.0; build a DataFrame and use db_from_dataframe instead.",
             DeprecationWarning,
             stacklevel=2)
+        key_list = list(fasta_dict.keys())
+        key_set = set(key_list)
+        if len(key_set) != len(key_list):
+            # A dict cannot repeat keys, but a pandas Series or other mapping can.
+            raise ValueError(
+                "FASTA file contains %d non-unique sequence identifiers" %
+                (len(key_list) - len(key_set)))
         column_types = [(key_column, "TEXT"), (value_column, "TEXT")]
 
         def make_rows():

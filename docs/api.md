@@ -93,10 +93,10 @@ replacement leaves the previous file intact.
 ZIP downloads install the member stored at the output name; otherwise a member
 with that name in any folder (exact letter case first), preferring the one
 nearest the archive root, then the largest. If none matches, the largest
-non-directory member is installed, with a logged warning when the archive has
-several. HTML-to-CSV conversion is enabled by an explicit `.csv` output for an
-HTML source and requires `datacache[html]`. See
-[format selection](downloads.md#verified-downloads) and
+non-directory member is installed, with a logged warning when the output was
+named explicitly and the archive has several. HTML-to-CSV conversion is enabled
+by an explicit `.csv` output for an HTML source and requires `datacache[html]`.
+See [format selection](downloads.md#verified-downloads) and
 [HTTP retry behavior](downloads.md#transient-http-failures).
 
 **Returns:** local path string. It is not necessarily absolute when given a
@@ -598,11 +598,11 @@ Data changes are not detected automatically. Change `version` (an integer) or
 use `overwrite=True` where available to rebuild. A rebuild replaces the
 database's tables, not just the named table, and rolls back on failure. Explicit
 overwrites also remove views; version-only rebuilds retain views. New databases
-are staged before publication. A database filename must leave room for SQLite's
-`-journal` file, so building one longer than 247 bytes (UTF-16 code units on
-Windows) raises `ValueError`; an existing database with such a name is still
-reused. See [reuse and replacement](data.md#reuse-and-replacement) for locking,
-symlink, and filesystem requirements.
+are staged before publication. A rebuild needs room for SQLite's `-journal`
+file, so rebuilding a database whose filename is longer than 247 bytes (UTF-16
+code units on Windows) raises `ValueError`; creating and reusing one still work.
+See [reuse and replacement](data.md#reuse-and-replacement) for locking, symlink,
+and filesystem requirements.
 
 Table names must be nonempty strings, distinct ignoring the case of ASCII
 letters (as SQLite compares names), and must not be the reserved metadata name
@@ -725,16 +725,17 @@ Download/parse a CSV and build or reuse `table_name` in SQLite. `download_url`,
 names, and dtypes. That name is spelled out only when every character is allowed
 in file names on all supported platforms (no `/`, `\`, `:`, `*`, `?`, `"`, `<`,
 `>`, `|`, or control characters) and the name leaves room for SQLite's
-`-journal` file within the filesystem's name-length limit. Otherwise the schema
-is named by a digest, forbidden characters from the CSV filename become `_`, and
-a very long CSV filename is shortened, so column names never add directories or
-leave the cache directory; directories in an explicit `csv_filename` are kept. A
-matching database an older release stored under the historical name is still
-reused in place. A new `version` rebuilds it under the new name and then removes
-the superseded database. An explicit `db_filename` works independently of
-`csv_filename`. A `cache_root` inside `download_options` applies to both files.
-Parser options must produce a DataFrame with non-empty string column names: do
-not pass `chunksize` or `iterator`, and pair `header=None` with `names=`.
+`-journal` file within 255 UTF-8 bytes, measured the same way on every platform.
+Otherwise the schema is named by a digest, forbidden characters from the CSV
+filename become `_`, and a very long CSV filename is shortened, so column names
+never add directories or leave the cache directory; directories in an explicit
+`csv_filename` are kept. A matching database an older release stored under the
+historical name is still reused in place. A new `version` rebuilds it under the
+new name and leaves the older copy alone, since another process may still have
+it open. An explicit `db_filename` works independently of `csv_filename`. A
+`cache_root` inside `download_options` applies to both files. Parser options
+must produce a DataFrame with non-empty string column names: do not pass
+`chunksize` or `iterator`, and pair `header=None` with `names=`.
 
 With an explicit database filename, matching tables/version can be reused
 without downloading or parsing the source. Supplying `force`, `expected_sha256`,

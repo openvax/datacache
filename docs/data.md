@@ -132,19 +132,21 @@ room for SQLite's `-journal` file; otherwise the schema is named by a digest.
 Column names therefore never add directories or leave the cache directory
 (earlier releases turned a column named `m/z` into a subdirectory). A matching
 database an older release stored under its historical name is still reused in
-place; a new `version` rebuilds it under the new name and removes the superseded
-copy, along with any directories it alone occupied. An explicit `db_filename`
-also works without `csv_filename`. Supply parser options directly and download
-options in `download_options`, as described in the
+place. A new `version` rebuilds it under the new name and leaves the older copy
+alone, since another process may still have it open; once no older release uses
+the cache, remove it by hand or with `Cache.delete_all`. An explicit
+`db_filename` also works without `csv_filename`. Supply parser options directly
+and download options in `download_options`, as described in the
 [progress guide](progress.md#csv-options). A `cache_root` in that dictionary is
 used for both the downloaded CSV and its database.
 
 Explicit CSV filenames keep their historical database key, including names
-ending in `.csv.gz`. If `db_filename` is supplied and its tables/version match,
-the database can be reused offline without a source CSV or parsing it again.
+ending in `.csv.gz`, whenever that key is a valid file name on every supported
+platform. If `db_filename` is supplied and its tables/version match, the
+database can be reused offline without a source CSV or parsing it again.
 Supplying `expected_sha256`, `expected_size`, or `force` in `download_options`
-still requests source validation or refresh. Refreshing a source alone does
-not rebuild a matching database; also increment `version` when its data changes.
+still requests source validation or refresh. Refreshing a source alone does not
+rebuild a matching database; also increment `version` when its data changes.
 
 ## Custom single-file transformations
 

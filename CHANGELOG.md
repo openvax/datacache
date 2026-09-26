@@ -6,15 +6,17 @@
   column, so a header containing `/` created subdirectories (and `..` could
   place the database outside the cache), characters such as `:` and `?` from
   headers or the CSV filename are invalid on Windows, and wide CSVs exceeded the
-  filename limit and failed with `OSError`. Names are now spelled out only when
-  every character is valid on all supported platforms and SQLite's journal still
-  fits; otherwise the schema is named by a digest. A matching database stored
-  under the historical name is still reused in place, and a new `version`
-  rebuilds it under the new name and removes the superseded copy.
-- Refuse to build a database whose filename leaves no room for SQLite's
-  `-journal` file (over 247 bytes) with a clear `ValueError`. Such a database
-  could be created once, but every later `version` change or `overwrite=True`
-  failed with `unable to open database file`. Existing ones are still reused.
+  255-byte file name limit and failed with `OSError`. Names are now spelled out
+  only when every character is valid on all supported platforms and SQLite's
+  journal still fits, measured the same way everywhere; otherwise the schema is
+  named by a digest. A matching database stored under the historical name is
+  still reused in place. A new `version` rebuilds it under the new name and
+  leaves the older copy alone, since another process may still have it open.
+- Explain why a database whose filename leaves no room for SQLite's `-journal`
+  file (over 247 bytes) cannot be rebuilt: a `version` change or
+  `overwrite=True` now raises a clear `ValueError` instead of
+  `unable to open database file`. Creating and reusing such a database still
+  work.
 - Reject the reserved `_datacache_metadata` and `sqlite_` table names before
   reusing a database. Requesting `_datacache_metadata` for an existing database
   returned the version table instead of storing the DataFrame.
@@ -27,10 +29,11 @@
 - Choose ZIP members more carefully: a member with the output's name inside a
   folder, or differing only in letter case, is installed instead of the largest
   member, preferring the copy nearest the archive root. When nothing matches,
-  the largest member is still installed, now with a logged warning if the
-  archive has several. New downloads of such archives install different bytes,
-  so an `expected_sha256` pinned to the previously installed member fails
-  validation; files already in a cache are unchanged.
+  the largest member is still installed, now with a logged warning if the output
+  was named explicitly and the archive has several. New downloads of such
+  archives install different bytes, so an `expected_sha256` pinned to the
+  previously installed member fails validation; files already in a cache are
+  unchanged.
 - Suggest `force=True` only when a regular file is present; it cannot replace a
   directory at the cache path.
 - Store `float16` DataFrame columns as `FLOAT`.
