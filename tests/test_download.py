@@ -230,3 +230,14 @@ def test_fetch_decompress_zip_prefers_the_root_over_letter_case(isolated_cache):
     path = fetch_file("file://" + str(archive), filename="data.csv", decompress=True)
     with open(path) as f:
         assert f.read() == "the dataset\n"
+
+
+@pytest.mark.parametrize("root_name", ["./DATA.CSV", "/DATA.CSV"])
+def test_fetch_decompress_zip_treats_dot_and_slash_prefixes_as_the_root(isolated_cache, root_name):
+    archive = isolated_cache / "prefixed.zip"
+    with zipfile.ZipFile(str(archive), "w") as z:
+        z.writestr(zipfile.ZipInfo(root_name), "the dataset\n")
+        z.writestr("docs/data.csv", "a sample\n")
+    path = fetch_file("file://" + str(archive), filename="data.csv", decompress=True)
+    with open(path) as f:
+        assert f.read() == "the dataset\n"

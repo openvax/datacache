@@ -445,3 +445,27 @@ def test_no_report_without_an_older_database(tmp_path, mz_source, caplog):
         fetch_csv_db("records", mz_source.as_uri(), csv_filename="mz.csv",
                      download_options={"cache_root": tmp_path / "cache"}).close()
     assert not caplog.records
+
+
+def test_the_older_copy_is_called_deletable_only_after_a_successful_build(
+        tmp_path, mz_source, caplog, monkeypatch):
+    cache_root = tmp_path / "cache"
+    _write_legacy_database(cache_root / "mz_nrows1.peptide_TEXT.m" / "z_FLOAT.db", 1, [("OLD", 9.5)])
+
+    def failing_build(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(database_helpers, "db_from_dataframe", failing_build)
+    with caplog.at_level(logging.WARNING, logger="datacache.database_helpers"):
+        with pytest.raises(OSError, match="disk full"):
+            fetch_csv_db("records", mz_source.as_uri(), csv_filename="mz.csv", version=2,
+                         download_options={"cache_root": cache_root})
+    assert "can be deleted" not in caplog.text
+
+
+def test_older_names_whose_dots_stay_in_the_cache_are_still_reused():
+    # "records_nrows1../x_INT.db" has components "records_nrows1.." and
+    # "x_INT.db": it never leaves the cache, so an existing copy is reused.
+    name, historical = _db_filenames_from_dataframe("records", pd.DataFrame({"./x": [1]}))
+    assert historical == "records_nrows1../x_INT.db" and name != historical
+    assert _db_filenames_from_dataframe("records", pd.DataFrame({"/../x": [1]}))[1] is None

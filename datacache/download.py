@@ -283,10 +283,12 @@ def _choose_zip_member(infos, filename, warn=True):
         return chosen
     paths = {info: info.filename.replace("\\", "/") for info in infos}
     names = {info: path.rsplit("/", 1)[-1] for info, path in paths.items()}
+    depths = {info: sum(part not in ("", ".") for part in path.split("/")[:-1])
+              for info, path in paths.items()}
     named = [info for info in infos if names[info].casefold() == filename.casefold()]
     if named:
         return min(named, key=lambda info: (
-            paths[info].count("/"), names[info] != filename, -info.file_size))
+            depths[info], names[info] != filename, -info.file_size))
     chosen = max(infos, key=lambda info: info.file_size)
     if warn and len(infos) > 1:
         logger.warning("No ZIP member is named %s; installing the largest of %d members, %s",

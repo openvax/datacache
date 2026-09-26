@@ -13,6 +13,7 @@ import pytest
 
 from datacache import connect_if_correct_version, db_from_dataframe, db_from_dataframes
 from datacache.database import Database, fold_identifier, quote_identifier
+from datacache import database_helpers
 from datacache.database_helpers import _create_cached_db, db_from_dataframes_with_absolute_path
 from datacache.database_table import DatabaseTable
 
@@ -453,3 +454,37 @@ def test_from_fasta_dict_rejects_repeated_identifiers():
     records = pd.Series([Record("ACGT"), Record("TTTT")], index=["same", "same"])
     with pytest.warns(DeprecationWarning), pytest.raises(ValueError, match="1 non-unique"):
         DatabaseTable.from_fasta_dict("sequences", records, "id", "sequence")
+
+
+def test_a_lock_during_a_rebuild_is_reported_as_a_lock(tmp_path, monkeypatch):
+    # Even when the name leaves no room for the journal, contention for the
+    # lock must surface as SQLite's own error so callers can retry it.
+    real_connect = sqlite3.connect
+    monkeypatch.setattr(sqlite3, "connect", lambda *args, **kwargs: real_connect(*args, **{"timeout": 0.1, **kwargs}))
+    long_name = "r" * 250 + ".db"
+    db_from_dataframe(long_name, "t", pd.DataFrame({"id": [1]}), cache_root=tmp_path).close()
+    holder = sqlite3.connect(tmp_path / long_name, isolation_level=None)
+    holder.execute("BEGIN IMMEDIATE")
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="locked"):
+            db_from_dataframe(long_name, "t", pd.DataFrame({"id": [2]}), cache_root=tmp_path, version=2)
+    finally:
+        holder.execute("ROLLBACK")
+        holder.close()
+
+
+def test_windows_reports_an_overlong_journal_name_too(tmp_path, monkeypatch):
+    # Windows raises ERROR_FILENAME_EXCED_RANGE (206) instead of ENAMETOOLONG.
+    real_stat = os.stat
+
+    def windows_stat(path, *args, **kwargs):
+        if os.fspath(path).endswith("-journal"):
+            error = OSError(errno.ENOENT, "The filename or extension is too long")
+            error.winerror = 206
+            raise error
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(database_helpers.os, "stat", windows_stat)
+    with pytest.raises(ValueError, match="Cannot rebuild"):
+        database_helpers._explain_rebuild_failure(
+            str(tmp_path / "x.db"), sqlite3.OperationalError("unable to open database file"))

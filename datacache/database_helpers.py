@@ -142,7 +142,8 @@ def _explain_rebuild_failure(db_path, error):
     try:
         os.stat(db_path + "-journal")
     except OSError as stat_error:
-        if stat_error.errno == errno.ENAMETOOLONG:
+        # Windows reports ERROR_FILENAME_EXCED_RANGE rather than ENAMETOOLONG.
+        if stat_error.errno == errno.ENAMETOOLONG or getattr(stat_error, "winerror", None) == 206:
             name = os.path.basename(db_path)
             raise ValueError(
                 "Cannot rebuild database %r: this filesystem has no room for SQLite's "
@@ -228,7 +229,8 @@ def _create_cached_db(
                         logger.info("Creating database %s containing: %s", db_path, ", ".join(table_names))
                         db.create(tables, version, show_progress=show_progress)
             except sqlite3.OperationalError as error:
-                _explain_rebuild_failure(db_path, error)
+                if not _is_lock_error(error):
+                    _explain_rebuild_failure(db_path, error)
                 raise
     except BaseException:
         logger.warning(
@@ -420,12 +422,7 @@ def _name_length(name):
 
 def _truncate_name(name, limit):
     """Return the longest prefix of name within limit UTF-8 bytes."""
-    used = 0
-    for index, character in enumerate(name):
-        used += _name_length(character)
-        if used > limit:
-            return name[:index]
-    return name
+    return name.encode("utf-8", "surrogatepass")[:limit].decode("utf-8", "ignore")
 
 
 def _db_filenames_from_dataframe(base_filename, df):
@@ -461,7 +458,7 @@ def _db_filenames_from_dataframe(base_filename, df):
     safe_stem = _truncate_name(safe_stem, _MAX_DB_NAME_LENGTH - len(".%s.db" % digest))
     # A historical name with a ".." component could lie outside the cache, and
     # one with a NUL could never have been created, so neither is reused.
-    reusable = ".." not in _SEPARATORS.split(schema) and "\x00" not in historical
+    reusable = ".." not in _SEPARATORS.split(stem + schema) and "\x00" not in historical
     return "%s%s.%s.db" % (directory, safe_stem, digest), historical if reusable else None
 
 
@@ -517,6 +514,7 @@ def fetch_csv_db(
     """
     options = download_options or {}
     cache_root = options.get("cache_root")
+    superseded = False
     check_source = (options.get("force") or options.get("expected_sha256") is not None or
                     options.get("expected_size") is not None)
     if db_filename is not None and not check_source:
@@ -549,12 +547,7 @@ def fetch_csv_db(
             connection, superseded = _open_legacy_database(legacy_path, table_name, version)
             if connection is not None:
                 return connection
-            if superseded:
-                logger.warning(
-                    "Rebuilding %s under a new name; the older database at %s is no longer "
-                    "used and can be deleted once no older datacache release uses this cache.",
-                    db_filename, legacy_path)
-    return db_from_dataframe(
+    connection = db_from_dataframe(
         db_filename,
         table_name,
         df,
@@ -562,3 +555,10 @@ def fetch_csv_db(
         version=version,
         cache_root=cache_root,
         show_progress=show_progress)
+    if superseded:
+        # Only now that the replacement exists is the older copy truly unused.
+        logger.warning(
+            "Built %s under a new name; the older database at %s is no longer used "
+            "and can be deleted once no older datacache release uses this cache.",
+            db_filename, legacy_path)
+    return connection
