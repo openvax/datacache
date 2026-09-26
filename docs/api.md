@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.11.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.11.1. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -267,7 +267,9 @@ Choose a string cache key from a URL string or an explicit filename string.
 At least one must be nonempty. An explicit name takes precedence. URL-derived
 names include an MD5 digest of the full URL for naming, not integrity checking.
 Special characters `/`, `\`, `;`, `:`, `?`, and `=` are replaced with underscores;
-long names are shortened with a digest. This is a cache key, not an exact path.
+long names are shortened with a digest, as is any name over 255 UTF-8 bytes,
+which keeps as much of its end (including the extension) as fits. This is a
+cache key, not an exact path.
 
 `decompress=True` strips a final `.gz` or `.zip` suffix. Inferred archive
 endpoints without a removable suffix instead get `.decompressed`, so archive

@@ -241,3 +241,13 @@ def test_fetch_decompress_zip_treats_dot_and_slash_prefixes_as_the_root(isolated
     path = fetch_file("file://" + str(archive), filename="data.csv", decompress=True)
     with open(path) as f:
         assert f.read() == "the dataset\n"
+
+
+def test_fetch_file_accepts_names_longer_than_255_utf8_bytes(isolated_cache):
+    source = isolated_cache / "source.csv"
+    source.write_text("id\n1\n")
+    path = fetch_file("file://" + str(source), filename="測" * 100 + ".csv")
+    assert os.path.basename(path).endswith(".csv")
+    assert len(os.path.basename(path).encode("utf-8")) <= 255
+    with open(path) as f:
+        assert f.read() == "id\n1\n"
