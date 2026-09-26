@@ -15,9 +15,9 @@ import pytest
 import pandas as pd
 
 from datacache import common, fetch_and_transform, fetch_csv_dataframe, fetch_csv_db
-from datacache.common import build_local_filename
+from datacache.common import build_local_filename, name_length
 from datacache import database_helpers
-from datacache.database_helpers import _db_filenames_from_dataframe, _name_length, _truncate_name
+from datacache.database_helpers import _db_filenames_from_dataframe, _truncate_name
 
 
 @pytest.fixture
@@ -406,7 +406,7 @@ def test_database_names_need_named_columns():
 def test_truncation_counts_utf8_bytes_on_every_platform():
     assert _truncate_name("abc", 5) == "abc"
     assert _truncate_name("é" * 10, 5) == "éé"  # two bytes each
-    assert _name_length("é" * 130) == 260
+    assert name_length("é" * 130) == 260
 
 
 def test_inferred_names_measure_utf8_bytes_on_every_platform():
@@ -469,3 +469,12 @@ def test_older_names_whose_dots_stay_in_the_cache_are_still_reused():
     name, historical = _db_filenames_from_dataframe("records", pd.DataFrame({"./x": [1]}))
     assert historical == "records_nrows1../x_INT.db" and name != historical
     assert _db_filenames_from_dataframe("records", pd.DataFrame({"/../x": [1]}))[1] is None
+
+
+def test_csv_filenames_longer_than_255_utf8_bytes_build_a_database(tmp_path):
+    source = tmp_path / "source.csv"
+    source.write_text("id\n1\n")
+    with closing(fetch_csv_db("records", source.as_uri(), csv_filename="測" * 100 + ".csv",
+                              download_options={"cache_root": tmp_path / "cache"})) as connection:
+        assert connection.execute("SELECT * FROM records").fetchall() == [(1,)]
+    assert all(len(path.name.encode("utf-8")) <= 255 for path in (tmp_path / "cache").iterdir())

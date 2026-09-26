@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.11.1
+
+- Shorten cache names longer than 255 UTF-8 bytes. Names were shortened by
+  character count, so a long non-ASCII filename (for example 100 CJK
+  characters) exceeded Linux's 255-byte limit, and `fetch_file`,
+  `fetch_csv_dataframe`, and `fetch_csv_db` failed with `OSError`. Such names
+  now become a digest followed by as much of their end, including the
+  extension, as fits. Every name within the limit is unchanged. On macOS and
+  Windows, which limit characters rather than bytes, a file already cached
+  under such a name is downloaded once more under the shorter name.
+
 ## 1.11.0
 
 - Keep `fetch_csv_db` database names safe. An inferred name spells out each
