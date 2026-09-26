@@ -7,7 +7,7 @@ import stat
 import pandas as pd
 import pytest
 
-from datacache import Cache
+from datacache import Cache, common, ensure_dir
 
 
 @pytest.mark.parametrize("root_kind", ["dot", "path-dot", "dot-slash", "absolute", "parent", "symlink"])
@@ -92,3 +92,24 @@ def test_database_paths_follow_symlinks_before_parent_components(
         cache.delete_all()
         assert not expected.exists()
         assert not wrong.exists()
+
+
+def test_ensure_dir_tolerates_a_concurrent_creator(tmp_path, monkeypatch):
+    target = tmp_path / "made-elsewhere"
+    target.mkdir()
+    # Another process creates the directory between the check and makedirs.
+    monkeypatch.setattr(common, "exists", lambda path: False)
+    ensure_dir(target)
+    assert target.is_dir()
+
+
+def test_ensure_dir_leaves_existing_paths_but_rejects_a_broken_symlink(tmp_path):
+    existing = tmp_path / "file.txt"
+    existing.write_text("kept")
+    ensure_dir(existing)
+    assert existing.read_text() == "kept"
+    broken = tmp_path / "broken"
+    broken.symlink_to(tmp_path / "missing")
+    with pytest.raises(FileExistsError):
+        ensure_dir(broken)
+

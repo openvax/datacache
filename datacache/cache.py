@@ -19,9 +19,17 @@ from . import download
 from .download import expected_path
 from .database_helpers import db_from_dataframe
 from .inspection import inspect_file, path_exists
+from .permissions import make_file_readable
 
 
 class Cache(object):
+    """Download, inspect, and delete files under one cache directory.
+
+    subdir names the application whose platform cache directory is used;
+    cache_root selects an exact directory instead. A relative cache_root is
+    resolved against the working directory on every call, not at construction.
+    """
+
     def __init__(self, subdir="datacache", *, cache_root=None):
         """Select a cache directory without creating it.
 
@@ -39,8 +47,12 @@ class Cache(object):
         self._local_paths = {}
 
     def delete_url(self, url):
-        """
-        Delete local files downloaded from given URL
+        """Delete this root's local copies of a URL; missing files are ignored.
+
+        Removes files this instance fetched from url, including under explicit
+        filenames, and the URL-derived raw and decompressed paths under this
+        root whichever instance created them. Explicit filenames used by other
+        instances are not recorded and are left in place.
         """
         keys = [key for key in self._local_paths if key[0] == url]
         paths = {self._local_paths[key] for key in keys}
@@ -82,6 +94,15 @@ class Cache(object):
             self.local_path(url, filename, decompress),
             expected_sha256=expected_sha256, expected_size=expected_size)
 
+    def make_readable(self, url=None, filename=None, decompress=False, *, group=True, others=False):
+        """Explicitly add read access to one cached regular file on POSIX.
+
+        Defaults to group read access; does not download, replace, or recurse.
+        The file owner must invoke this to share an older private cache file.
+        """
+        return make_file_readable(
+            self.local_path(url, filename, decompress), group=group, others=others)
+
     def fetch(
             self,
             url,
@@ -97,7 +118,8 @@ class Cache(object):
             expected_size=None,
             max_retries=download.DEFAULT_MAX_RETRIES,
             retry_backoff=download.DEFAULT_RETRY_BACKOFF,
-            retry_max_delay=download.DEFAULT_RETRY_MAX_DELAY):
+            retry_max_delay=download.DEFAULT_RETRY_MAX_DELAY,
+            show_progress=False):
         """
         Return the local path to the downloaded copy of a given URL.
         Don't download the file again if it's already present,
@@ -105,6 +127,8 @@ class Cache(object):
 
         Retry options have the same meanings as in fetch_file; max_retries=0
         disables automatic retries of transient HTTP failures.
+        show_progress=True enables optional tqdm displays; callbacks remain
+        supported independently. Existing cache hits are quiet.
 
         `use_wget_if_available` is deprecated and ignored (datacache always uses
         its streaming Python downloader now); passing it emits a warning.
@@ -125,7 +149,8 @@ class Cache(object):
             expected_size=expected_size,
             max_retries=max_retries,
             retry_backoff=retry_backoff,
-            retry_max_delay=retry_max_delay)
+            retry_max_delay=retry_max_delay,
+            show_progress=show_progress)
 
         self._local_paths[key] = path
         return path
@@ -156,7 +181,16 @@ class Cache(object):
             db_filename,
             table_name,
             df,
-            key_column_name=None):
+            key_column_name=None,
+            *,
+            overwrite=False,
+            version=1,
+            show_progress=False):
+        """Build or reuse a database in this cache and return its connection.
+
+        The caller must close the connection. Change version or set overwrite
+        to rebuild; failed rebuilds preserve the previous database.
+        """
         db_path = join(self.cache_directory_path, db_filename)
         if not isabs(db_path):
             # Prefix the cwd without abspath's lexical removal of symlink/..
@@ -167,4 +201,7 @@ class Cache(object):
             table_name=table_name,
             df=df,
             primary_key=key_column_name,
-            subdir=self.subdir)
+            subdir=self.subdir,
+            overwrite=overwrite,
+            version=version,
+            show_progress=show_progress)

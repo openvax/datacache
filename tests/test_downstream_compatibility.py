@@ -2,6 +2,8 @@
 
 import gzip
 import io
+import os
+import stat
 import zipfile
 
 import pytest
@@ -84,6 +86,26 @@ def test_decompress_stream_compatibility_entry_point(tmp_path, failed):
         else:
             download._decompress_to_file(source, destination)
             assert destination.read_bytes() == DATA
+    assert list(tmp_path.iterdir()) == [destination]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX umask semantics")
+@pytest.mark.parametrize("creation_mask", [0o022, 0o002, 0o077])
+@pytest.mark.parametrize("existing_mode", [None, 0o600, 0o640])
+def test_decompress_stream_publication_permissions(tmp_path, creation_mask, existing_mode):
+    destination = tmp_path / "reference.fa"
+    if existing_mode is not None:
+        destination.write_bytes(b"previous artifact")
+        destination.chmod(existing_mode)
+    previous_mask = os.umask(creation_mask)
+    try:
+        with gzip.GzipFile(fileobj=io.BytesIO(gzip.compress(DATA))) as source:
+            download._decompress_to_file(source, destination)
+    finally:
+        os.umask(previous_mask)
+    expected_mode = 0o666 & ~creation_mask if existing_mode is None else existing_mode
+    assert stat.S_IMODE(destination.stat().st_mode) == expected_mode
+    assert destination.read_bytes() == DATA
     assert list(tmp_path.iterdir()) == [destination]
 
 

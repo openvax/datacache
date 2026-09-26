@@ -13,6 +13,7 @@
 from .download import expected_path, file_exists, fetch_file, fetch_and_transform, fetch_csv_dataframe
 from .integrity import FileValidationError, validate_file
 from .inspection import CacheInspection, FileInspection, inspect_file, inspect_files
+from .permissions import make_file_readable
 from .database_helpers import (
     db_from_dataframe,
     db_from_dataframes,
@@ -43,6 +44,7 @@ __all__ = [
     'inspect_files',
     'FileValidationError',
     'validate_file',
+    'make_file_readable',
     'fetch_and_transform',
     'fetch_csv_dataframe',
     'db_from_dataframe',

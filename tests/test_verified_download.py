@@ -267,7 +267,8 @@ def test_staging_uses_destination_filesystem(source, tmp_path, monkeypatch, comp
     monkeypatch.setattr(download, "_open_staging_file", checked_temp)
     monkeypatch.setattr(download.os, "replace", checked_replace)
     fetch_file(source.as_uri(), destination=destination, expected_sha256=sha256(PAYLOAD))
-    assert len(staging_paths) == (2 if compressed else 1)
+    # Download, optional decompression, and an empty creation-mode probe.
+    assert len(staging_paths) == (3 if compressed else 2)
     assert destination.read_bytes() == PAYLOAD
     assert list(system_temp.iterdir()) == []
     assert list(destination.parent.iterdir()) == [destination]
@@ -393,3 +394,17 @@ def test_http_timeout_progress_and_response_cleanup(tmp_path, monkeypatch, faile
         assert destination.read_bytes() == PAYLOAD
         assert progress == [(8, len(PAYLOAD)), (len(PAYLOAD), len(PAYLOAD))]
     assert response.closed
+
+
+def test_force_is_only_suggested_when_it_can_replace_the_path(tmp_path):
+    source = tmp_path / "source.txt"
+    source.write_bytes(b"data")
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
+    (cache_root / "mismatched.txt").write_bytes(b"old")
+    with pytest.raises(FileValidationError, match="use force=True"):
+        fetch_file(source.as_uri(), filename="mismatched.txt", cache_root=cache_root, expected_size=4)
+    (cache_root / "directory.txt").mkdir()
+    with pytest.raises(FileValidationError) as error:
+        fetch_file(source.as_uri(), filename="directory.txt", cache_root=cache_root)
+    assert "force=True" not in str(error.value)

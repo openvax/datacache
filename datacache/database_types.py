@@ -26,8 +26,10 @@ _dtype_to_db_type_dict = {
     'uint64': 'INT',
 
     'bool': 'INT',
+    'boolean': 'INT',
 
     'float': 'FLOAT',
+    'float16': 'FLOAT',
     'float32': 'FLOAT',
     'float64': 'FLOAT',
 
@@ -35,10 +37,14 @@ _dtype_to_db_type_dict = {
     'object_': 'TEXT',
     'string_': 'TEXT',
     'str': 'TEXT',
+    'string': 'TEXT',
     'category': 'TEXT',
 }
 
 def _lookup_type_name(type_name):
+    type_name = type_name.lower()
+    if type_name.startswith("datetime64["):
+        return "TEXT"
     if type_name in _dtype_to_db_type_dict:
         return _dtype_to_db_type_dict[type_name]
     else:

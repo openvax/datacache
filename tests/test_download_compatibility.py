@@ -163,7 +163,7 @@ def output_source(monkeypatch):
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX file-mode semantics")
 @pytest.mark.parametrize("kind", ["raw", "gz", "zip", "html"])
-@pytest.mark.parametrize("mode", [0o640, 0o664, 0o440])
+@pytest.mark.parametrize("mode", [0o600, 0o640, 0o664, 0o440])
 def test_refresh_preserves_existing_permissions(tmp_path, output_source, kind, mode):
     url, expected = output_source(kind)
     destination = tmp_path / "data.csv"
@@ -175,9 +175,12 @@ def test_refresh_preserves_existing_permissions(tmp_path, output_source, kind, m
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX umask semantics")
-@pytest.mark.parametrize("creation_mask", [0o022, 0o002, 0o077])
-def test_new_csv_uses_normal_creation_permissions(tmp_path, monkeypatch, output_source, creation_mask):
-    url, expected = output_source("html")
+@pytest.mark.parametrize("creation_mask", [0o022, 0o002, 0o027, 0o077])
+@pytest.mark.parametrize("kind", ["raw", "gz", "zip", "html"])
+@pytest.mark.parametrize("entry_point", ["public", "private"])
+def test_new_files_use_normal_creation_permissions(
+        tmp_path, monkeypatch, output_source, creation_mask, kind, entry_point):
+    url, expected = output_source(kind)
     destination = tmp_path / "data.csv"
     previous_mask = os.umask(creation_mask)
     try:
@@ -186,11 +189,16 @@ def test_new_csv_uses_normal_creation_permissions(tmp_path, monkeypatch, output_
             def reject_umask(*args):
                 pytest.fail("download changed the process umask")
             guard.setattr(download.os, "umask", reject_umask)
-            fetch_file(url, destination=destination)
+            if entry_point == "public":
+                fetch_file(url, destination=destination)
+            else:
+                # pyensembl downloads GTF and FASTA files through this helper.
+                download._download_and_decompress_if_necessary(str(destination), url)
     finally:
         os.umask(previous_mask)
     assert destination.read_bytes() == expected
     assert stat.S_IMODE(destination.stat().st_mode) == 0o666 & ~creation_mask
+    assert list(tmp_path.iterdir()) == [destination]
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX file-mode semantics")
@@ -262,8 +270,9 @@ def test_csv_contents_remain_private_until_validated(
 
 
 @pytest.mark.parametrize("failed", [False, True])
-def test_creation_mode_probe_never_contains_data(tmp_path, monkeypatch, output_source, failed):
-    url, expected = output_source("html")
+@pytest.mark.parametrize("kind", ["raw", "gz", "zip", "html"])
+def test_creation_mode_probe_never_contains_data(tmp_path, monkeypatch, output_source, failed, kind):
+    url, expected = output_source(kind)
     destination = tmp_path / "data.csv"
     original_open = download._open_staging_file
     original_fstat = os.fstat
@@ -306,36 +315,97 @@ def test_creation_mode_probe_never_contains_data(tmp_path, monkeypatch, output_s
 
 @pytest.mark.parametrize("kind", ["raw", "gz", "zip", "html"])
 @pytest.mark.parametrize("failure", ["chmod", "replace"])
+@pytest.mark.parametrize("existing", [False, True])
 def test_permission_or_publication_failure_preserves_file_and_mode(
-        tmp_path, monkeypatch, output_source, kind, failure):
+        tmp_path, monkeypatch, output_source, kind, failure, existing):
     url, expected = output_source(kind)
     destination = tmp_path / "data.csv"
-    destination.write_bytes(b"old complete file")
-    destination.chmod(0o640)
-    original_mode = stat.S_IMODE(destination.stat().st_mode)
+    if existing:
+        destination.write_bytes(b"old complete file")
+        destination.chmod(0o640)
+        original_mode = stat.S_IMODE(destination.stat().st_mode)
 
     def fail(path, *args):
         assert Path(path).read_bytes() == expected
-        if failure == "replace":
+        if failure == "replace" and existing:
             assert stat.S_IMODE(Path(path).stat().st_mode) == original_mode
         raise PermissionError("injected " + failure + " failure")
 
     monkeypatch.setattr(download.os, failure, fail)
     with pytest.raises(PermissionError, match="injected"):
         fetch_file(url, destination=destination, force=True)
-    assert destination.read_bytes() == b"old complete file"
-    assert stat.S_IMODE(destination.stat().st_mode) == original_mode
-    assert list(tmp_path.iterdir()) == [destination]
+    if existing:
+        assert destination.read_bytes() == b"old complete file"
+        assert stat.S_IMODE(destination.stat().st_mode) == original_mode
+        assert list(tmp_path.iterdir()) == [destination]
+    else:
+        assert list(tmp_path.iterdir()) == []
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX file-mode semantics")
 @pytest.mark.parametrize("kind", ["raw", "gz", "zip"])
-def test_new_binary_files_remain_private(tmp_path, output_source, kind):
+@pytest.mark.parametrize("failed", [False, True])
+def test_binary_staging_remains_private_until_validated(tmp_path, monkeypatch, output_source, kind, failed):
     url, expected = output_source(kind)
     destination = tmp_path / "data"
-    fetch_file(url, destination=destination)
-    assert destination.read_bytes() == expected
-    assert stat.S_IMODE(destination.stat().st_mode) & 0o077 == 0
+    original_stream = download._stream_to_file
+    original_copy = download.copyfileobj
+    original_validate = download.validate_file
+    original_replace = os.replace
+    observations = []
+
+    def check_private():
+        assert not destination.exists()
+        for sibling in tmp_path.glob(".datacache-*"):
+            assert stat.S_IMODE(sibling.stat().st_mode) & 0o077 == 0
+
+    def checked_stream(*args, **kwargs):
+        check_private()
+        result = original_stream(*args, **kwargs)
+        check_private()
+        observations.append("downloaded")
+        return result
+
+    def checked_copy(*args, **kwargs):
+        check_private()
+        result = original_copy(*args, **kwargs)
+        check_private()
+        observations.append("decompressed")
+        return result
+
+    def checked_validate(path, *args, **kwargs):
+        check_private()
+        assert Path(path).read_bytes() == expected
+        result = original_validate(path, *args, **kwargs)
+        observations.append("validated")
+        return result
+
+    def checked_replace(source, target):
+        assert observations[-1] == "validated"
+        assert Path(source).read_bytes() == expected
+        assert stat.S_IMODE(Path(source).stat().st_mode) == 0o644
+        return original_replace(source, target)
+
+    monkeypatch.setattr(download, "_stream_to_file", checked_stream)
+    monkeypatch.setattr(download, "copyfileobj", checked_copy)
+    monkeypatch.setattr(download, "validate_file", checked_validate)
+    monkeypatch.setattr(download.os, "replace", checked_replace)
+    previous_mask = os.umask(0o022)
+    try:
+        kwargs = dict(destination=destination, force=True,
+                      expected_sha256="0" * 64 if failed else hashlib.sha256(expected).hexdigest())
+        if failed:
+            with pytest.raises(download.FileValidationError, match="SHA-256 mismatch"):
+                fetch_file(url, **kwargs)
+            assert not destination.exists()
+        else:
+            fetch_file(url, **kwargs)
+            assert destination.read_bytes() == expected
+    finally:
+        os.umask(previous_mask)
+    assert observations == (["downloaded"] + ([] if kind == "raw" else ["decompressed"]) +
+                            ([] if failed else ["validated"]))
+    assert not list(tmp_path.glob(".datacache-*"))
 
 
 @pytest.mark.parametrize("exhausted", [False, True])
@@ -343,7 +413,7 @@ def test_staging_collisions_do_not_overwrite_unrelated_files(tmp_path, monkeypat
     first, second = UUID(int=1), UUID(int=2)
     collision = tmp_path / (".datacache-download-" + first.hex + ".tmp")
     collision.write_bytes(b"unrelated file")
-    candidates = iter([first, second])
+    candidates = iter([first, second, UUID(int=3)])
     monkeypatch.setattr(download, "uuid4", lambda: first if exhausted else next(candidates))
     serve(monkeypatch, CONTENTS)
     destination = tmp_path / "data"

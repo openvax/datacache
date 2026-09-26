@@ -21,6 +21,7 @@ cached state -- the two sources of flakiness in the old live-Ensembl test (#42).
 """
 
 import gzip
+import logging
 import os
 import zipfile
 
@@ -95,6 +96,29 @@ def test_fetch_decompress_zip_picks_named_member(isolated_cache):
     assert not os.path.exists("readme.txt")
 
 
+def test_fetch_decompress_zip_matches_member_inside_a_folder(isolated_cache):
+    # Archives often wrap their files in a top-level folder. The member named
+    # like the output must win over a larger sibling rather than having the
+    # largest member's contents silently installed under the requested name.
+    archive = isolated_cache / "release.zip"
+    with zipfile.ZipFile(str(archive), "w") as z:
+        z.writestr("release/wanted.csv", "the wanted member\n")
+        z.writestr("release/other.csv", "a much larger member\n" * 100)
+    path = fetch_file("file://" + str(archive), filename="wanted.csv", decompress=True)
+    with open(path) as f:
+        assert f.read() == "the wanted member\n"
+
+
+def test_fetch_decompress_zip_prefers_the_exact_member_path(isolated_cache):
+    archive = isolated_cache / "release.zip"
+    with zipfile.ZipFile(str(archive), "w") as z:
+        z.writestr("wanted.csv", "top level\n")
+        z.writestr("nested/wanted.csv", "a larger nested copy\n" * 100)
+    path = fetch_file("file://" + str(archive), filename="wanted.csv", decompress=True)
+    with open(path) as f:
+        assert f.read() == "top level\n"
+
+
 def test_corrupt_gz_leaves_no_partial_cache(isolated_cache):
     # A truncated gzip decompresses partway then fails its trailing CRC check.
     # fetch_file must surface the error and leave NO file at the destination,
@@ -138,3 +162,82 @@ def test_use_wget_if_available_is_deprecated(isolated_cache):
     with pytest.warns(DeprecationWarning, match="use_wget_if_available is deprecated"):
         path = fetch_file(url, filename="w.fa.gz", decompress=True, use_wget_if_available=True)
     assert path.endswith("w.fa")
+
+
+def test_fetch_decompress_zip_matches_member_names_ignoring_case(isolated_cache, caplog):
+    archive = isolated_cache / "cased.zip"
+    with zipfile.ZipFile(str(archive), "w") as z:
+        z.writestr("Data.CSV", "the wanted member\n")
+        z.writestr("notes.txt", "a much larger member\n" * 100)
+    with caplog.at_level(logging.WARNING, logger="datacache.download"):
+        path = fetch_file("file://" + str(archive), filename="data.csv", decompress=True)
+    with open(path) as f:
+        assert f.read() == "the wanted member\n"
+    assert not caplog.records
+
+
+def test_fetch_decompress_zip_prefers_the_copy_nearest_the_root(isolated_cache):
+    archive = isolated_cache / "nested.zip"
+    with zipfile.ZipFile(str(archive), "w") as z:
+        z.writestr("release/data.csv", "current\n")
+        z.writestr("release/archive/2019/data.csv", "older and larger\n" * 100)
+    path = fetch_file("file://" + str(archive), filename="data.csv", decompress=True)
+    with open(path) as f:
+        assert f.read() == "current\n"
+
+
+def test_fetch_decompress_zip_warns_only_when_guessing_among_members(isolated_cache, caplog):
+    several = isolated_cache / "several.zip"
+    with zipfile.ZipFile(str(several), "w") as z:
+        z.writestr("readme.txt", "short\n")
+        z.writestr("table.tsv", "the largest member\n" * 10)
+    single = isolated_cache / "single.zip"
+    with zipfile.ZipFile(str(single), "w") as z:
+        z.writestr("anything.bin", "the only member\n")
+    with caplog.at_level(logging.WARNING, logger="datacache.download"):
+        guessed = fetch_file("file://" + str(several), filename="guessed.csv", decompress=True)
+        assert "table.tsv" in caplog.text
+        caplog.clear()
+        only = fetch_file("file://" + str(single), filename="only.csv", decompress=True)
+        assert not caplog.records
+    with open(guessed) as f:
+        assert f.read().startswith("the largest member")
+    with open(only) as f:
+        assert f.read() == "the only member\n"
+
+
+def test_fetch_decompress_zip_is_quiet_for_inferred_names(isolated_cache, caplog):
+    # An inferred cache key can never match a member name, so installing the
+    # largest member is the expected behavior, not a guess worth reporting.
+    archive = isolated_cache / "inferred.zip"
+    with zipfile.ZipFile(str(archive), "w") as z:
+        z.writestr("data.csv", "the largest member\n" * 10)
+        z.writestr("README", "short\n")
+    with caplog.at_level(logging.WARNING, logger="datacache.download"):
+        path = fetch_file("file://" + str(archive), decompress=True)
+    assert not caplog.records
+    with open(path) as f:
+        assert f.read().startswith("the largest member")
+
+
+def test_fetch_decompress_zip_prefers_the_root_over_letter_case(isolated_cache):
+    # The dataset at the root wins over a nested sample, even though only the
+    # sample matches the requested name's letter case exactly.
+    archive = isolated_cache / "rooted.zip"
+    with zipfile.ZipFile(str(archive), "w") as z:
+        z.writestr("DATA.CSV", "the dataset\n")
+        z.writestr("docs/examples/data.csv", "a sample\n")
+    path = fetch_file("file://" + str(archive), filename="data.csv", decompress=True)
+    with open(path) as f:
+        assert f.read() == "the dataset\n"
+
+
+@pytest.mark.parametrize("root_name", ["./DATA.CSV", "/DATA.CSV"])
+def test_fetch_decompress_zip_treats_dot_and_slash_prefixes_as_the_root(isolated_cache, root_name):
+    archive = isolated_cache / "prefixed.zip"
+    with zipfile.ZipFile(str(archive), "w") as z:
+        z.writestr(zipfile.ZipInfo(root_name), "the dataset\n")
+        z.writestr("docs/data.csv", "a sample\n")
+    path = fetch_file("file://" + str(archive), filename="data.csv", decompress=True)
+    with open(path) as f:
+        assert f.read() == "the dataset\n"
