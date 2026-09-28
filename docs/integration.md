@@ -28,6 +28,24 @@ helper transform flags retain the public parsed-URL behavior.
    as causes when adding domain-specific context. `FileValidationError.path`
    and `.reason` provide structured validation details.
 
+## Shared OpenVax cache
+
+OpenVax packages share one cache so that published data, such as test datasets,
+is downloaded once for all of them. Select its root with `get_cache_root`,
+listing the package's own variable before the shared one:
+
+```python
+root = datacache.get_cache_root("openvax", "OSTEOSARC_CACHE", "OPENVAX_DATA_CACHE")
+```
+
+`OPENVAX_DATA_CACHE`, when set, is the root itself; otherwise the platform cache
+directory named `openvax` is used. Store content-addressed files under
+`<root>/objects/sha256/<sha256><original suffixes>`, as osteosarc and Vaxrank
+do, so identical files are shared. Keep each package's own receipts and derived
+files in a subdirectory named after the package. Importing datacache does not
+import pandas, numpy, or requests, so command-line tools can resolve the root
+cheaply; those are loaded only by the functions that need them.
+
 ## Compatibility and scope
 
 Existing positional download and database arguments remain supported. New

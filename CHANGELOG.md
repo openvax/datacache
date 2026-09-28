@@ -1,7 +1,17 @@
 # Changelog
 
-## Unreleased
+## 1.12.0
 
+- Add `get_cache_root(name, *envkeys)`, which selects a cache root shared by
+  several packages. The first environment variable that is set is the root
+  itself; otherwise the platform cache directory for `name` is used. Unlike
+  `get_data_dir(subdir, envkey)`, nothing is appended to the variable's value.
+  OpenVax packages use `get_cache_root("openvax", "<PACKAGE>_CACHE",
+  "OPENVAX_DATA_CACHE")` so that shared data is downloaded once.
+- Import pandas, numpy, and requests only in the functions that use them.
+  `import datacache` now takes tens of milliseconds instead of hundreds, so
+  command-line tools can resolve cache paths cheaply. `download.pd` and
+  `download.requests` still refer to those modules.
 - Map numpy's fixed-width types in `db_type` on Python 3: `str_` (`dtype('U…')`)
   becomes `TEXT`, and `bytes_` (`dtype('S…')`) and `bytes` become `BLOB`,
   instead of raising `ValueError`. Databases built from DataFrames are

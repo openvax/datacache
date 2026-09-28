@@ -7,9 +7,6 @@ from numbers import Real
 import ssl
 import time
 
-import requests
-from requests.packages.urllib3.exceptions import SSLError as Urllib3SSLError
-
 
 DEFAULT_MAX_RETRIES = 2
 DEFAULT_RETRY_BACKOFF = 1.0
@@ -38,6 +35,8 @@ def validate_retry_options(max_retries, retry_backoff, retry_max_delay):
 
 def _contains_tls_error(error):
     """Follow active causes and Requests/urllib3 wrappers, guarding cycles."""
+    import requests
+    from requests.packages.urllib3.exceptions import SSLError as Urllib3SSLError
     pending, seen = [error], set()
     while pending:
         current = pending.pop()
@@ -56,6 +55,7 @@ def _contains_tls_error(error):
 
 
 def is_retryable_http_error(error):
+    import requests
     if isinstance(error, requests.HTTPError):
         return error.response is not None and error.response.status_code in RETRYABLE_HTTP_STATUSES
     transient = isinstance(error, (
@@ -95,6 +95,7 @@ def retry_delay(error, backoff, max_delay):
 
 def error_description(error):
     """Describe a failure without adding credentials or URL query text to logs."""
+    import requests
     if isinstance(error, requests.HTTPError) and error.response is not None:
         return "HTTP %s" % error.response.status_code
     return type(error).__name__

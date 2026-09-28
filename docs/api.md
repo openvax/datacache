@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.11.1. Import these names from `datacache`.
+public `Cache` method in DataCache 1.12.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -15,7 +15,7 @@ explain the longer workflows and compatibility guarantees.
 | Area | APIs |
 | --- | --- |
 | Downloading | [fetch_file](#fetch_file), [fetch_csv_dataframe](#fetch_csv_dataframe), [fetch_and_transform](#fetch_and_transform) |
-| Paths and presence | [expected_path](#expected_path), [file_exists](#file_exists), [build_local_filename](#build_local_filename), [get_data_dir](#get_data_dir), [resolve_path](#resolve_path), [build_path](#build_path), [ensure_dir](#ensure_dir), [clear_cache](#clear_cache) |
+| Paths and presence | [expected_path](#expected_path), [file_exists](#file_exists), [build_local_filename](#build_local_filename), [get_data_dir](#get_data_dir), [get_cache_root](#get_cache_root), [resolve_path](#resolve_path), [build_path](#build_path), [ensure_dir](#ensure_dir), [clear_cache](#clear_cache) |
 | Integrity and permissions | [validate_file](#validate_file), [inspect_file](#inspect_file), [inspect_files](#inspect_files), [make_file_readable](#make_file_readable) |
 | Results and exceptions | [FileInspection](#fileinspection), [CacheInspection](#cacheinspection), [FileValidationError](#filevalidationerror) |
 | SQLite | [db_from_dataframe](#db_from_dataframe), [db_from_dataframes](#db_from_dataframes), [db_from_dataframes_with_absolute_path](#db_from_dataframes_with_absolute_path), [fetch_csv_db](#fetch_csv_db), [connect_if_correct_version](#connect_if_correct_version) |
@@ -314,6 +314,34 @@ print(dc.get_data_dir())  # Platform cache directory for datacache.
 print(dc.get_data_dir("my-project"))
 # For an application-specific override:
 selected_root = dc.get_data_dir("my-project", envkey="MY_PROJECT_CACHE_ROOT")
+```
+
+### `get_cache_root`
+
+```text
+get_cache_root(name, *envkeys)
+```
+
+Select a cache root that several packages can share, without creating it. The
+first environment variable in `envkeys` that is set to a non-blank value is the
+root itself, trimmed and with `~` expanded. Otherwise the result is the platform
+cache directory for `name`, the same directory `get_data_dir(name)` selects.
+Unlike `get_data_dir(subdir, envkey)`, nothing is appended to an environment
+value, so every package that reads the same variable agrees on one location.
+List a package-specific variable first to let it override a shared one. Pass
+the result as `cache_root`. A relative value stays relative to the working
+directory.
+
+**Returns:** directory path string. **Raises:** `ValueError` for an empty
+`name` or a non-string or empty variable name, and platform directory lookup
+errors from appdirs.
+
+```python
+os.environ["EXAMPLE_SHARED"] = str(root / "shared")
+shared_root = dc.get_cache_root("example", "EXAMPLE_OWN", "EXAMPLE_SHARED")
+assert shared_root == str(root / "shared")
+del os.environ["EXAMPLE_SHARED"]
+print(dc.get_cache_root("example"))  # Platform cache directory for example.
 ```
 
 ### `resolve_path`

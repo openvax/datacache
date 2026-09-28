@@ -148,6 +148,7 @@ lists every public signature, default, return value, exception, and example.
 | --- | --- | --- |
 | Download or reuse one file | `fetch_file(...)`, `Cache.fetch(...)` | Local path string |
 | Compute a path without filesystem access | `expected_path(...)`, `Cache.local_path(...)` | Path string |
+| Choose a root shared by several packages | `get_cache_root(name, *envkeys)` | Path string |
 | Check presence | `file_exists(...)`, `Cache.exists(...)` | Boolean; does not establish integrity |
 | Validate bytes, raising on failure | `validate_file(...)` | Path string |
 | Inspect without repair or network access | `inspect_file(...)`, `Cache.inspect(...)` | `FileInspection` |

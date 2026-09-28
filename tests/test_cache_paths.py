@@ -7,7 +7,7 @@ import stat
 import pandas as pd
 import pytest
 
-from datacache import Cache, common, ensure_dir
+from datacache import Cache, common, ensure_dir, get_cache_root, get_data_dir
 
 
 @pytest.mark.parametrize("root_kind", ["dot", "path-dot", "dot-slash", "absolute", "parent", "symlink"])
@@ -113,3 +113,26 @@ def test_ensure_dir_leaves_existing_paths_but_rejects_a_broken_symlink(tmp_path)
     with pytest.raises(FileExistsError):
         ensure_dir(broken)
 
+
+def test_cache_root_uses_the_first_set_variable_as_the_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("SHARED_ROOT", str(tmp_path / "shared"))
+    monkeypatch.setenv("OWN_ROOT", "   ")  # blank counts as unset
+    root = get_cache_root("openvax", "OWN_ROOT", "SHARED_ROOT")
+    # The value is the root itself; get_data_dir would append "openvax".
+    assert root == str(tmp_path / "shared")
+    assert get_data_dir("openvax", envkey="SHARED_ROOT") == str(tmp_path / "shared" / "openvax")
+    monkeypatch.setenv("OWN_ROOT", "  ~/own-root ")
+    assert get_cache_root("openvax", "OWN_ROOT", "SHARED_ROOT") == os.path.expanduser("~/own-root")
+    assert not (tmp_path / "shared").exists()
+
+
+def test_cache_root_falls_back_to_the_platform_directory(monkeypatch):
+    monkeypatch.delenv("UNSET_ROOT", raising=False)
+    assert get_cache_root("openvax", "UNSET_ROOT") == get_data_dir("openvax")
+    assert get_cache_root("openvax") == get_data_dir("openvax")
+
+
+@pytest.mark.parametrize("arguments", [("",), (None,), ("openvax", ""), ("openvax", None)])
+def test_cache_root_rejects_empty_names(arguments):
+    with pytest.raises(ValueError):
+        get_cache_root(*arguments)
