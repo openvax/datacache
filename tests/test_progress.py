@@ -119,7 +119,7 @@ def test_failure_closes_bars_and_preserves_old_file(tmp_path, bars, failure):
 def test_empty_download_reports_zero_total(tmp_path, bars):
     source = tmp_path / "source"
     source.touch()
-    fetch_file(source.as_uri(), destination=tmp_path / "output", show_progress=True)
+    fetch_file(source.as_uri(), destination=tmp_path / "output", show_progress=True, allow_empty=True)
     assert bars[0].counts == [(0, 0)]
     assert bars[0].closed
 

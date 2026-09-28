@@ -48,6 +48,15 @@ def validate_file(path, expected_sha256=None, expected_size=None, *, show_progre
     this only checks that the file is readable and regular, not its integrity.
     show_progress=True displays optional tqdm progress during SHA-256 hashing.
     """
+    return _validate_file(path, expected_sha256, expected_size, show_progress=show_progress)[0]
+
+
+def _validate_file(path, expected_sha256=None, expected_size=None, *, show_progress=False):
+    """validate_file, also returning the stat of the bytes that were checked.
+
+    The stat comes from the open file, so callers reporting size or modification
+    time describe exactly the bytes validated, even if the path is replaced.
+    """
     _validate_expectations(expected_sha256, expected_size)
     path = os.fspath(path)
     if not stat.S_ISREG(os.stat(path).st_mode):
@@ -73,4 +82,4 @@ def validate_file(path, expected_sha256=None, expected_size=None, *, show_progre
                 raise FileValidationError(
                     path, "SHA-256 mismatch: expected %s, found %s" % (
                         expected_sha256.lower(), actual_sha256))
-    return path
+    return path, info

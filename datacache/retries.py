@@ -36,7 +36,7 @@ def validate_retry_options(max_retries, retry_backoff, retry_max_delay):
 def _contains_tls_error(error):
     """Follow active causes and Requests/urllib3 wrappers, guarding cycles."""
     import requests
-    from requests.packages.urllib3.exceptions import SSLError as Urllib3SSLError
+    from urllib3.exceptions import SSLError as Urllib3SSLError
     pending, seen = [error], set()
     while pending:
         current = pending.pop()

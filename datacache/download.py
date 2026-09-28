@@ -24,7 +24,7 @@ import zipfile
 import urllib.parse
 import urllib.request
 
-from . import common
+from . import common, provenance
 from .common import _source_suffix, build_local_filename
 from .integrity import FileValidationError, _validate_expectations, validate_file
 from .inspection import path_exists
@@ -54,6 +54,14 @@ def __getattr__(name):
 
 # Number of bytes to read/write at a time when streaming a download to disk.
 DEFAULT_CHUNK_SIZE = 2 ** 20  # 1 MB
+
+
+class EmptyResponse(Exception):
+    """A transfer completed without error but delivered no bytes.
+
+    A withdrawn upstream record or a misbehaving edge server can answer with a
+    clean, empty 200. HTTP attempts retry it like a transient failure.
+    """
 
 
 def _content_length(header_value):
@@ -130,7 +138,6 @@ def _download_to_temp_file(
         download_url,
         timeout=None,
         base_name="download",
-        ext="tmp",
         chunk_size=DEFAULT_CHUNK_SIZE,
         progress_callback=None,
         directory=None,
@@ -138,7 +145,8 @@ def _download_to_temp_file(
         max_retries=DEFAULT_MAX_RETRIES,
         retry_backoff=DEFAULT_RETRY_BACKOFF,
         retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
-        show_progress=False):
+        show_progress=False,
+        allow_empty=True):
 
     retry_backoff, retry_max_delay = validate_retry_options(max_retries, retry_backoff, retry_max_delay)
     if not download_url:
@@ -162,7 +170,7 @@ def _download_to_temp_file(
 
         try:
             with Progress(show_progress, "Downloading") as progress, _open_staging_file(
-                    directory=directory, suffix='.' + ext, prefix=base_name) as tmp:
+                    directory=directory, suffix='.tmp', prefix=base_name) as tmp:
                 tmp_path = tmp.name
                 count = _stream_to_file(
                     download_url,
@@ -172,11 +180,14 @@ def _download_to_temp_file(
                     progress_callback=report if progress_callback is not None or show_progress else None)
                 if count == 0:
                     progress(0, 0)
+                    if not allow_empty:
+                        raise EmptyResponse("the transfer delivered no bytes")
             return tmp_path
         except BaseException as error:
             if tmp_path is not None:
                 _remove_staging_file(tmp_path)
-            if not http or callback_failed or not is_retryable_http_error(error):
+            retryable = isinstance(error, EmptyResponse) or is_retryable_http_error(error)
+            if not http or callback_failed or not retryable:
                 raise
             if attempt == max_retries:
                 logger.warning("HTTP download failed after %d attempt(s): %s",
@@ -235,24 +246,60 @@ def _normal_creation_mode(directory):
             _remove_staging_file(probe_path)
 
 
-def _publish_staged_file(staged_path, full_path):
+def _publish_staged_file(staged_path, full_path, mode=None):
     """Apply normal creation or existing access permissions before publication.
 
     Call only after writing and validation, so staging data stays private until
     it is ready to publish. New files honor the destination's creation mode;
-    replacements preserve the existing regular file's access permissions.
+    replacements preserve the existing regular file's access permissions. An
+    explicit mode overrides both. Returns the mode applied.
     """
     try:
         existing = os.stat(full_path)
     except FileNotFoundError:
-        mode = _normal_creation_mode(os.path.dirname(full_path) or ".")
+        if mode is None:
+            mode = _normal_creation_mode(os.path.dirname(full_path) or ".")
     else:
         if not stat.S_ISREG(existing.st_mode):
             raise FileValidationError(full_path, "expected a regular file")
-        # Preserve rwx permissions, not setuid/setgid/sticky bits on new content.
-        mode = stat.S_IMODE(existing.st_mode) & 0o777
+        if mode is None:
+            # Preserve rwx permissions, not setuid/setgid/sticky bits on new content.
+            mode = stat.S_IMODE(existing.st_mode) & 0o777
     os.chmod(staged_path, mode)
     os.replace(staged_path, full_path)
+    return mode
+
+
+def _publish_file(staged_path, full_path, record=None):
+    """Publish a staged file, keeping its provenance record truthful.
+
+    Any record of the previous bytes is removed first, so an interruption
+    leaves the new file unrecorded, never misdescribed. record (JSON text from
+    provenance.describe) is then written with the file's own permissions,
+    without execute bits, so a private file keeps a private record. Records are
+    best effort: failing to write one, or to remove an old one, never fails the
+    publication.
+    """
+    try:
+        provenance.remove(full_path)
+    except OSError as error:
+        logger.warning("Could not remove the provenance record for %s: %s", full_path, error)
+    mode = _publish_staged_file(staged_path, full_path)
+    if record is None:
+        return
+    staged_record = None
+    try:
+        with _open_staging_file(
+                directory=os.path.dirname(full_path) or ".",
+                prefix=".datacache-provenance-") as output:
+            staged_record = output.name
+            output.write(record.encode("utf-8"))
+        _publish_staged_file(staged_record, provenance.sidecar_path(full_path), mode & 0o666)
+    except (OSError, ValueError) as error:
+        logger.debug("Could not record provenance for %s: %s", full_path, error)
+    finally:
+        if staged_record is not None:
+            _remove_staging_file(staged_record)
 
 
 def _decompress_to_file(src_stream, full_path):
@@ -264,7 +311,7 @@ def _decompress_to_file(src_stream, full_path):
                 prefix=".datacache-decompress-") as output:
             staged_path = output.name
             copyfileobj(src_stream, output)
-        _publish_staged_file(staged_path, full_path)
+        _publish_file(staged_path, full_path)
     finally:
         if staged_path is not None:
             _remove_staging_file(staged_path)
@@ -325,7 +372,9 @@ def _download_and_decompress_if_necessary(
         max_retries=DEFAULT_MAX_RETRIES,
         retry_backoff=DEFAULT_RETRY_BACKOFF,
         retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
-        show_progress=False):
+        show_progress=False,
+        record_provenance=False,
+        allow_empty=False):
     """
     Download, transform and validate in sibling staging files, then publish
     with one atomic replace. Expectations always describe installed bytes.
@@ -335,6 +384,10 @@ def _download_and_decompress_if_necessary(
     Explicit flags use the parsed URL format, including download endpoints.
     explicit_output=False marks an inferred cache key, which no archive member
     can match, so installing the largest ZIP member is not reported as a guess.
+    Publishing always removes a stale provenance record; record_provenance
+    writes a new one describing the staged bytes.
+    An empty download or installed file is rejected unless allow_empty is true
+    or expected_size is 0; empty HTTP responses are retried first.
     """
     logger.info("Downloading %s to %s", download_url, full_path)
     full_path = os.fspath(full_path)
@@ -352,17 +405,23 @@ def _download_and_decompress_if_necessary(
         html = download_url.endswith(("html", "htm")) and full_path.endswith(".csv")
     else:
         html = convert_html and source_suffix in (".html", ".htm") and output_suffix == ".csv"
-    tmp_path = _download_to_temp_file(
-        download_url=download_url,
-        timeout=timeout,
-        base_name=".datacache-download-",
-        directory=out_dir,
-        chunk_size=chunk_size,
-        progress_callback=progress_callback,
-        max_retries=max_retries,
-        retry_backoff=retry_backoff,
-        retry_max_delay=retry_max_delay,
-        show_progress=show_progress)
+    # expected_size=0 states that an empty file is the right result.
+    reject_empty = not allow_empty and expected_size != 0
+    try:
+        tmp_path = _download_to_temp_file(
+            download_url=download_url,
+            timeout=timeout,
+            base_name=".datacache-download-",
+            directory=out_dir,
+            chunk_size=chunk_size,
+            progress_callback=progress_callback,
+            max_retries=max_retries,
+            retry_backoff=retry_backoff,
+            retry_max_delay=retry_max_delay,
+            show_progress=show_progress,
+            allow_empty=not reject_empty)
+    except EmptyResponse as error:
+        raise FileValidationError(full_path, "downloaded file is empty; pass allow_empty=True if an empty file is expected") from error
 
     staged_path = tmp_path
     try:
@@ -386,6 +445,8 @@ def _download_and_decompress_if_necessary(
                 import pandas as pd
                 df = pd.read_html(tmp_path, header=0)[0]
                 df.to_csv(staged_path, sep=',', index=False, encoding='utf-8')
+            if reject_empty and os.path.getsize(staged_path) == 0:
+                raise FileValidationError(full_path, "installed file is empty; pass allow_empty=True if an empty file is expected")
         try:
             if show_progress:
                 validate_file(staged_path, expected_sha256, expected_size, show_progress=True)
@@ -393,7 +454,16 @@ def _download_and_decompress_if_necessary(
                 validate_file(staged_path, expected_sha256, expected_size)
         except FileValidationError as error:
             raise FileValidationError(full_path, "downloaded file " + error.reason) from error
-        _publish_staged_file(staged_path, full_path)
+        record = None
+        if record_provenance:
+            # Describe the private staged bytes, not whatever is at full_path
+            # after publication, which a concurrent writer may have replaced.
+            # os.replace keeps their size and modification time.
+            try:
+                record = provenance.describe(download_url, os.stat(staged_path), expected_sha256)
+            except OSError as error:
+                logger.debug("Could not describe provenance for %s: %s", full_path, error)
+        _publish_file(staged_path, full_path, record)
     finally:
         if staged_path != tmp_path:
             _remove_staging_file(staged_path)
@@ -460,7 +530,10 @@ def fetch_file(
         max_retries=DEFAULT_MAX_RETRIES,
         retry_backoff=DEFAULT_RETRY_BACKOFF,
         retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
-        show_progress=False):
+        show_progress=False,
+        record_provenance=False,
+        allow_empty=False,
+        resume=False):
     """
     Download a remote file and store it locally in a cache directory. Don't
     download it again if it's already present (unless `force` is True.)
@@ -544,6 +617,29 @@ def fetch_file(
         honored when within this limit; longer server waits stop retries.
         timeout still applies per attempt, not as a total download deadline.
 
+    resume : bool, optional
+        Keep private partials and resume raw HTTP(S) transfers, default False.
+        Requires both expected_sha256 and expected_size, and a POSIX local
+        filesystem. Does not support decompression or HTML conversion. Retries
+        report cumulative bytes, resetting only when the server requires a
+        fresh transfer. discard_partial(destination) explicitly drops partials.
+        Interrupted downloads retain at most expected_size partial bytes.
+
+    record_provenance : bool, optional
+        After publishing a download, also write a hidden ".<name>.datacache.json"
+        record of the source URL (without user name, password, query, or
+        fragment; the path is kept as is), fetch time, size, and the SHA-256
+        when expected_sha256 verified it, which inspect_file reports offline.
+        The record has the file's permissions. Off by default: a caller that
+        downloads to a temporary name and then moves the file would leave the
+        record behind. Cache hits never write one, and any new download removes
+        a previous record first.
+    allow_empty : bool, optional
+        Accept an empty file, default False. A complete but empty response,
+        such as a withdrawn upstream record, is otherwise never published: HTTP
+        retries it as transient, then FileValidationError is raised. An empty
+        cached file is likewise invalid. expected_size=0 also allows it.
+
     A corrupt cache hit raises FileValidationError; use force=True for an
     explicit repair. Missing files are downloaded. Transport, decompression
     and filesystem exceptions propagate. Failed downloads leave an existing
@@ -556,9 +652,19 @@ def fetch_file(
 
     Returns the local path, which is relative when destination or cache_root is.
     """
+    if not isinstance(resume, bool):
+        raise ValueError("resume must be a boolean")
+    if resume:
+        from .resume import validate_resume
+        validate_resume(download_url, expected_sha256, expected_size)
     _validate_expectations(expected_sha256, expected_size)
     if not isinstance(show_progress, bool):
         raise ValueError("show_progress must be a boolean")
+    if not isinstance(record_provenance, bool):
+        raise ValueError("record_provenance must be a boolean")
+    if not isinstance(allow_empty, bool):
+        raise ValueError("allow_empty must be a boolean")
+    reject_empty = not allow_empty and expected_size != 0
     if progress_callback is not None and not callable(progress_callback):
         raise ValueError("progress_callback must be callable")
     retry_backoff, retry_max_delay = validate_retry_options(max_retries, retry_backoff, retry_max_delay)
@@ -575,9 +681,18 @@ def fetch_file(
     full_path = expected_path(
         download_url, filename, decompress, subdir,
         destination=destination, cache_root=cache_root)
+    source_suffix = _source_suffix(download_url)
+    output_suffix = os.path.splitext(full_path)[1].lower()
+    archive_decompression = bool(decompress or (explicit_output and output_suffix != source_suffix))
+    if resume and (decompress or
+                   (source_suffix in (".gz", ".zip") and archive_decompression) or
+                   (explicit_output and source_suffix in (".htm", ".html") and output_suffix == ".csv")):
+        raise ValueError("resume=True supports raw downloads only; retain the archive suffix")
     if not force:
         try:
             validate_file(full_path, expected_sha256, expected_size)
+            if reject_empty and os.stat(full_path).st_size == 0:
+                raise FileValidationError(full_path, "cached file is empty (pass allow_empty=True if an empty file is expected)")
         except FileNotFoundError:
             pass
         except FileValidationError as error:
@@ -594,11 +709,18 @@ def fetch_file(
         else:
             logger.info("Cached file %s from URL %s", full_path, download_url)
             return full_path
-    source_suffix = _source_suffix(download_url)
-    output_suffix = os.path.splitext(full_path)[1].lower()
-    archive_decompression = bool(decompress or (explicit_output and output_suffix != source_suffix))
     os.makedirs(os.path.dirname(full_path) or ".", exist_ok=True)
     logger.info("Fetching %s from URL %s", full_path, download_url)
+    if resume:
+        from .resume import download_resumable
+        download_resumable(
+            download_url, full_path, expected_sha256=expected_sha256,
+            expected_size=expected_size, timeout=timeout, chunk_size=chunk_size,
+            progress_callback=progress_callback, show_progress=show_progress,
+            max_retries=max_retries, retry_backoff=retry_backoff,
+            retry_max_delay=retry_max_delay, record_provenance=record_provenance,
+            force=force)
+        return full_path
     _download_and_decompress_if_necessary(
         full_path=full_path,
         download_url=download_url,
@@ -613,7 +735,9 @@ def fetch_file(
         max_retries=max_retries,
         retry_backoff=retry_backoff,
         retry_max_delay=retry_max_delay,
-        show_progress=show_progress)
+        show_progress=show_progress,
+        record_provenance=record_provenance,
+        allow_empty=allow_empty)
     return full_path
 
 
@@ -687,7 +811,7 @@ def fetch_and_transform(
                 validate_file(staged_path)
             except FileNotFoundError as error:
                 raise RuntimeError("Transformer did not create %s" % transformed_path) from error
-            _publish_staged_file(staged_path, transformed_path)
+            _publish_file(staged_path, transformed_path)
             if isinstance(result, (str, os.PathLike)) and os.fspath(result) == staged_path:
                 result = type(result)(transformed_path)
     else:

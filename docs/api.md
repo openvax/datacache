@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.12.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.13.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -60,7 +60,7 @@ fetch_file(
     timeout=None, use_wget_if_available=None, chunk_size=1048576,
     progress_callback=None, *, destination=None, cache_root=None, expected_sha256=None,
     expected_size=None, max_retries=2, retry_backoff=1.0, retry_max_delay=30.0,
-    show_progress=False
+    show_progress=False, record_provenance=False, allow_empty=False, resume=False
 )
 ```
 
@@ -89,6 +89,9 @@ replacement leaves the previous file intact.
 | `retry_backoff` | Initial retry delay in seconds, doubled for subsequent retries. Must be finite and non-negative. |
 | `retry_max_delay` | Maximum retry delay in seconds, finite and non-negative. A server `Retry-After` exceeding this limit stops retries. |
 | `show_progress` | Boolean enabling optional tqdm download, decompression, and hash bars. Requires `datacache[progress]` when a bar is needed. Cache hits are quiet. |
+| `resume` | Boolean retaining private partials for raw integrity-pinned HTTP transfers. Requires SHA-256, size and a POSIX local filesystem. See [resumable downloads](downloads.md#resumable-http-downloads). |
+| `record_provenance` | Boolean; after publishing a download, also write a hidden `.<name>.datacache.json` record of the source URL (without user name, password, query string, or fragment; the path is kept as is, so avoid recording URLs with secrets in their path), the fetch time, the size, and the SHA-256 when `expected_sha256` verified it. [inspect_file](#inspect_file) reports these offline. The record has the file's permissions. Default `False`: a caller that downloads to a temporary name and then moves the file would leave the record behind. Cache hits never write one, any new download removes a previous record first, and a failure to write one never fails the download. |
+| `allow_empty` | Boolean accepting an empty installed file; default `False`. A complete but empty response, such as a withdrawn upstream record, is otherwise never published: HTTP retries it as transient, then raises `FileValidationError`. An empty cached file is likewise an invalid hit. `expected_size=0` also allows an empty file. |
 
 ZIP downloads install the member stored at the output name; otherwise a member
 with that name, ignoring letter case, in any folder: the one nearest the archive
@@ -458,7 +461,15 @@ inspect_file(path, expected_sha256=None, expected_size=None)
 
 Inspect a string or `Path` using the same optional expectations as
 `validate_file`, entirely offline and without writes. Filesystem and validation
-failures become result statuses instead of being raised.
+failures become result statuses instead of being raised. An available file's
+size and modification time are reported, taken from the same open file that was
+validated. If `fetch_file(..., record_provenance=True)` recorded where it came
+from, and the file's size and modification time are unchanged since, its source
+URL, fetch time, and recorded SHA-256 are reported too. The recorded digest
+never sets `verified`, which still means a supplied SHA-256 matched the bytes
+now; pass it as `expected_sha256` to check them. A missing, unreadable, or
+malformed record is ignored, and a record is never opened in a way that could
+block.
 
 **Returns:** [`FileInspection`](#fileinspection). **Raises:** `ValueError` for
 invalid expectation arguments. Unsupported path types can raise `TypeError`.
@@ -467,6 +478,7 @@ invalid expectation arguments. Unsupported path types can raise `TypeError`.
 inspection = dc.inspect_file(path, expected_sha256=sha256)
 assert inspection.status == "available" and inspection.verified
 assert dc.inspect_file(root / "absent.csv").status == "missing"
+assert inspection.size == len(contents)
 ```
 
 ### `inspect_files`
@@ -507,7 +519,10 @@ assert inventory.files["records.csv"].path == path
 
 ```text
 FileInspection(
-    path: str, status: str, verified: bool = False, error: Optional[Exception] = None
+    path: str, status: str, verified: bool = False,
+    error: Optional[Exception] = None, size: Optional[int] = None,
+    mtime: Optional[float] = None, source_url: Optional[str] = None,
+    fetched_at: Optional[str] = None, recorded_sha256: Optional[str] = None
 )
 ```
 
@@ -517,8 +532,13 @@ Frozen dataclass returned by `inspect_file` and `Cache.inspect`.
 | --- | --- |
 | `path` | Inspected path string. |
 | `status` | `available` (readable regular file matching supplied expectations), `missing` (absent), `corrupt` (wrong type or failed expectations), or `inaccessible` (other filesystem error). |
-| `verified` | `True` only when a supplied SHA-256 matched. Readability or matching size alone leaves it `False`. |
+| `verified` | `True` only when a supplied SHA-256 matched. Readability or matching size alone leaves it `False`, and so does a recorded digest. |
 | `error` | Original exception for an unavailable file, or `None` on success. |
+| `size` | Size in bytes of an available file; otherwise `None`. |
+| `mtime` | Modification time of an available file, in seconds since the epoch; otherwise `None`. |
+| `source_url` | Source URL recorded by `fetch_file(..., record_provenance=True)`, without user name, password, query string, or fragment, while the file's size and modification time are unchanged since it was recorded; otherwise `None`. |
+| `fetched_at` | Recorded fetch time, UTC in ISO 8601, under the same condition; otherwise `None`. |
+| `recorded_sha256` | SHA-256 that `expected_sha256` verified when the file was downloaded, under the same condition; otherwise `None`. It is a record, not a check of the current bytes: a file edited in place without changing its size or modification time, or a record forged in a shared cache, still reports it. To check the bytes now, pass it back as `expected_sha256`. |
 
 **Construction:** returns a `FileInspection` instance; fields are assigned as
 given, with no validation of manually supplied status/type combinations.
@@ -596,8 +616,9 @@ Explicitly add group read permission (`group=True`) and/or other-user read
 permission (`others=True`) to one existing regular file, identified by a string
 or `Path`. Both flags must be booleans. Adds no write/execute bits, removes no
 permissions, and changes no contents. A `False` flag leaves that class's
-existing access unchanged. Requires POSIX file-descriptor support. The caller
-must be able to open the file and change its mode; parent directories and group
+existing access unchanged. The file's provenance record, if any, gets the same
+access, best effort. Requires POSIX file-descriptor support. The caller must be
+able to open the file and change its mode; parent directories and group
 ownership must already allow the intended readers to reach it.
 
 **Returns:** path string. **Raises:** `ValueError` for non-boolean flags,
@@ -846,7 +867,7 @@ Cache.fetch(
     url, filename=None, decompress=False, force=False, timeout=None,
     use_wget_if_available=None, *, chunk_size=1048576, progress_callback=None,
     expected_sha256=None, expected_size=None, max_retries=2, retry_backoff=1.0,
-    retry_max_delay=30.0, show_progress=False
+    retry_max_delay=30.0, show_progress=False, record_provenance=False, allow_empty=False, resume=False
 )
 ```
 
@@ -987,13 +1008,13 @@ with closing(cache.db_from_dataframe(
 Cache.delete_url(url)
 ```
 
-Remove local files for a URL string. Includes paths successfully fetched by
-this `Cache` instance (including explicit filenames), plus the URL-derived
-raw/decompressed paths that may have been created by other instances.
-Missing files are ignored. Explicit filenames used by earlier instances are
-not recorded persistently and cannot be rediscovered by URL alone. Files
-unrelated to those paths are left alone. A symlink at a selected file path is
-unlinked without deleting its target.
+Remove local files for a URL string. Includes paths successfully fetched by this
+`Cache` instance (including explicit filenames), plus the URL-derived
+raw/decompressed paths that may have been created by other instances, along with
+their provenance records. Missing files are ignored. Explicit filenames used by
+earlier instances are not recorded persistently and cannot be rediscovered by
+URL alone. Files unrelated to those paths are left alone. A symlink at a
+selected file path is unlinked without deleting its target.
 
 **Returns:** `None`. **Raises:** naming errors and `OSError` subclasses such as
 `PermissionError` or a directory-removal error. Deletion is not transactional:
@@ -1045,3 +1066,66 @@ After finishing the examples, remove their temporary files:
 ```python
 temporary.cleanup()
 ```
+
+
+## discard_partial
+
+```text
+discard_partial(destination)
+```
+
+Explicitly discard this user's private resumable bytes for an exact destination,
+under its writer lock. The installed file is unchanged; absent state is a no-op.
+See [resumable downloads](downloads.md#resumable-http-downloads).
+
+## install_bundle
+
+```text
+install_bundle(destination, assets, *, force=False, verified=True, download_options=None)
+```
+
+Atomically install a mapping of relative asset names to `{url, sha256, size,
+decompress?}` metadata. Returns a dict of asset names to immutable generation
+paths. Invalid caches require `force=True`. `verified=False` explicitly permits
+unpinned sources; their observed hashes are recorded without authenticating them.
+`download_options` accepts timeout, chunk size, progress, retry settings and resume.
+Publication requires a POSIX local filesystem. [Complete guide](bundles.md).
+
+## inspect_bundle
+
+```text
+inspect_bundle(destination, assets=None)
+```
+
+Return a `BundleInspection` without writes, network, locks or recovery. Supply
+trusted assets to verify against the registry; omit them to check consistency
+against the installed generation's own recorded hashes (`verified=False`).
+
+## BundleInspection
+
+A frozen record with `path`, `status`, `verified`, `generation`, `files`, and
+`error`. Status is `available`, `missing`, `invalid`, `inaccessible`, or
+`recovery-required`. `files` maps asset names to `FileInspection` values from one
+generation. Paths remain usable across refreshes until explicitly removed.
+
+## VersionedDatasetRegistry
+
+```text
+VersionedDatasetRegistry(datasets, *, cache_root=None, cache_dir=None, verified=True)
+```
+
+Select exactly one root path or a zero-argument `cache_dir` callable. Each dataset
+specifies a `default_version` and `versions`, mapping concrete versions to asset
+mappings. Construction validates metadata and performs no writes or networking.
+The [bundle guide](bundles.md) includes an example and downstream migration notes.
+
+| Method | Result |
+| --- | --- |
+| `resolve_version(name, version=None)` | Concrete version label, applying the pinned default. Unknown names/versions raise `ValueError`. |
+| `bundle_path(name, version=None)` | Expected managed store `Path`, without creating it. |
+| `inspect(name, version=None)` | Read-only `BundleInspection`. |
+| `download(name, version=None, *, force=False, **download_options)` | Install/reuse and return a dict of asset snapshot paths. |
+| `local_path(name, version=None, *, asset=None)` | Installed single asset's `Path`, or a multi-file generation directory; select one asset by name. Missing raises `FileNotFoundError`; invalid/recovery-required raises `FileValidationError`. |
+| `ensure(name, version=None, **download_options)` | Download/reuse, then return `local_path`. |
+| `is_cached(name, version=None)` | Whether verified inspection reports `available`. |
+| `status()` | One row per dataset's pinned default: name, version, description, available_versions and inspection. |

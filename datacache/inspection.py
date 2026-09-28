@@ -6,7 +6,8 @@ from pathlib import PurePosixPath, PureWindowsPath
 import stat
 from typing import Dict, Optional
 
-from .integrity import FileValidationError, _validate_expectations, validate_file
+from . import provenance
+from .integrity import FileValidationError, _validate_expectations, _validate_file
 
 
 @dataclass(frozen=True)
@@ -16,12 +17,23 @@ class FileInspection:
     available means readable, regular, and matching any supplied expectations.
     verified is True only when a supplied SHA-256 expectation was checked.
     error retains the validation or OS exception for unavailable files.
+    size (bytes) and mtime (seconds since the epoch) describe an available file.
+    source_url (without user name, password, query, or fragment), fetched_at
+    (UTC, ISO 8601), and recorded_sha256 are what fetch_file recorded when it
+    downloaded the file, reported only while the file's size and mtime are
+    unchanged since. recorded_sha256 is the digest verified at that download; it
+    is a record, not a check of the current bytes. None means unknown.
     """
 
     path: str
     status: str
     verified: bool = False
     error: Optional[Exception] = None
+    size: Optional[int] = None
+    mtime: Optional[float] = None
+    source_url: Optional[str] = None
+    fetched_at: Optional[str] = None
+    recorded_sha256: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -58,18 +70,25 @@ def inspect_file(path, expected_sha256=None, expected_size=None):
 
     Invalid expectation arguments raise ValueError. Filesystem and integrity
     problems are returned as distinct statuses with their original exceptions.
+    An available file's size and mtime are reported, taken from the same open
+    file that was validated, along with any provenance that
+    fetch_file(..., record_provenance=True) recorded for those bytes.
     """
     _validate_expectations(expected_sha256, expected_size)
     path = os.fspath(path)
     try:
-        validate_file(path, expected_sha256, expected_size)
+        _, info = _validate_file(path, expected_sha256, expected_size)
     except FileNotFoundError as error:
         return FileInspection(path, "missing", error=error)
     except (FileValidationError, NotADirectoryError, IsADirectoryError) as error:
         return FileInspection(path, "corrupt", error=error)
     except OSError as error:
         return FileInspection(path, "inaccessible", error=error)
-    return FileInspection(path, "available", verified=expected_sha256 is not None)
+    record = provenance.read(path, info) or {}
+    return FileInspection(
+        path, "available", verified=expected_sha256 is not None,
+        size=info.st_size, mtime=info.st_mtime, source_url=record.get("url"),
+        fetched_at=record.get("fetched_at"), recorded_sha256=record.get("sha256"))
 
 
 def inspect_files(cache_root, files):

@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.13.0
+
+- Add integrity-pinned resumable raw HTTP downloads with `resume=True`, private
+  persistent partials, validated ranges, bounded retries, and explicit
+  `discard_partial` cleanup (#64).
+- Add `VersionedDatasetRegistry`, `install_bundle`, and `inspect_bundle` for
+  single-file and multi-file datasets. Immutable generations and an atomic
+  pointer preserve readers and old installations through refreshes; completed
+  local generations can be recovered offline. Supports hitlist's registry
+  mapping and independently versioned source bundles (#59).
+- Check full source URL fingerprints and decompression settings before reusing
+  bundle assets without trusted hashes. Hash-pinned generations remain shareable
+  across libraries using different mirrors or compression settings.
+- Accept precreated empty bundle directories without forcing an install, keep
+  their access modes, and reject asset/provenance-sidecar collisions before writes.
+  Publish generations with their final sharing permissions while keeping failed
+  or interrupted resumable work inside a private staging directory.
+- Remove the redundant test-local FASTA downloader and unused private `ext`
+  option; use urllib3's public exception import. Keep the published 2.0
+  deprecation deadline for `DatabaseTable.from_fasta_dict` (#67).
+
+- Report `size` and `mtime` for an available file from `inspect_file`,
+  `Cache.inspect`, and `inspect_files`, taken from the file that was validated,
+  so a cache listing needs no extra `stat` (#75).
+- Add `record_provenance=True` to `fetch_file` and `Cache.fetch`. After
+  publishing, a hidden `.<name>.datacache.json` records the source URL (without
+  user name, password, query string, or fragment), fetch time, size, and the
+  SHA-256 when `expected_sha256` verified it, with the file's permissions.
+  Inspection reports `source_url`, `fetched_at`, and `recorded_sha256` while the
+  file is unchanged; `verified` still means a supplied digest matched just now.
+  Any new download removes a stale record. Recording is off by default (#75).
+- Reject empty downloads. A complete but empty response, such as a withdrawn
+  upstream record, was published and then reused as a valid cache entry. An
+  empty HTTP response is now retried like a transient failure, then raises
+  `FileValidationError` without publishing; an empty decompressed archive
+  member is rejected too. An empty file already in a cache is an invalid hit
+  that `force=True` replaces. Pass `allow_empty=True` to `fetch_file` or
+  `Cache.fetch`, or `expected_size=0`, when an empty file is expected (#74).
+
 ## 1.12.0
 
 - Add `get_cache_root(name, *envkeys)`, which selects a cache root shared by

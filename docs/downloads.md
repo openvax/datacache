@@ -66,44 +66,43 @@ permission errors; it rejects non-regular files. Fetching propagates transport,
 decompression, and filesystem errors so applications can translate them.
 Expectations are optional; omitting them provides no integrity guarantee.
 
-Downloads and transformed output use unique staging files in the destination
-directory. Only a complete, validated file is published, using `os.replace`.
-Transfer, transformation, validation, or publication failure leaves an existing
-destination unchanged and cleans up staging files, including on a handled
-keyboard interruption. This avoids `shutil.move`'s cross-filesystem copy and
-metadata fallback (related to [#39](https://github.com/openvax/datacache/issues/39));
-SELinux policy compatibility still needs testing on the target installation.
+An empty installed file is rejected even without expectations, because a
+complete but empty response, such as a withdrawn upstream record, would
+otherwise be cached as a valid file and parse to zero records much later. An
+empty HTTP response is retried like a transient failure, then raises
+`FileValidationError`; nothing is published and an existing file stays in
+place. After decompression, an empty archive member is rejected the same way.
+An empty file already in the cache is an invalid hit, which `force=True`
+replaces. Pass `allow_empty=True`, or `expected_size=0`, when an empty file is
+the correct result.
 
-Download and conversion staging files remain owner-only throughout writing and
-validation. On replacement, existing files' read/write/execute permission bits
-are applied to the validated staging file immediately before publication.
-All new outputs, including raw downloads, decompressed files, and HTML-to-CSV
-conversions, use normal file-creation permissions (`0666` filtered by the
-process umask). For example, umask `022` produces `0644`, `002` produces `0664`,
-and `077` keeps files private at `0600`. This also applies to the private download
-and decompression helpers used by downstream packages such as pyensembl, fixing
-new shared-cache files being unreadable by other users
-([#68](https://github.com/openvax/datacache/issues/68)). Existing cache files are
-not automatically made more permissive, even on a forced refresh; owners must
-explicitly adjust permissions on files previously downloaded as `0600` if those
-files should be shared. An empty, disposable file measures normal creation
-permissions without reading or changing umask globally; that file never
-contains downloaded or converted data.
-Permission-setting failure preserves the old file and cleans up
-staging files. Atomic replacement creates a new inode: ownership, ACLs, and
-extended attributes of an existing destination are not copied, and special
-setuid/setgid/sticky bits are not preserved.
+## Provenance
 
-The publication guarantee assumes a local filesystem supporting atomic
-replacement of sibling files. Concurrent fetches use separate staging files;
-the last successful replacement wins and readers opening the destination see
-complete files. Callers sharing a destination should use the same expectations.
-A returned path is not a permanent snapshot: later fetches may replace its
-contents. Platforms that deny replacing an open file may reject publication;
-the old file is preserved. This does not provide multi-file transactions,
-distributed coordination, or durability/recovery after power loss or an
-unhandled process termination, which may leave staging files behind.
+Pass `record_provenance=True` to `fetch_file` or `Cache.fetch` to record where a
+download came from. After publishing, datacache writes a hidden record,
+`.<name>.datacache.json`, beside the file. It holds the source URL, the fetch
+time, the size, and the SHA-256 when `expected_sha256` verified it. The URL is
+stored without its user name, password, query string, or fragment, since signed
+URLs carry secrets there; its path is kept as is, so do not record URLs that
+embed a secret in the path, as some share links do. The record has the file's
+permissions, and sharing the file with `make_file_readable` shares it too.
 
+`inspect_file`, `Cache.inspect`, and `inspect_files` report `source_url`,
+`fetched_at`, and `recorded_sha256`, but only while the file's size and
+modification time match the record. `recorded_sha256` is a record, not a check
+of the current bytes: an in-place edit that keeps the size and modification
+time, or a forged record in a shared cache, would still report it. `verified`
+therefore keeps its meaning, a supplied SHA-256 matching the bytes now; pass
+`recorded_sha256` back as `expected_sha256` to check them. A missing,
+unreadable, or malformed record reads as unrecorded, and inspection never
+writes.
+
+Recording is off by default because a caller that downloads to a temporary
+name and then moves the file would leave the record behind. A record is
+written only by a download, never by a cache hit, and any later replacement of
+the file removes the previous record first, whether or not it records a new
+one. `Cache.delete_url` removes records with their files. Recording is best
+effort: failing to write a record never fails the download.
 ## Transient HTTP failures
 
 HTTP and HTTPS downloads retry temporary failures by default, with at most
@@ -211,11 +210,11 @@ an entry without integrity metadata. The required mapping must be nonempty.
 Inspection only reads local files. It never downloads, writes manifests,
 creates locks, or attempts recovery, so a valid read-only version and a missing
 sibling version can be inspected independently. The caller supplies required
-files and trusted integrity metadata; datacache does not parse manifests or
+files and trusted integrity metadata; these individual-file helpers do not
 discover versions. Symlinks are followed as in ordinary file access. Inventory
 is not a snapshot across concurrent external changes or a multi-file
-installation mechanism; versioned bundle installation is tracked in
-[#59](https://github.com/openvax/datacache/issues/59).
+installation mechanism. Use [versioned bundles](bundles.md) for atomic
+multi-file installation and inspection of one complete generation.
 
 `cache_root` accepts a string or `pathlib.Path` and names the actual directory
 containing cached files, overriding the platform location selected by `subdir`.
@@ -245,3 +244,45 @@ named at the end of the URL query into the requested CSV filenames.
 The `_decompress_to_file` helper remains available and uses failure-safe atomic
 publication. New integrations should use the public download and inspection
 APIs.
+
+## Resumable HTTP downloads
+
+Use `fetch_file(..., resume=True, expected_sha256=sha256, expected_size=size)`
+(or the same options on `Cache.fetch`) for large immutable raw HTTP/HTTPS files.
+Both trusted expectations are required. Keep an archive's suffix to download
+its raw bytes; resumable decompression and HTML conversion are not supported.
+The option is off by default and requires a POSIX local filesystem.
+
+Each destination gets a private, owner-only working directory beside it, with
+one bounded partial file, metadata and a permanent advisory lock. Threads and
+processes serialize on that destination for the same user; other users retain
+separate private state. A valid destination remains intact throughout transfer,
+verification, and publication. Complete partials are verified and reused without
+network; oversized or corrupt ones restart. Interruptions and exhausted transport
+retries keep safely written partial bytes for the next call.
+
+Range requests use `Accept-Encoding: identity`. DataCache checks the exact
+`Content-Range` offset and total, carries `If-Range` for a strong ETag, compares Last-Modified when no strong
+ETag is available, and restarts on changed validators, ignored or
+incompatible ranges, or 416 responses. Final SHA-256 and size checks are always
+required. A Last-Modified value alone is not a cryptographic identity; these
+checks remain the authority. HTTP range behavior follows
+[RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html#name-range-requests).
+
+Progress reports bytes present in the current transfer, including the retained
+prefix, and the trusted total size. A resumed retry continues its byte count;
+a server-required restart resets it. Callback failures propagate without being
+retried. The existing bounded HTTP retry/backoff options apply.
+
+Call `discard_partial(destination)` to explicitly discard this user's partial
+bytes and metadata. It waits for any active transfer, preserves the installed
+file, and retains the small lock directory for coordination. Missing state is a
+no-op. `force=True` refreshes the installed file but can reuse an independently
+verified complete partial; call `discard_partial` first to require a new transfer.
+
+Allow space for the old destination, up to `expected_size` partial bytes, and a
+second file of that size during publication. Copying verified bytes into ordinary
+staging keeps persistent partials private even when publication fails after
+setting shared file permissions. No credentials or raw signed URLs are stored in
+the private metadata; a URL hash identifies the source. Changing the URL or
+integrity expectations starts a new transfer.
