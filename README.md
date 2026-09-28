@@ -158,6 +158,9 @@ lists every public signature, default, return value, exception, and example.
 
 | Task | API | Result |
 | --- | --- | --- |
+| Install or reuse a versioned dataset | `VersionedDatasetRegistry`, `install_bundle(...)` | Mapping of asset names to snapshot paths |
+| Inspect a complete dataset generation | `inspect_bundle(...)` | `BundleInspection` |
+| Discard retained partial download bytes | `discard_partial(destination)` | Installed file unchanged |
 | Download or reuse one file | `fetch_file(...)`, `Cache.fetch(...)` | Local path string |
 | Compute a path without filesystem access | `expected_path(...)`, `Cache.local_path(...)` | Path string |
 | Choose a root shared by several packages | `get_cache_root(name, *envkeys)` | Path string |
@@ -177,6 +180,8 @@ FASTA files with `fetch_file`, then parse them in the consuming library.
 
 ## Guides
 
+- [Versioned datasets and bundles](docs/bundles.md): pinned versions, atomic installation,
+  offline recovery, path lifetime, and downstream adoption.
 - [API reference](https://github.com/openvax/datacache/blob/master/docs/api.md):
   all public functions, `Cache` methods, inspection results, and exceptions.
 - [Downloads and cache inspection](https://github.com/openvax/datacache/blob/master/docs/downloads.md): destinations, naming,
@@ -210,8 +215,9 @@ and [sharing old private files](https://github.com/openvax/datacache/blob/master
 
 File publication requires local filesystem support for atomic replacement;
 new SQLite database publication also requires hard links. SQLite locking and
-transactions govern database rebuilds. These are single-file guarantees, not
-a multi-file release installer or a distributed lock service.
+transactions govern database rebuilds. Use `install_bundle` for atomic multi-file
+publication. Bundle installation and resumable transfers require POSIX local
+filesystems; distributed coordination is outside their scope.
 
 ## Development
 

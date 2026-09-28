@@ -210,11 +210,11 @@ an entry without integrity metadata. The required mapping must be nonempty.
 Inspection only reads local files. It never downloads, writes manifests,
 creates locks, or attempts recovery, so a valid read-only version and a missing
 sibling version can be inspected independently. The caller supplies required
-files and trusted integrity metadata; datacache does not parse manifests or
+files and trusted integrity metadata; these individual-file helpers do not
 discover versions. Symlinks are followed as in ordinary file access. Inventory
 is not a snapshot across concurrent external changes or a multi-file
-installation mechanism; versioned bundle installation is tracked in
-[#59](https://github.com/openvax/datacache/issues/59).
+installation mechanism. Use [versioned bundles](bundles.md) for atomic
+multi-file installation and inspection of one complete generation.
 
 `cache_root` accepts a string or `pathlib.Path` and names the actual directory
 containing cached files, overriding the platform location selected by `subdir`.
