@@ -3,6 +3,7 @@
 import os
 import stat
 
+from . import provenance
 from .integrity import FileValidationError
 
 
@@ -12,7 +13,8 @@ def make_file_readable(path, *, group=True, others=False):
     On POSIX, its owner can grant group read access (default), or explicitly
     grant others read access. No write/execute bits are added or removed, and
     contents are unchanged. Symlinks and non-regular files are rejected.
-    Downloads and cache hits never call this function automatically.
+    Downloads and cache hits never call this function automatically. The
+    file's provenance record, if any, gets the same access, best effort.
 
     Return the path on success. Permission errors propagate: this cannot grant
     access to a file the caller cannot open or chmod. Parent directories and
@@ -23,6 +25,15 @@ def make_file_readable(path, *, group=True, others=False):
     if not hasattr(os, "fchmod") or not hasattr(os, "O_NOFOLLOW"):
         raise NotImplementedError("Explicit shared-file permissions require POSIX file descriptors")
     path = os.fspath(path)
+    _add_read_access(path, group, others)
+    try:
+        _add_read_access(provenance.sidecar_path(path), group, others)
+    except (OSError, FileValidationError):
+        pass  # no record, or one that is not ours to share
+    return path
+
+
+def _add_read_access(path, group, others):
     if not stat.S_ISREG(os.lstat(path).st_mode):
         raise FileValidationError(path, "expected a regular file, not a symlink or directory")
     # Operate on the opened inode rather than a path that could be swapped to a
@@ -39,4 +50,3 @@ def make_file_readable(path, *, group=True, others=False):
             os.fchmod(descriptor, mode)
     finally:
         os.close(descriptor)
-    return path

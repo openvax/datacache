@@ -89,7 +89,7 @@ replacement leaves the previous file intact.
 | `retry_backoff` | Initial retry delay in seconds, doubled for subsequent retries. Must be finite and non-negative. |
 | `retry_max_delay` | Maximum retry delay in seconds, finite and non-negative. A server `Retry-After` exceeding this limit stops retries. |
 | `show_progress` | Boolean enabling optional tqdm download, decompression, and hash bars. Requires `datacache[progress]` when a bar is needed. Cache hits are quiet. |
-| `record_provenance` | Boolean; after publishing a download, also write a hidden `.<name>.datacache.json` record of the source URL (without credentials, query text, or fragment), fetch time, size, and the SHA-256 when `expected_sha256` verified it, which [inspect_file](#inspect_file) reports offline. Default `False`: a caller that downloads to a temporary name and then moves the file would leave the record behind. Cache hits never write one, and a failure to write it never fails the download. |
+| `record_provenance` | Boolean; after publishing a download, also write a hidden `.<name>.datacache.json` record of the source URL (without user name, password, query string, or fragment; the path is kept as is, so avoid recording URLs with secrets in their path), the fetch time, the size, and the SHA-256 when `expected_sha256` verified it. [inspect_file](#inspect_file) reports these offline. The record has the file's permissions. Default `False`: a caller that downloads to a temporary name and then moves the file would leave the record behind. Cache hits never write one, any new download removes a previous record first, and a failure to write one never fails the download. |
 
 ZIP downloads install the member stored at the output name; otherwise a member
 with that name, ignoring letter case, in any folder: the one nearest the archive
@@ -460,11 +460,14 @@ inspect_file(path, expected_sha256=None, expected_size=None)
 Inspect a string or `Path` using the same optional expectations as
 `validate_file`, entirely offline and without writes. Filesystem and validation
 failures become result statuses instead of being raised. An available file's
-size and modification time are reported. If `fetch_file(...,
-record_provenance=True)` recorded where it came from, and the file's size and
-modification time are unchanged since, its source URL and fetch time are
-reported too, and a SHA-256 verified at that download counts as verified
-without rehashing. A missing, unreadable, or malformed record is ignored.
+size and modification time are reported, taken from the same open file that was
+validated. If `fetch_file(..., record_provenance=True)` recorded where it came
+from, and the file's size and modification time are unchanged since, its source
+URL, fetch time, and recorded SHA-256 are reported too. The recorded digest
+never sets `verified`, which still means a supplied SHA-256 matched the bytes
+now; pass it as `expected_sha256` to check them. A missing, unreadable, or
+malformed record is ignored, and a record is never opened in a way that could
+block.
 
 **Returns:** [`FileInspection`](#fileinspection). **Raises:** `ValueError` for
 invalid expectation arguments. Unsupported path types can raise `TypeError`.
@@ -495,8 +498,8 @@ a snapshot across concurrent changes.
 **Returns:** [`CacheInspection`](#cacheinspection), including individual file
 results when the root is an accessible directory. A missing root is `missing`;
 an existing root missing a required file is `corrupt`. Inaccessibility takes
-precedence over corrupt or missing files. `verified=True` requires every
-required file to be verified, as defined for `FileInspection`.
+precedence over corrupt or missing files. `verified=True` requires a matching
+SHA-256 for every required file.
 
 **Raises:** `ValueError` for an empty mapping, invalid names, unexpected metadata
 keys, or invalid expectations. Malformed mapping/metadata types can raise
@@ -517,7 +520,7 @@ FileInspection(
     path: str, status: str, verified: bool = False,
     error: Optional[Exception] = None, size: Optional[int] = None,
     mtime: Optional[float] = None, source_url: Optional[str] = None,
-    fetched_at: Optional[str] = None
+    fetched_at: Optional[str] = None, recorded_sha256: Optional[str] = None
 )
 ```
 
@@ -527,12 +530,13 @@ Frozen dataclass returned by `inspect_file` and `Cache.inspect`.
 | --- | --- |
 | `path` | Inspected path string. |
 | `status` | `available` (readable regular file matching supplied expectations), `missing` (absent), `corrupt` (wrong type or failed expectations), or `inaccessible` (other filesystem error). |
-| `verified` | `True` when a supplied SHA-256 matched, or when a download with `record_provenance=True` verified the file's SHA-256 and its size and modification time are unchanged since. Readability or matching size alone leaves it `False`. |
+| `verified` | `True` only when a supplied SHA-256 matched. Readability or matching size alone leaves it `False`, and so does a recorded digest. |
 | `error` | Original exception for an unavailable file, or `None` on success. |
 | `size` | Size in bytes of an available file; otherwise `None`. |
 | `mtime` | Modification time of an available file, in seconds since the epoch; otherwise `None`. |
-| `source_url` | Recorded source URL, without credentials, query text, or fragment, while the file is unchanged since it was recorded; otherwise `None`. |
+| `source_url` | Source URL recorded by `fetch_file(..., record_provenance=True)`, without user name, password, query string, or fragment, while the file's size and modification time are unchanged since it was recorded; otherwise `None`. |
 | `fetched_at` | Recorded fetch time, UTC in ISO 8601, under the same condition; otherwise `None`. |
+| `recorded_sha256` | SHA-256 that `expected_sha256` verified when the file was downloaded, under the same condition; otherwise `None`. It is a record, not a check of the current bytes: a file edited in place without changing its size or modification time, or a record forged in a shared cache, still reports it. To check the bytes now, pass it back as `expected_sha256`. |
 
 **Construction:** returns a `FileInspection` instance; fields are assigned as
 given, with no validation of manually supplied status/type combinations.
@@ -610,8 +614,9 @@ Explicitly add group read permission (`group=True`) and/or other-user read
 permission (`others=True`) to one existing regular file, identified by a string
 or `Path`. Both flags must be booleans. Adds no write/execute bits, removes no
 permissions, and changes no contents. A `False` flag leaves that class's
-existing access unchanged. Requires POSIX file-descriptor support. The caller
-must be able to open the file and change its mode; parent directories and group
+existing access unchanged. The file's provenance record, if any, gets the same
+access, best effort. Requires POSIX file-descriptor support. The caller must be
+able to open the file and change its mode; parent directories and group
 ownership must already allow the intended readers to reach it.
 
 **Returns:** path string. **Raises:** `ValueError` for non-boolean flags,

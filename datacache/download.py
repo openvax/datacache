@@ -235,46 +235,60 @@ def _normal_creation_mode(directory):
             _remove_staging_file(probe_path)
 
 
-def _publish_staged_file(staged_path, full_path):
+def _publish_staged_file(staged_path, full_path, mode=None):
     """Apply normal creation or existing access permissions before publication.
 
     Call only after writing and validation, so staging data stays private until
     it is ready to publish. New files honor the destination's creation mode;
-    replacements preserve the existing regular file's access permissions.
+    replacements preserve the existing regular file's access permissions. An
+    explicit mode overrides both. Returns the mode applied.
     """
     try:
         existing = os.stat(full_path)
     except FileNotFoundError:
-        mode = _normal_creation_mode(os.path.dirname(full_path) or ".")
+        if mode is None:
+            mode = _normal_creation_mode(os.path.dirname(full_path) or ".")
     else:
         if not stat.S_ISREG(existing.st_mode):
             raise FileValidationError(full_path, "expected a regular file")
-        # Preserve rwx permissions, not setuid/setgid/sticky bits on new content.
-        mode = stat.S_IMODE(existing.st_mode) & 0o777
+        if mode is None:
+            # Preserve rwx permissions, not setuid/setgid/sticky bits on new content.
+            mode = stat.S_IMODE(existing.st_mode) & 0o777
     os.chmod(staged_path, mode)
     os.replace(staged_path, full_path)
+    return mode
 
 
-def _record_provenance(full_path, download_url, sha256):
-    """Write the provenance sidecar for a just-published download.
+def _publish_file(staged_path, full_path, record=None):
+    """Publish a staged file, keeping its provenance record truthful.
 
-    Best effort: a download that succeeded never fails for want of a record,
-    and inspection treats a missing record as unknown provenance.
+    Any record of the previous bytes is removed first, so an interruption
+    leaves the new file unrecorded, never misdescribed. record (JSON text from
+    provenance.describe) is then written with the file's own permissions,
+    without execute bits, so a private file keeps a private record. Records are
+    best effort: failing to write one, or to remove an old one, never fails the
+    publication.
     """
-    staged_path = None
     try:
-        text = provenance.describe(full_path, download_url, sha256)
+        provenance.remove(full_path)
+    except OSError as error:
+        logger.warning("Could not remove the provenance record for %s: %s", full_path, error)
+    mode = _publish_staged_file(staged_path, full_path)
+    if record is None:
+        return
+    staged_record = None
+    try:
         with _open_staging_file(
                 directory=os.path.dirname(full_path) or ".",
                 prefix=".datacache-provenance-") as output:
-            staged_path = output.name
-            output.write(text.encode("utf-8"))
-        _publish_staged_file(staged_path, provenance.sidecar_path(full_path))
+            staged_record = output.name
+            output.write(record.encode("utf-8"))
+        _publish_staged_file(staged_record, provenance.sidecar_path(full_path), mode & 0o666)
     except (OSError, ValueError) as error:
         logger.debug("Could not record provenance for %s: %s", full_path, error)
     finally:
-        if staged_path is not None:
-            _remove_staging_file(staged_path)
+        if staged_record is not None:
+            _remove_staging_file(staged_record)
 
 
 def _decompress_to_file(src_stream, full_path):
@@ -286,7 +300,7 @@ def _decompress_to_file(src_stream, full_path):
                 prefix=".datacache-decompress-") as output:
             staged_path = output.name
             copyfileobj(src_stream, output)
-        _publish_staged_file(staged_path, full_path)
+        _publish_file(staged_path, full_path)
     finally:
         if staged_path is not None:
             _remove_staging_file(staged_path)
@@ -347,7 +361,8 @@ def _download_and_decompress_if_necessary(
         max_retries=DEFAULT_MAX_RETRIES,
         retry_backoff=DEFAULT_RETRY_BACKOFF,
         retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
-        show_progress=False):
+        show_progress=False,
+        record_provenance=False):
     """
     Download, transform and validate in sibling staging files, then publish
     with one atomic replace. Expectations always describe installed bytes.
@@ -357,6 +372,8 @@ def _download_and_decompress_if_necessary(
     Explicit flags use the parsed URL format, including download endpoints.
     explicit_output=False marks an inferred cache key, which no archive member
     can match, so installing the largest ZIP member is not reported as a guess.
+    Publishing always removes a stale provenance record; record_provenance
+    writes a new one describing the staged bytes.
     """
     logger.info("Downloading %s to %s", download_url, full_path)
     full_path = os.fspath(full_path)
@@ -415,7 +432,16 @@ def _download_and_decompress_if_necessary(
                 validate_file(staged_path, expected_sha256, expected_size)
         except FileValidationError as error:
             raise FileValidationError(full_path, "downloaded file " + error.reason) from error
-        _publish_staged_file(staged_path, full_path)
+        record = None
+        if record_provenance:
+            # Describe the private staged bytes, not whatever is at full_path
+            # after publication, which a concurrent writer may have replaced.
+            # os.replace keeps their size and modification time.
+            try:
+                record = provenance.describe(download_url, os.stat(staged_path), expected_sha256)
+            except OSError as error:
+                logger.debug("Could not describe provenance for %s: %s", full_path, error)
+        _publish_file(staged_path, full_path, record)
     finally:
         if staged_path != tmp_path:
             _remove_staging_file(staged_path)
@@ -567,20 +593,22 @@ def fetch_file(
         honored when within this limit; longer server waits stop retries.
         timeout still applies per attempt, not as a total download deadline.
 
+    record_provenance : bool, optional
+        After publishing a download, also write a hidden ".<name>.datacache.json"
+        record of the source URL (without user name, password, query, or
+        fragment; the path is kept as is), fetch time, size, and the SHA-256
+        when expected_sha256 verified it, which inspect_file reports offline.
+        The record has the file's permissions. Off by default: a caller that
+        downloads to a temporary name and then moves the file would leave the
+        record behind. Cache hits never write one, and any new download removes
+        a previous record first.
+
     A corrupt cache hit raises FileValidationError; use force=True for an
     explicit repair. Missing files are downloaded. Transport, decompression
     and filesystem exceptions propagate. Failed downloads leave an existing
     destination unchanged and remove their staging files. Atomic replacement
     requires a local filesystem supporting os.replace; concurrent writers
     publish complete files with the last successful replacement winning.
-
-    record_provenance : bool, optional
-        After publishing a download, also write a hidden ".<name>.datacache.json"
-        sidecar recording the source URL (without credentials or query text),
-        fetch time, size, and the SHA-256 when expected_sha256 verified it, so
-        inspect_file can report them offline. Off by default: a caller that
-        downloads to a temporary name and then moves the file would leave the
-        record behind. Cache hits never write one.
     Staging files remain private until publication. New files use normal
     creation permissions (0666 filtered by umask); replacements preserve the
     existing file's read/write/execute permission bits.
@@ -646,9 +674,8 @@ def fetch_file(
         max_retries=max_retries,
         retry_backoff=retry_backoff,
         retry_max_delay=retry_max_delay,
-        show_progress=show_progress)
-    if record_provenance:
-        _record_provenance(full_path, download_url, expected_sha256)
+        show_progress=show_progress,
+        record_provenance=record_provenance)
     return full_path
 
 
@@ -722,7 +749,7 @@ def fetch_and_transform(
                 validate_file(staged_path)
             except FileNotFoundError as error:
                 raise RuntimeError("Transformer did not create %s" % transformed_path) from error
-            _publish_staged_file(staged_path, transformed_path)
+            _publish_file(staged_path, transformed_path)
             if isinstance(result, (str, os.PathLike)) and os.fspath(result) == staged_path:
                 result = type(result)(transformed_path)
     else:

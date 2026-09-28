@@ -61,11 +61,11 @@ class Cache:
         # Include inferred paths created by another Cache instance or fetch_file.
         paths.update(self.local_path(url, decompress=value) for value in (False, True))
         for path in paths:
-            for target in (path, provenance.sidecar_path(path)):
-                try:
-                    remove(target)
-                except FileNotFoundError:
-                    pass
+            try:
+                remove(path)
+            except FileNotFoundError:
+                pass
+            provenance.remove(path)
         for key in keys:
             del self._local_paths[key]
 

@@ -12,12 +12,15 @@
 
 """Where a downloaded file came from, recorded beside it for offline inspection.
 
-After fetch_file publishes a download it writes a small hidden sidecar,
-".<name>.datacache.json", in the same directory. Inspection only reads it: a
-missing, unreadable, or malformed sidecar simply means no recorded provenance.
+fetch_file(..., record_provenance=True) writes a small hidden record,
+".<name>.datacache.json", beside the file it publishes. Any later replacement
+of the file removes the record first, so a record never describes bytes it was
+not written for. Inspection only reads records: a missing, unreadable, or
+malformed record means no recorded provenance.
 """
 
 from datetime import datetime, timezone
+import errno
 import json
 import os
 import re
@@ -28,16 +31,26 @@ SUFFIX = ".datacache.json"
 FORMAT = 1
 # A record is a few hundred bytes; anything much larger is not one of ours.
 _MAX_RECORD_BYTES = 64 * 1024
+# Never block on a FIFO or follow a link planted at a record's name.
+_OPEN_FLAGS = (os.O_RDONLY | getattr(os, "O_BINARY", 0) |
+               getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0))
 
 
 def sidecar_path(path):
-    """Path of the provenance record kept for the file at path."""
+    """Path of the provenance record kept for the file at path (str or bytes)."""
     directory, name = os.path.split(os.fspath(path))
+    if isinstance(name, bytes):
+        return os.path.join(directory, b"." + name + os.fsencode(SUFFIX))
     return os.path.join(directory, "." + name + SUFFIX)
 
 
 def redact_url(url):
-    """Drop credentials, query text, and fragments, which may carry secrets."""
+    """Drop the user name, password, query string, and fragment.
+
+    Those are where URLs usually carry secrets, such as signed-URL signatures.
+    The path is kept as is, so a secret embedded in the path, as in some share
+    links, would be recorded.
+    """
     parts = urlsplit(url)
     host = parts.hostname or ""
     if ":" in host:
@@ -47,13 +60,14 @@ def redact_url(url):
     return urlunsplit((parts.scheme, host, parts.path, "", ""))
 
 
-def describe(path, download_url, sha256=None):
-    """Provenance of a just-published file as JSON text.
+def describe(download_url, info, sha256=None):
+    """Provenance, as JSON text, for the bytes that stat info describes.
 
-    sha256 is recorded only when the installed bytes were verified against a
-    trusted expectation; a digest of whatever a server sent proves nothing.
+    info must come from the exact bytes being published (the staged file), not
+    from whatever is at the destination afterwards, which a concurrent writer
+    may have replaced. sha256 is recorded only when those bytes were verified
+    against a trusted expectation: a digest of what a server sent proves nothing.
     """
-    info = os.stat(path)
     return json.dumps({
         "format": FORMAT,
         "url": redact_url(download_url),
@@ -62,6 +76,21 @@ def describe(path, download_url, sha256=None):
         "mtime_ns": info.st_mtime_ns,
         "sha256": sha256.lower() if sha256 else None,
     }, sort_keys=True)
+
+
+def remove(path):
+    """Remove the record kept for path, if there is one.
+
+    A record name longer than the filesystem allows cannot exist, so it counts
+    as absent. Other errors propagate.
+    """
+    try:
+        os.remove(sidecar_path(path))
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        if error.errno != errno.ENAMETOOLONG:
+            raise
 
 
 def _valid(record):
@@ -78,19 +107,30 @@ def read(path, info):
     """The record for path if it still describes the file with stat info.
 
     Returns None when there is no usable record, or when the file's size or
-    modification time changed since it was recorded, so provenance is only
-    ever reported for the bytes that were actually fetched. Never writes.
+    modification time changed since it was recorded. Never writes and never
+    blocks; any problem with the record means no recorded provenance.
     """
-    record_path = sidecar_path(path)
     try:
-        record_info = os.stat(record_path)
-        # Never open a FIFO or device that happens to have the record's name.
+        descriptor = os.open(sidecar_path(path), _OPEN_FLAGS)
+    except OSError:
+        return None
+    try:
+        # Check the opened object itself, so it cannot be swapped after a check.
+        record_info = os.fstat(descriptor)
         if not stat.S_ISREG(record_info.st_mode) or record_info.st_size > _MAX_RECORD_BYTES:
             return None
-        with open(record_path, encoding="utf-8") as source:
-            record = json.load(source)
-    except (OSError, ValueError):
+        chunks, remaining = [], _MAX_RECORD_BYTES + 1
+        while remaining > 0:
+            chunk = os.read(descriptor, remaining)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        record = json.loads(b"".join(chunks))
+    except (OSError, ValueError, RecursionError):
         return None
+    finally:
+        os.close(descriptor)
     if not _valid(record) or record["size"] != info.st_size or record["mtime_ns"] != info.st_mtime_ns:
         return None
     return record

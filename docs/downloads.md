@@ -69,58 +69,30 @@ Expectations are optional; omitting them provides no integrity guarantee.
 ## Provenance
 
 Pass `record_provenance=True` to `fetch_file` or `Cache.fetch` to record where a
-download came from. After publishing, datacache writes a hidden sidecar,
-`.<name>.datacache.json`, beside the file with the source URL (credentials,
-query text, and fragment removed, since signed URLs carry secrets there), the
-fetch time, the size, and the SHA-256 when `expected_sha256` verified it.
-`inspect_file` and `Cache.inspect` then report `source_url` and `fetched_at`,
-and count the recorded SHA-256 as verified without rehashing, but only while
-the file's size and modification time match the record. A file changed since,
-or a missing, unreadable, or malformed record, reads as unrecorded; inspection
-never writes. The record is written on downloads only, never on cache hits, and
-a failure to write it does not fail the download. Recording is off by default
-because a caller that downloads to a temporary name and then moves the file
-would leave the record behind. `Cache.delete_url` removes records with their
-files.
+download came from. After publishing, datacache writes a hidden record,
+`.<name>.datacache.json`, beside the file. It holds the source URL, the fetch
+time, the size, and the SHA-256 when `expected_sha256` verified it. The URL is
+stored without its user name, password, query string, or fragment, since signed
+URLs carry secrets there; its path is kept as is, so do not record URLs that
+embed a secret in the path, as some share links do. The record has the file's
+permissions, and sharing the file with `make_file_readable` shares it too.
 
-Downloads and transformed output use unique staging files in the destination
-directory. Only a complete, validated file is published, using `os.replace`.
-Transfer, transformation, validation, or publication failure leaves an existing
-destination unchanged and cleans up staging files, including on a handled
-keyboard interruption. This avoids `shutil.move`'s cross-filesystem copy and
-metadata fallback (related to [#39](https://github.com/openvax/datacache/issues/39));
-SELinux policy compatibility still needs testing on the target installation.
+`inspect_file`, `Cache.inspect`, and `inspect_files` report `source_url`,
+`fetched_at`, and `recorded_sha256`, but only while the file's size and
+modification time match the record. `recorded_sha256` is a record, not a check
+of the current bytes: an in-place edit that keeps the size and modification
+time, or a forged record in a shared cache, would still report it. `verified`
+therefore keeps its meaning, a supplied SHA-256 matching the bytes now; pass
+`recorded_sha256` back as `expected_sha256` to check them. A missing,
+unreadable, or malformed record reads as unrecorded, and inspection never
+writes.
 
-Download and conversion staging files remain owner-only throughout writing and
-validation. On replacement, existing files' read/write/execute permission bits
-are applied to the validated staging file immediately before publication.
-All new outputs, including raw downloads, decompressed files, and HTML-to-CSV
-conversions, use normal file-creation permissions (`0666` filtered by the
-process umask). For example, umask `022` produces `0644`, `002` produces `0664`,
-and `077` keeps files private at `0600`. This also applies to the private download
-and decompression helpers used by downstream packages such as pyensembl, fixing
-new shared-cache files being unreadable by other users
-([#68](https://github.com/openvax/datacache/issues/68)). Existing cache files are
-not automatically made more permissive, even on a forced refresh; owners must
-explicitly adjust permissions on files previously downloaded as `0600` if those
-files should be shared. An empty, disposable file measures normal creation
-permissions without reading or changing umask globally; that file never
-contains downloaded or converted data.
-Permission-setting failure preserves the old file and cleans up
-staging files. Atomic replacement creates a new inode: ownership, ACLs, and
-extended attributes of an existing destination are not copied, and special
-setuid/setgid/sticky bits are not preserved.
-
-The publication guarantee assumes a local filesystem supporting atomic
-replacement of sibling files. Concurrent fetches use separate staging files;
-the last successful replacement wins and readers opening the destination see
-complete files. Callers sharing a destination should use the same expectations.
-A returned path is not a permanent snapshot: later fetches may replace its
-contents. Platforms that deny replacing an open file may reject publication;
-the old file is preserved. This does not provide multi-file transactions,
-distributed coordination, or durability/recovery after power loss or an
-unhandled process termination, which may leave staging files behind.
-
+Recording is off by default because a caller that downloads to a temporary
+name and then moves the file would leave the record behind. A record is
+written only by a download, never by a cache hit, and any later replacement of
+the file removes the previous record first, whether or not it records a new
+one. `Cache.delete_url` removes records with their files. Recording is best
+effort: failing to write a record never fails the download.
 ## Transient HTTP failures
 
 HTTP and HTTPS downloads retry temporary failures by default, with at most

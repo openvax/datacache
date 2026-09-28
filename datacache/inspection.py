@@ -7,7 +7,7 @@ import stat
 from typing import Dict, Optional
 
 from . import provenance
-from .integrity import FileValidationError, _validate_expectations, validate_file
+from .integrity import FileValidationError, _validate_expectations, _validate_file
 
 
 @dataclass(frozen=True)
@@ -15,13 +15,14 @@ class FileInspection:
     """File status: available, missing, corrupt, or inaccessible.
 
     available means readable, regular, and matching any supplied expectations.
-    verified is True when a supplied SHA-256 expectation matched, or when
-    fetch_file verified the file's SHA-256 when it downloaded it and the file is
-    unchanged since. error retains the exception for unavailable files.
-    size (bytes) and mtime (seconds since the epoch) describe an available
-    file. source_url (without credentials or query text) and fetched_at (UTC,
-    ISO 8601) are the provenance fetch_file recorded, while the file is
-    unchanged since. All four are None when unknown.
+    verified is True only when a supplied SHA-256 expectation was checked.
+    error retains the validation or OS exception for unavailable files.
+    size (bytes) and mtime (seconds since the epoch) describe an available file.
+    source_url (without user name, password, query, or fragment), fetched_at
+    (UTC, ISO 8601), and recorded_sha256 are what fetch_file recorded when it
+    downloaded the file, reported only while the file's size and mtime are
+    unchanged since. recorded_sha256 is the digest verified at that download; it
+    is a record, not a check of the current bytes. None means unknown.
     """
 
     path: str
@@ -32,6 +33,7 @@ class FileInspection:
     mtime: Optional[float] = None
     source_url: Optional[str] = None
     fetched_at: Optional[str] = None
+    recorded_sha256: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -68,33 +70,25 @@ def inspect_file(path, expected_sha256=None, expected_size=None):
 
     Invalid expectation arguments raise ValueError. Filesystem and integrity
     problems are returned as distinct statuses with their original exceptions.
-    An available file's size and mtime are reported, along with any provenance
-    fetch_file(..., record_provenance=True) recorded for it. A SHA-256 verified
-    at that download counts as verified, without rehashing, while the file's
-    size and mtime are unchanged.
+    An available file's size and mtime are reported, taken from the same open
+    file that was validated, along with any provenance that
+    fetch_file(..., record_provenance=True) recorded for those bytes.
     """
     _validate_expectations(expected_sha256, expected_size)
     path = os.fspath(path)
     try:
-        validate_file(path, expected_sha256, expected_size)
+        _, info = _validate_file(path, expected_sha256, expected_size)
     except FileNotFoundError as error:
         return FileInspection(path, "missing", error=error)
     except (FileValidationError, NotADirectoryError, IsADirectoryError) as error:
         return FileInspection(path, "corrupt", error=error)
     except OSError as error:
         return FileInspection(path, "inaccessible", error=error)
-    try:
-        info = os.stat(path)
-    except FileNotFoundError as error:  # removed since it was validated
-        return FileInspection(path, "missing", error=error)
-    except OSError as error:
-        return FileInspection(path, "inaccessible", error=error)
-    record = provenance.read(path, info)
-    verified = expected_sha256 is not None or bool(record and record["sha256"])
+    record = provenance.read(path, info) or {}
     return FileInspection(
-        path, "available", verified=verified, size=info.st_size, mtime=info.st_mtime,
-        source_url=record["url"] if record else None,
-        fetched_at=record["fetched_at"] if record else None)
+        path, "available", verified=expected_sha256 is not None,
+        size=info.st_size, mtime=info.st_mtime, source_url=record.get("url"),
+        fetched_at=record.get("fetched_at"), recorded_sha256=record.get("sha256"))
 
 
 def inspect_files(cache_root, files):

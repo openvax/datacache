@@ -3,14 +3,15 @@
 ## Unreleased
 
 - Report `size` and `mtime` for an available file from `inspect_file`,
-  `Cache.inspect`, and `inspect_files`, so a cache listing needs no extra `stat`
-  (#75).
+  `Cache.inspect`, and `inspect_files`, taken from the file that was validated,
+  so a cache listing needs no extra `stat` (#75).
 - Add `record_provenance=True` to `fetch_file` and `Cache.fetch`. After
   publishing, a hidden `.<name>.datacache.json` records the source URL (without
-  credentials or query text), fetch time, size, and the SHA-256 when
-  `expected_sha256` verified it. Inspection reports `source_url` and
-  `fetched_at` and counts the recorded digest as verified without rehashing,
-  while the file is unchanged. Recording is off by default (#75).
+  user name, password, query string, or fragment), fetch time, size, and the
+  SHA-256 when `expected_sha256` verified it, with the file's permissions.
+  Inspection reports `source_url`, `fetched_at`, and `recorded_sha256` while the
+  file is unchanged; `verified` still means a supplied digest matched just now.
+  Any new download removes a stale record. Recording is off by default (#75).
 
 ## 1.12.0
 
