@@ -441,3 +441,41 @@ def test_invalid_retry_options_fail_before_creating_cache(tmp_path, options):
     with pytest.raises(ValueError):
         fetch_file("https://host/file", destination=tmp_path / "missing" / "data", **options)
     assert list(tmp_path.iterdir()) == []
+
+
+def test_clean_empty_response_is_retried_then_rejected(http_server, tmp_path, waits):
+    # A withdrawn upstream record answers a clean 200 with no body. It must not
+    # be published as a permanently valid cache entry.
+    server = http_server({"body": b""})
+    destination = tmp_path / "withdrawn.fasta"
+    with pytest.raises(FileValidationError, match="downloaded file is empty"):
+        fetch_file(server.url, destination=destination, max_retries=2)
+    assert len(server.requests) == 3 and len(waits) == 2
+    assert not destination.exists()
+    assert not list(tmp_path.glob(".datacache-*"))
+
+
+def test_briefly_empty_server_recovers_on_retry(http_server, tmp_path):
+    server = http_server({"body": b""}, {})
+    destination = tmp_path / "data"
+    fetch_file(server.url, destination=destination, max_retries=1)
+    assert destination.read_bytes() == PAYLOAD
+    assert len(server.requests) == 2
+
+
+def test_empty_response_leaves_an_existing_file_in_place(http_server, tmp_path):
+    destination = tmp_path / "data"
+    destination.write_bytes(b"previous release")
+    server = http_server({"body": b""})
+    with pytest.raises(FileValidationError, match="empty"):
+        fetch_file(server.url, destination=destination, force=True, max_retries=0)
+    assert destination.read_bytes() == b"previous release"
+
+
+@pytest.mark.parametrize("consent", [{"allow_empty": True}, {"expected_size": 0}])
+def test_an_expected_empty_response_is_published(http_server, tmp_path, consent):
+    server = http_server({"body": b""})
+    destination = tmp_path / "empty"
+    fetch_file(server.url, destination=destination, **consent)
+    assert destination.read_bytes() == b""
+    assert len(server.requests) == 1

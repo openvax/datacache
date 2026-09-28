@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Reject empty downloads. A complete but empty response, such as a withdrawn
+  upstream record, was published and then reused as a valid cache entry. An
+  empty HTTP response is now retried like a transient failure, then raises
+  `FileValidationError` without publishing; an empty decompressed archive
+  member is rejected too. An empty file already in a cache is an invalid hit
+  that `force=True` replaces. Pass `allow_empty=True` to `fetch_file` or
+  `Cache.fetch`, or `expected_size=0`, when an empty file is expected (#74).
+
 ## 1.12.0
 
 - Add `get_cache_root(name, *envkeys)`, which selects a cache root shared by

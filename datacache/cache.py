@@ -119,7 +119,8 @@ class Cache:
             max_retries=download.DEFAULT_MAX_RETRIES,
             retry_backoff=download.DEFAULT_RETRY_BACKOFF,
             retry_max_delay=download.DEFAULT_RETRY_MAX_DELAY,
-            show_progress=False):
+            show_progress=False,
+            allow_empty=False):
         """
         Return the local path to the downloaded copy of a given URL.
         Don't download the file again if it's already present,
@@ -129,6 +130,7 @@ class Cache:
         disables automatic retries of transient HTTP failures.
         show_progress=True enables optional tqdm displays; callbacks remain
         supported independently. Existing cache hits are quiet.
+        allow_empty=True accepts an empty file, which is otherwise rejected.
 
         `use_wget_if_available` is deprecated and ignored (datacache always uses
         its streaming Python downloader now); passing it emits a warning.
@@ -150,7 +152,8 @@ class Cache:
             max_retries=max_retries,
             retry_backoff=retry_backoff,
             retry_max_delay=retry_max_delay,
-            show_progress=show_progress)
+            show_progress=show_progress,
+            allow_empty=allow_empty)
 
         self._local_paths[key] = path
         return path

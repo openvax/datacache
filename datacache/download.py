@@ -56,6 +56,14 @@ def __getattr__(name):
 DEFAULT_CHUNK_SIZE = 2 ** 20  # 1 MB
 
 
+class EmptyResponse(Exception):
+    """A transfer completed without error but delivered no bytes.
+
+    A withdrawn upstream record or a misbehaving edge server can answer with a
+    clean, empty 200. HTTP attempts retry it like a transient failure.
+    """
+
+
 def _content_length(header_value):
     """Parse a Content-Length header value into an int, or None if it's
     absent or not a valid integer."""
@@ -138,7 +146,8 @@ def _download_to_temp_file(
         max_retries=DEFAULT_MAX_RETRIES,
         retry_backoff=DEFAULT_RETRY_BACKOFF,
         retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
-        show_progress=False):
+        show_progress=False,
+        allow_empty=True):
 
     retry_backoff, retry_max_delay = validate_retry_options(max_retries, retry_backoff, retry_max_delay)
     if not download_url:
@@ -172,11 +181,14 @@ def _download_to_temp_file(
                     progress_callback=report if progress_callback is not None or show_progress else None)
                 if count == 0:
                     progress(0, 0)
+                    if not allow_empty:
+                        raise EmptyResponse("the transfer delivered no bytes")
             return tmp_path
         except BaseException as error:
             if tmp_path is not None:
                 _remove_staging_file(tmp_path)
-            if not http or callback_failed or not is_retryable_http_error(error):
+            retryable = isinstance(error, EmptyResponse) or is_retryable_http_error(error)
+            if not http or callback_failed or not retryable:
                 raise
             if attempt == max_retries:
                 logger.warning("HTTP download failed after %d attempt(s): %s",
@@ -325,7 +337,8 @@ def _download_and_decompress_if_necessary(
         max_retries=DEFAULT_MAX_RETRIES,
         retry_backoff=DEFAULT_RETRY_BACKOFF,
         retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
-        show_progress=False):
+        show_progress=False,
+        allow_empty=False):
     """
     Download, transform and validate in sibling staging files, then publish
     with one atomic replace. Expectations always describe installed bytes.
@@ -335,6 +348,8 @@ def _download_and_decompress_if_necessary(
     Explicit flags use the parsed URL format, including download endpoints.
     explicit_output=False marks an inferred cache key, which no archive member
     can match, so installing the largest ZIP member is not reported as a guess.
+    An empty download or installed file is rejected unless allow_empty is true
+    or expected_size is 0; empty HTTP responses are retried first.
     """
     logger.info("Downloading %s to %s", download_url, full_path)
     full_path = os.fspath(full_path)
@@ -352,17 +367,23 @@ def _download_and_decompress_if_necessary(
         html = download_url.endswith(("html", "htm")) and full_path.endswith(".csv")
     else:
         html = convert_html and source_suffix in (".html", ".htm") and output_suffix == ".csv"
-    tmp_path = _download_to_temp_file(
-        download_url=download_url,
-        timeout=timeout,
-        base_name=".datacache-download-",
-        directory=out_dir,
-        chunk_size=chunk_size,
-        progress_callback=progress_callback,
-        max_retries=max_retries,
-        retry_backoff=retry_backoff,
-        retry_max_delay=retry_max_delay,
-        show_progress=show_progress)
+    # expected_size=0 states that an empty file is the right result.
+    reject_empty = not allow_empty and expected_size != 0
+    try:
+        tmp_path = _download_to_temp_file(
+            download_url=download_url,
+            timeout=timeout,
+            base_name=".datacache-download-",
+            directory=out_dir,
+            chunk_size=chunk_size,
+            progress_callback=progress_callback,
+            max_retries=max_retries,
+            retry_backoff=retry_backoff,
+            retry_max_delay=retry_max_delay,
+            show_progress=show_progress,
+            allow_empty=not reject_empty)
+    except EmptyResponse as error:
+        raise FileValidationError(full_path, "downloaded file is empty; pass allow_empty=True if an empty file is expected") from error
 
     staged_path = tmp_path
     try:
@@ -386,6 +407,8 @@ def _download_and_decompress_if_necessary(
                 import pandas as pd
                 df = pd.read_html(tmp_path, header=0)[0]
                 df.to_csv(staged_path, sep=',', index=False, encoding='utf-8')
+            if reject_empty and os.path.getsize(staged_path) == 0:
+                raise FileValidationError(full_path, "installed file is empty; pass allow_empty=True if an empty file is expected")
         try:
             if show_progress:
                 validate_file(staged_path, expected_sha256, expected_size, show_progress=True)
@@ -460,7 +483,8 @@ def fetch_file(
         max_retries=DEFAULT_MAX_RETRIES,
         retry_backoff=DEFAULT_RETRY_BACKOFF,
         retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
-        show_progress=False):
+        show_progress=False,
+        allow_empty=False):
     """
     Download a remote file and store it locally in a cache directory. Don't
     download it again if it's already present (unless `force` is True.)
@@ -544,6 +568,12 @@ def fetch_file(
         honored when within this limit; longer server waits stop retries.
         timeout still applies per attempt, not as a total download deadline.
 
+    allow_empty : bool, optional
+        Accept an empty file, default False. A complete but empty response,
+        such as a withdrawn upstream record, is otherwise never published: HTTP
+        retries it as transient, then FileValidationError is raised. An empty
+        cached file is likewise invalid. expected_size=0 also allows it.
+
     A corrupt cache hit raises FileValidationError; use force=True for an
     explicit repair. Missing files are downloaded. Transport, decompression
     and filesystem exceptions propagate. Failed downloads leave an existing
@@ -559,6 +589,9 @@ def fetch_file(
     _validate_expectations(expected_sha256, expected_size)
     if not isinstance(show_progress, bool):
         raise ValueError("show_progress must be a boolean")
+    if not isinstance(allow_empty, bool):
+        raise ValueError("allow_empty must be a boolean")
+    reject_empty = not allow_empty and expected_size != 0
     if progress_callback is not None and not callable(progress_callback):
         raise ValueError("progress_callback must be callable")
     retry_backoff, retry_max_delay = validate_retry_options(max_retries, retry_backoff, retry_max_delay)
@@ -578,6 +611,8 @@ def fetch_file(
     if not force:
         try:
             validate_file(full_path, expected_sha256, expected_size)
+            if reject_empty and os.stat(full_path).st_size == 0:
+                raise FileValidationError(full_path, "cached file is empty (pass allow_empty=True if an empty file is expected)")
         except FileNotFoundError:
             pass
         except FileValidationError as error:
@@ -613,7 +648,8 @@ def fetch_file(
         max_retries=max_retries,
         retry_backoff=retry_backoff,
         retry_max_delay=retry_max_delay,
-        show_progress=show_progress)
+        show_progress=show_progress,
+        allow_empty=allow_empty)
     return full_path
 
 

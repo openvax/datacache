@@ -408,3 +408,48 @@ def test_force_is_only_suggested_when_it_can_replace_the_path(tmp_path):
     with pytest.raises(FileValidationError) as error:
         fetch_file(source.as_uri(), filename="directory.txt", cache_root=cache_root)
     assert "force=True" not in str(error.value)
+
+
+def test_empty_local_source_is_rejected_without_publishing(tmp_path):
+    source = tmp_path / "source"
+    source.touch()
+    destination = tmp_path / "output"
+    with pytest.raises(FileValidationError, match="downloaded file is empty"):
+        fetch_file(source.as_uri(), destination=destination)
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("archive", ["gz", "zip"])
+def test_an_empty_archive_member_is_rejected(tmp_path, archive):
+    # The check applies to installed bytes: the archive itself is not empty.
+    source = tmp_path / ("data.csv." + archive)
+    if archive == "gz":
+        source.write_bytes(gzip.compress(b""))
+    else:
+        with zipfile.ZipFile(source, "w") as z:
+            z.writestr("data.csv", b"")
+    destination = tmp_path / "data.csv"
+    with pytest.raises(FileValidationError, match="installed file is empty"):
+        fetch_file(source.as_uri(), destination=destination, decompress=True)
+    assert not destination.exists()
+    fetch_file(source.as_uri(), destination=destination, decompress=True, allow_empty=True)
+    assert destination.read_bytes() == b""
+
+
+def test_an_empty_cached_file_is_an_invalid_hit(tmp_path):
+    # Older releases could cache an empty response; it must stop being reused.
+    source = tmp_path / "source"
+    source.write_bytes(b"real data")
+    cached = tmp_path / "cached"
+    cached.touch()
+    with pytest.raises(FileValidationError, match="cached file is empty.*force=True"):
+        fetch_file(source.as_uri(), destination=cached)
+    assert fetch_file(source.as_uri(), destination=cached, allow_empty=True) == str(cached)
+    assert cached.read_bytes() == b""
+    fetch_file(source.as_uri(), destination=cached, force=True)
+    assert cached.read_bytes() == b"real data"
+
+
+def test_allow_empty_must_be_a_boolean(tmp_path):
+    with pytest.raises(ValueError, match="allow_empty"):
+        fetch_file((tmp_path / "x").as_uri(), destination=tmp_path / "y", allow_empty="yes")
