@@ -139,6 +139,18 @@ Replace the example URL with your dataset URL. Existing files are reused;
 an invalid cache hit raises `FileValidationError` instead of silently replacing
 the file. Failed downloads leave the previous file intact.
 
+## Versioned datasets and large downloads
+
+Use `VersionedDatasetRegistry` for pinned single-file or multi-file datasets.
+It verifies every asset before publishing a complete generation, supports
+read-only offline inspection, and keeps returned paths usable during refreshes.
+The [bundle guide](docs/bundles.md) covers shared OpenVax roots, generated indices,
+and migration from downstream registries.
+
+For large raw HTTP files, pass `resume=True` with `expected_sha256` and
+`expected_size` to `fetch_file` or `Cache.fetch`. Interrupted transfers retain
+private partials and continue on retry. See [resumable downloads](docs/downloads.md#resumable-http-downloads).
+
 ## Choose the right API
 
 The [complete API reference](https://github.com/openvax/datacache/blob/master/docs/api.md)

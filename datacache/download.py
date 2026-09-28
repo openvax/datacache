@@ -138,7 +138,6 @@ def _download_to_temp_file(
         download_url,
         timeout=None,
         base_name="download",
-        ext="tmp",
         chunk_size=DEFAULT_CHUNK_SIZE,
         progress_callback=None,
         directory=None,
@@ -171,7 +170,7 @@ def _download_to_temp_file(
 
         try:
             with Progress(show_progress, "Downloading") as progress, _open_staging_file(
-                    directory=directory, suffix='.' + ext, prefix=base_name) as tmp:
+                    directory=directory, suffix='.tmp', prefix=base_name) as tmp:
                 tmp_path = tmp.name
                 count = _stream_to_file(
                     download_url,
@@ -533,7 +532,8 @@ def fetch_file(
         retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
         show_progress=False,
         record_provenance=False,
-        allow_empty=False):
+        allow_empty=False,
+        resume=False):
     """
     Download a remote file and store it locally in a cache directory. Don't
     download it again if it's already present (unless `force` is True.)
@@ -617,6 +617,14 @@ def fetch_file(
         honored when within this limit; longer server waits stop retries.
         timeout still applies per attempt, not as a total download deadline.
 
+    resume : bool, optional
+        Keep private partials and resume raw HTTP(S) transfers, default False.
+        Requires both expected_sha256 and expected_size, and a POSIX local
+        filesystem. Does not support decompression or HTML conversion. Retries
+        report cumulative bytes, resetting only when the server requires a
+        fresh transfer. discard_partial(destination) explicitly drops partials.
+        Interrupted downloads retain at most expected_size partial bytes.
+
     record_provenance : bool, optional
         After publishing a download, also write a hidden ".<name>.datacache.json"
         record of the source URL (without user name, password, query, or
@@ -644,6 +652,11 @@ def fetch_file(
 
     Returns the local path, which is relative when destination or cache_root is.
     """
+    if not isinstance(resume, bool):
+        raise ValueError("resume must be a boolean")
+    if resume:
+        from .resume import validate_resume
+        validate_resume(download_url, expected_sha256, expected_size)
     _validate_expectations(expected_sha256, expected_size)
     if not isinstance(show_progress, bool):
         raise ValueError("show_progress must be a boolean")
@@ -668,6 +681,13 @@ def fetch_file(
     full_path = expected_path(
         download_url, filename, decompress, subdir,
         destination=destination, cache_root=cache_root)
+    source_suffix = _source_suffix(download_url)
+    output_suffix = os.path.splitext(full_path)[1].lower()
+    archive_decompression = bool(decompress or (explicit_output and output_suffix != source_suffix))
+    if resume and (decompress or
+                   (source_suffix in (".gz", ".zip") and archive_decompression) or
+                   (explicit_output and source_suffix in (".htm", ".html") and output_suffix == ".csv")):
+        raise ValueError("resume=True supports raw downloads only; retain the archive suffix")
     if not force:
         try:
             validate_file(full_path, expected_sha256, expected_size)
@@ -689,11 +709,18 @@ def fetch_file(
         else:
             logger.info("Cached file %s from URL %s", full_path, download_url)
             return full_path
-    source_suffix = _source_suffix(download_url)
-    output_suffix = os.path.splitext(full_path)[1].lower()
-    archive_decompression = bool(decompress or (explicit_output and output_suffix != source_suffix))
     os.makedirs(os.path.dirname(full_path) or ".", exist_ok=True)
     logger.info("Fetching %s from URL %s", full_path, download_url)
+    if resume:
+        from .resume import download_resumable
+        download_resumable(
+            download_url, full_path, expected_sha256=expected_sha256,
+            expected_size=expected_size, timeout=timeout, chunk_size=chunk_size,
+            progress_callback=progress_callback, show_progress=show_progress,
+            max_retries=max_retries, retry_backoff=retry_backoff,
+            retry_max_delay=retry_max_delay, record_provenance=record_provenance,
+            force=force)
+        return full_path
     _download_and_decompress_if_necessary(
         full_path=full_path,
         download_url=download_url,

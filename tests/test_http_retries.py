@@ -189,8 +189,8 @@ def test_real_valued_delays_work_with_actual_sleep(http_server, tmp_path, monkey
     delays = []
 
     def sleep(delay):
-        # Keep the real sleep's numeric conversion; an append-only fake hid
-        # the TypeError for Fraction and numpy.float32. Waits stay under 2ms.
+        # Exercise the real sleep's numeric conversion for Fraction and
+        # numpy.float32. Waits stay under 2ms.
         real_sleep(delay)
         delays.append(delay)
 

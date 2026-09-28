@@ -31,11 +31,18 @@ from .common import (
     build_local_filename
 )
 from .cache import Cache
+from .resume import discard_partial
+from .bundles import BundleInspection, VersionedDatasetRegistry, inspect_bundle, install_bundle
 from .version import __version__
 
 __all__ = [
     '__version__',
     'fetch_file',
+    'discard_partial',
+    'BundleInspection',
+    'VersionedDatasetRegistry',
+    'inspect_bundle',
+    'install_bundle',
     'expected_path',
     'file_exists',
     'resolve_path',

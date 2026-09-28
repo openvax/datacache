@@ -1,6 +1,18 @@
 # Changelog
 
-## Unreleased
+## 1.13.0 (unreleased)
+
+- Add integrity-pinned resumable raw HTTP downloads with `resume=True`, private
+  persistent partials, validated ranges, bounded retries, and explicit
+  `discard_partial` cleanup (#64).
+- Add `VersionedDatasetRegistry`, `install_bundle`, and `inspect_bundle` for
+  single-file and multi-file datasets. Immutable generations and an atomic
+  pointer preserve readers and old installations through refreshes; completed
+  local generations can be recovered offline. Supports hitlist's registry
+  mapping and independently versioned source bundles (#59).
+- Remove the redundant test-local FASTA downloader and unused private `ext`
+  option; use urllib3's public exception import. Keep the published 2.0
+  deprecation deadline for `DatabaseTable.from_fasta_dict` (#67).
 
 - Report `size` and `mtime` for an available file from `inspect_file`,
   `Cache.inspect`, and `inspect_files`, taken from the file that was validated,

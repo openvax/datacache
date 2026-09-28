@@ -74,8 +74,9 @@ logging handlers or change the process umask. Download retry counts and waits
 are bounded, while `timeout` limits connection/read inactivity per attempt,
 not total elapsed time.
 
-Atomic downloads do not provide multi-file transactions, distributed locking,
-or crash cleanup for abandoned staging files. SQLite operations depend on
+Use [versioned bundles](bundles.md) when files must be installed together.
+Individual atomic downloads do not provide multi-file transactions or distributed
+locking. Unhandled termination can leave staging files behind. SQLite operations depend on
 SQLite's filesystem locking and journaling. New database publication needs
 hard-link support. Validate deployment-specific network filesystems and ACL
 requirements in the consuming application.

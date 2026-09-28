@@ -244,3 +244,45 @@ named at the end of the URL query into the requested CSV filenames.
 The `_decompress_to_file` helper remains available and uses failure-safe atomic
 publication. New integrations should use the public download and inspection
 APIs.
+
+## Resumable HTTP downloads
+
+Use `fetch_file(..., resume=True, expected_sha256=sha256, expected_size=size)`
+(or the same options on `Cache.fetch`) for large immutable raw HTTP/HTTPS files.
+Both trusted expectations are required. Keep an archive's suffix to download
+its raw bytes; resumable decompression and HTML conversion are not supported.
+The option is off by default and requires a POSIX local filesystem.
+
+Each destination gets a private, owner-only working directory beside it, with
+one bounded partial file, metadata and a permanent advisory lock. Threads and
+processes serialize on that destination for the same user; other users retain
+separate private state. A valid destination remains intact throughout transfer,
+verification, and publication. Complete partials are verified and reused without
+network; oversized or corrupt ones restart. Interruptions and exhausted transport
+retries keep safely written partial bytes for the next call.
+
+Range requests use `Accept-Encoding: identity`. DataCache checks the exact
+`Content-Range` offset and total, carries `If-Range` for a strong ETag, compares Last-Modified when no strong
+ETag is available, and restarts on changed validators, ignored or
+incompatible ranges, or 416 responses. Final SHA-256 and size checks are always
+required. A Last-Modified value alone is not a cryptographic identity; these
+checks remain the authority. HTTP range behavior follows
+[RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html#name-range-requests).
+
+Progress reports bytes present in the current transfer, including the retained
+prefix, and the trusted total size. A resumed retry continues its byte count;
+a server-required restart resets it. Callback failures propagate without being
+retried. The existing bounded HTTP retry/backoff options apply.
+
+Call `discard_partial(destination)` to explicitly discard this user's partial
+bytes and metadata. It waits for any active transfer, preserves the installed
+file, and retains the small lock directory for coordination. Missing state is a
+no-op. `force=True` refreshes the installed file but can reuse an independently
+verified complete partial; call `discard_partial` first to require a new transfer.
+
+Allow space for the old destination, up to `expected_size` partial bytes, and a
+second file of that size during publication. Copying verified bytes into ordinary
+staging keeps persistent partials private even when publication fails after
+setting shared file permissions. No credentials or raw signed URLs are stored in
+the private metadata; a URL hash identifies the source. Changing the URL or
+integrity expectations starts a new transfer.

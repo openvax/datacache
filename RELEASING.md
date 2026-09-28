@@ -11,7 +11,3 @@ This document explains what to do once your [Pull Request](https://www.atlassian
    `sdist`/`wheel` with [`build`](https://pypi.org/project/build/), and uploads them to
    PyPI with [`twine`](https://pypi.org/project/twine/). You'll need PyPI upload
    credentials configured (e.g. in `~/.pypirc` or via `TWINE_USERNAME`/`TWINE_PASSWORD`).
-
-> **Note:** `python setup.py sdist upload` is deprecated and no longer works — PyPI
-> rejects uploads from `setup.py`, and the project has moved to `pyproject.toml` (there
-> is no `setup.py`). Always release via `./deploy.sh` (i.e. `build` + `twine`).

@@ -124,7 +124,8 @@ class Cache:
             retry_max_delay=download.DEFAULT_RETRY_MAX_DELAY,
             show_progress=False,
             record_provenance=False,
-            allow_empty=False):
+            allow_empty=False,
+            resume=False):
         """
         Return the local path to the downloaded copy of a given URL.
         Don't download the file again if it's already present,
@@ -160,7 +161,8 @@ class Cache:
             retry_max_delay=retry_max_delay,
             show_progress=show_progress,
             record_provenance=record_provenance,
-            allow_empty=allow_empty)
+            allow_empty=allow_empty,
+            resume=resume)
 
         self._local_paths[key] = path
         return path

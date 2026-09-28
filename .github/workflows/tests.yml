@@ -48,7 +48,9 @@ jobs:
         run: |
           ./test.sh
       - name: Run offline public API example
-        run: python -m examples.basic_usage
+        run: |
+          python -m examples.basic_usage
+          python -m examples.versioned_datasets
       - name: Publish coverage to Coveralls
         # Coverage upload is best-effort: parallel matrix jobs race to post to
         # the same Coveralls build, and the loser gets a "build already closed"

@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.12.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.13.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -60,7 +60,7 @@ fetch_file(
     timeout=None, use_wget_if_available=None, chunk_size=1048576,
     progress_callback=None, *, destination=None, cache_root=None, expected_sha256=None,
     expected_size=None, max_retries=2, retry_backoff=1.0, retry_max_delay=30.0,
-    show_progress=False, record_provenance=False, allow_empty=False
+    show_progress=False, record_provenance=False, allow_empty=False, resume=False
 )
 ```
 
@@ -89,6 +89,7 @@ replacement leaves the previous file intact.
 | `retry_backoff` | Initial retry delay in seconds, doubled for subsequent retries. Must be finite and non-negative. |
 | `retry_max_delay` | Maximum retry delay in seconds, finite and non-negative. A server `Retry-After` exceeding this limit stops retries. |
 | `show_progress` | Boolean enabling optional tqdm download, decompression, and hash bars. Requires `datacache[progress]` when a bar is needed. Cache hits are quiet. |
+| `resume` | Boolean retaining private partials for raw integrity-pinned HTTP transfers. Requires SHA-256, size and a POSIX local filesystem. See [resumable downloads](downloads.md#resumable-http-downloads). |
 | `record_provenance` | Boolean; after publishing a download, also write a hidden `.<name>.datacache.json` record of the source URL (without user name, password, query string, or fragment; the path is kept as is, so avoid recording URLs with secrets in their path), the fetch time, the size, and the SHA-256 when `expected_sha256` verified it. [inspect_file](#inspect_file) reports these offline. The record has the file's permissions. Default `False`: a caller that downloads to a temporary name and then moves the file would leave the record behind. Cache hits never write one, any new download removes a previous record first, and a failure to write one never fails the download. |
 | `allow_empty` | Boolean accepting an empty installed file; default `False`. A complete but empty response, such as a withdrawn upstream record, is otherwise never published: HTTP retries it as transient, then raises `FileValidationError`. An empty cached file is likewise an invalid hit. `expected_size=0` also allows an empty file. |
 
@@ -866,7 +867,7 @@ Cache.fetch(
     url, filename=None, decompress=False, force=False, timeout=None,
     use_wget_if_available=None, *, chunk_size=1048576, progress_callback=None,
     expected_sha256=None, expected_size=None, max_retries=2, retry_backoff=1.0,
-    retry_max_delay=30.0, show_progress=False, record_provenance=False, allow_empty=False
+    retry_max_delay=30.0, show_progress=False, record_provenance=False, allow_empty=False, resume=False
 )
 ```
 
@@ -1065,3 +1066,66 @@ After finishing the examples, remove their temporary files:
 ```python
 temporary.cleanup()
 ```
+
+
+## discard_partial
+
+```text
+discard_partial(destination)
+```
+
+Explicitly discard this user's private resumable bytes for an exact destination,
+under its writer lock. The installed file is unchanged; absent state is a no-op.
+See [resumable downloads](downloads.md#resumable-http-downloads).
+
+## install_bundle
+
+```text
+install_bundle(destination, assets, *, force=False, verified=True, download_options=None)
+```
+
+Atomically install a mapping of relative asset names to `{url, sha256, size,
+decompress?}` metadata. Returns a dict of asset names to immutable generation
+paths. Invalid caches require `force=True`. `verified=False` explicitly permits
+unpinned sources; their observed hashes are recorded without authenticating them.
+`download_options` accepts timeout, chunk size, progress, retry settings and resume.
+Publication requires a POSIX local filesystem. [Complete guide](bundles.md).
+
+## inspect_bundle
+
+```text
+inspect_bundle(destination, assets=None)
+```
+
+Return a `BundleInspection` without writes, network, locks or recovery. Supply
+trusted assets to verify against the registry; omit them to check consistency
+against the installed generation's own recorded hashes (`verified=False`).
+
+## BundleInspection
+
+A frozen record with `path`, `status`, `verified`, `generation`, `files`, and
+`error`. Status is `available`, `missing`, `invalid`, `inaccessible`, or
+`recovery-required`. `files` maps asset names to `FileInspection` values from one
+generation. Paths remain usable across refreshes until explicitly removed.
+
+## VersionedDatasetRegistry
+
+```text
+VersionedDatasetRegistry(datasets, *, cache_root=None, cache_dir=None, verified=True)
+```
+
+Select exactly one root path or a zero-argument `cache_dir` callable. Each dataset
+specifies a `default_version` and `versions`, mapping concrete versions to asset
+mappings. Construction validates metadata and performs no writes or networking.
+The [bundle guide](bundles.md) includes an example and downstream migration notes.
+
+| Method | Result |
+| --- | --- |
+| `resolve_version(name, version=None)` | Concrete version label, applying the pinned default. Unknown names/versions raise `ValueError`. |
+| `bundle_path(name, version=None)` | Expected managed store `Path`, without creating it. |
+| `inspect(name, version=None)` | Read-only `BundleInspection`. |
+| `download(name, version=None, *, force=False, **download_options)` | Install/reuse and return a dict of asset snapshot paths. |
+| `local_path(name, version=None, *, asset=None)` | Installed single asset's `Path`, or a multi-file generation directory; select one asset by name. Missing raises `FileNotFoundError`; invalid/recovery-required raises `FileValidationError`. |
+| `ensure(name, version=None, **download_options)` | Download/reuse, then return `local_path`. |
+| `is_cached(name, version=None)` | Whether verified inspection reports `available`. |
+| `status()` | One row per dataset's pinned default: name, version, description, available_versions and inspection. |
