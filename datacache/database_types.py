@@ -12,8 +12,6 @@
 
 """Convert from Python type names to sqlite3 column types"""
 
-from __future__ import print_function, division, absolute_import
-
 
 _dtype_to_db_type_dict = {
     'int': 'INT',
@@ -37,10 +35,13 @@ _dtype_to_db_type_dict = {
 
     'object': 'TEXT',
     'object_': 'TEXT',
-    'string_': 'TEXT',
     'str': 'TEXT',
+    'str_': 'TEXT',
     'string': 'TEXT',
     'category': 'TEXT',
+
+    'bytes': 'BLOB',
+    'bytes_': 'BLOB',
 }
 
 def _lookup_type_name(type_name):
@@ -70,8 +71,8 @@ def _candidate_type_names(python_type_representation):
     if hasattr(python_type_representation, '__name__'):
         yield python_type_representation.__name__
 
-    # for a dtype like dtype('S3') need to access dtype.type.__name__
-    # to get 'string_'
+    # for a fixed-width dtype like dtype('S3') or dtype('U5'), the scalar
+    # type's name ('bytes_' or 'str_') identifies it
     if hasattr(python_type_representation, 'type'):
         if hasattr(python_type_representation.type, '__name__'):
             yield python_type_representation.type.__name__

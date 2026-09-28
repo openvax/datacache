@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function, division, absolute_import
-
 import logging
 import sqlite3
 import string
@@ -62,7 +60,7 @@ def quote_identifier(identifier):
     return '"%s"' % str(identifier).replace('"', '""')
 
 
-class Database(object):
+class Database:
     """
     Wrapper object for sqlite3 database which provides helpers for
     querying and constructing the datacache metadata table, as well as

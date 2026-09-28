@@ -32,7 +32,7 @@ htmlcov/
 .tox/
 .coverage
 .cache
-nosetests.xml
+.hypothesis/
 coverage.xml
 
 # Translations

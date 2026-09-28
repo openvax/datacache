@@ -22,7 +22,7 @@ from .inspection import inspect_file, path_exists
 from .permissions import make_file_readable
 
 
-class Cache(object):
+class Cache:
     """Download, inspect, and delete files under one cache directory.
 
     subdir names the application whose platform cache directory is used;
