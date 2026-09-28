@@ -5,6 +5,7 @@ from hashlib import sha256
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import os
+import json
 import socket
 import threading
 
@@ -78,26 +79,28 @@ def fetch(url, dest, **options):
     return fetch_file(url, destination=dest, **defaults)
 
 
-def interrupt(url, dest):
+def interrupt(url, dest, **options):
     def callback(done, total):
         if done >= 16:
             raise KeyboardInterrupt
     with pytest.raises(KeyboardInterrupt):
-        fetch(url, dest, progress_callback=callback)
+        fetch(url, dest, progress_callback=callback, **options)
 
 
-def test_dropped_connection_resumes_and_records(server, tmp_path):
+@pytest.mark.parametrize('expected_sha256', [DIGEST, None])
+def test_dropped_connection_resumes_and_records(server, tmp_path, expected_sha256):
     url, requests = server({'drop': 32})
     events = []
     dest = tmp_path / 'data'
-    fetch(url, dest, progress_callback=lambda *args: events.append(args), record_provenance=True)
+    fetch(url, dest, progress_callback=lambda *args: events.append(args), record_provenance=True,
+          expected_sha256=expected_sha256)
     assert requests[1]['Range'] == 'bytes=32-'
     assert requests[1]['If-Range'] == '"v1"'
     assert all(r['Accept-Encoding'] == 'identity' for r in requests)
     assert events[-1] == (len(PAYLOAD), len(PAYLOAD))
     assert [e[0] for e in events] == list(range(8, len(PAYLOAD) + 1, 8))
     assert dest.read_bytes() == PAYLOAD
-    assert inspect_file(dest).recorded_sha256 == DIGEST
+    assert inspect_file(dest).recorded_sha256 == expected_sha256
     assert not (_state_directory(dest) / 'partial').exists()
 
 
@@ -105,30 +108,32 @@ def test_dropped_connection_resumes_and_records(server, tmp_path):
     {'status': 200}, {'range': 'bytes 0-127/128'}, {'range': 'nonsense'},
     {'status': 416}, {'etag': '"v2"'},
 ])
-def test_protocol_changes_restart_safely(server, tmp_path, action):
+@pytest.mark.parametrize('expected_sha256', [DIGEST, None])
+def test_protocol_changes_restart_safely(server, tmp_path, action, expected_sha256):
     url, requests = server({}, action)
     dest = tmp_path / 'data'
-    interrupt(url, dest)
-    fetch(url, dest, max_retries=0)
+    interrupt(url, dest, expected_sha256=expected_sha256)
+    fetch(url, dest, max_retries=0, expected_sha256=expected_sha256)
     assert requests[1]['Range'] == 'bytes=16-'
     assert dest.read_bytes() == PAYLOAD
     if action.get('status') != 200:
         assert 'Range' not in requests[2]
 
 
-def test_interruption_preserves_private_partial_and_old_destination(server, tmp_path):
+@pytest.mark.parametrize('expected_sha256', [DIGEST, None])
+def test_interruption_preserves_private_partial_and_old_destination(server, tmp_path, expected_sha256):
     url, requests = server()
     dest = tmp_path / 'data'
     dest.write_bytes(b'old')
     def callback(done, total):
         raise KeyboardInterrupt
     with pytest.raises(KeyboardInterrupt):
-        fetch(url, dest, force=True, progress_callback=callback)
+        fetch(url, dest, force=True, progress_callback=callback, expected_sha256=expected_sha256)
     assert dest.read_bytes() == b'old'
     partial = _state_directory(dest) / 'partial'
     assert partial.read_bytes() == PAYLOAD[:8]
     assert partial.stat().st_mode & 0o077 == 0
-    fetch(url, dest, force=True)
+    fetch(url, dest, force=True, expected_sha256=expected_sha256)
     assert requests[1]['Range'] == 'bytes=8-'
     assert dest.read_bytes() == PAYLOAD
 
@@ -180,11 +185,12 @@ def test_partial_persists_after_exhausted_retries(server, tmp_path):
     assert requests[1]['Range'] == 'bytes=24-'
 
 
-def test_concurrent_first_calls_download_once(server, tmp_path):
+@pytest.mark.parametrize('expected_sha256', [DIGEST, None])
+def test_concurrent_first_calls_download_once(server, tmp_path, expected_sha256):
     url, requests = server()
     dest = tmp_path / 'data'
     with ThreadPoolExecutor(max_workers=4) as pool:
-        paths = list(pool.map(lambda _: fetch(url, dest), range(4)))
+        paths = list(pool.map(lambda _: fetch(url, dest, expected_sha256=expected_sha256), range(4)))
     assert paths == [str(dest)] * 4
     assert dest.read_bytes() == PAYLOAD
     assert len(requests) == 1
@@ -212,7 +218,7 @@ def test_unsafe_partial_is_rejected(server, tmp_path, kind):
 
 
 @pytest.mark.parametrize('options', [
-    {'expected_sha256': None}, {'expected_size': None}, {'decompress': True},
+    {'expected_size': None}, {'decompress': True},
     {'resume': 'yes'},
 ])
 def test_invalid_resume_options_have_no_side_effects(tmp_path, options):
@@ -248,11 +254,12 @@ def test_resumable_bundle_keeps_work_across_calls(server, tmp_path):
     assert inspect_bundle(dest, assets).verified
 
 
-def test_encoded_http_body_is_rejected(server, tmp_path):
+@pytest.mark.parametrize('expected_sha256', [DIGEST, None])
+def test_encoded_http_body_is_rejected(server, tmp_path, expected_sha256):
     url, _ = server({'encoding': 'gzip'})
     dest = tmp_path / 'data'
     with pytest.raises(FileValidationError, match='identity'):
-        fetch(url, dest)
+        fetch(url, dest, expected_sha256=expected_sha256)
     assert not dest.exists()
 
 
@@ -383,3 +390,123 @@ def test_failed_bundle_rename_keeps_private_resumable_work(server, tmp_path, mon
     assert Path(paths['data']).read_bytes() == PAYLOAD
     assert len(requests) == 1
     assert not working.exists()
+
+
+@pytest.mark.parametrize('etag', [None, 'W/"v1"', 'v1', '"v1", "v2"', '"has space"', '"has\ttab"'])
+def test_size_only_requires_strong_etag_before_reading_body(server, tmp_path, etag):
+    url, requests = server({'etag': etag, 'modified': 'Tue, 01 Sep 2026 00:00:00 GMT'})
+    dest = tmp_path / 'data'
+    dest.write_bytes(b'old')
+    with pytest.raises(FileValidationError, match='requires a strong ETag'):
+        fetch(url, dest, expected_sha256=None, force=True)
+    assert dest.read_bytes() == b'old'
+    assert len(requests) == 1
+    assert (_state_directory(dest) / 'partial').stat().st_size == 0
+
+
+@pytest.mark.parametrize('status', [200, 206])
+def test_size_only_changed_representation_restarts_with_new_bytes(server, tmp_path, status):
+    new = b'x' * len(PAYLOAD)
+    url, requests = server({}, {'status': status, 'etag': '"v2"', 'body': new},
+                           {'etag': '"v2"', 'body': new})
+    dest = tmp_path / 'data'
+    interrupt(url, dest, expected_sha256=None)
+    fetch(url, dest, expected_sha256=None, max_retries=0)
+    assert requests[1]['If-Range'] == '"v1"'
+    assert dest.read_bytes() == new
+    if status == 206:
+        assert 'Range' not in requests[2]
+
+
+@pytest.mark.parametrize('etag', [None, 'W/"v1"'])
+def test_size_only_missing_resumed_validator_restarts_then_rejects(server, tmp_path, etag):
+    url, requests = server({}, {'etag': etag}, {'etag': etag})
+    dest = tmp_path / 'data'
+    dest.write_bytes(b'old')
+    interrupt(url, dest, expected_sha256=None, force=True)
+    with pytest.raises(FileValidationError, match='requires a strong ETag'):
+        fetch(url, dest, expected_sha256=None, force=True, max_retries=0)
+    assert requests[1]['If-Range'] == '"v1"'
+    assert 'Range' not in requests[2]
+    assert dest.read_bytes() == b'old'
+    assert (_state_directory(dest) / 'partial').stat().st_size == 0
+
+
+@pytest.mark.parametrize('validator', [
+    None, {}, 'not a validator',
+    {'header': 'Last-Modified', 'value': 'Tue, 01 Sep 2026 00:00:00 GMT'},
+    {'header': 'ETag', 'value': 'W/"v1"'},
+    {'header': 'ETag', 'value': '"v1"\r\nInjected: yes'},
+])
+def test_size_only_unvalidated_saved_partial_restarts(server, tmp_path, validator):
+    url, requests = server()
+    dest = tmp_path / 'data'
+    interrupt(url, dest, expected_sha256=None)
+    state = _state_directory(dest)
+    metadata = json.loads((state / 'metadata.json').read_text())
+    metadata['validator'] = validator
+    (state / 'metadata.json').write_text(json.dumps(metadata))
+    (state / 'partial').write_bytes(b'x' * 16)
+    fetch(url, dest, expected_sha256=None)
+    assert 'Range' not in requests[1]
+    assert dest.read_bytes() == PAYLOAD
+
+
+@pytest.mark.parametrize('content', [PAYLOAD, b'x' * len(PAYLOAD), PAYLOAD + b'oversized'])
+def test_size_only_complete_partial_always_requests_fresh_bytes(server, tmp_path, content):
+    new = b'y' * len(PAYLOAD)
+    url, requests = server({}, {'etag': '"v2"', 'body': new})
+    dest = tmp_path / 'data'
+    interrupt(url, dest, expected_sha256=None)
+    (_state_directory(dest) / 'partial').write_bytes(content)
+    fetch(url, dest, expected_sha256=None)
+    assert len(requests) == 2
+    assert 'Range' not in requests[1]
+    assert dest.read_bytes() == new
+
+
+@pytest.mark.parametrize('etag', ['"empty"', None])
+def test_size_only_empty_download_still_requires_response_validator(server, tmp_path, etag):
+    url, requests = server({'body': b'', 'etag': etag})
+    dest = tmp_path / 'data'
+    if etag is None:
+        with pytest.raises(FileValidationError, match='strong ETag'):
+            fetch(url, dest, expected_sha256=None, expected_size=0)
+        assert not dest.exists()
+    else:
+        fetch(url, dest, expected_sha256=None, expected_size=0)
+        assert dest.read_bytes() == b''
+    assert len(requests) == 1
+
+
+def test_hash_pinned_download_can_resume_without_validator(server, tmp_path):
+    url, requests = server({'drop': 24, 'etag': None}, {'etag': None})
+    dest = tmp_path / 'data'
+    fetch(url, dest)
+    assert requests[1]['Range'] == 'bytes=24-'
+    assert 'If-Range' not in requests[1]
+    assert dest.read_bytes() == PAYLOAD
+
+
+@pytest.mark.parametrize('api', ['fetch_file', 'cache'])
+@pytest.mark.parametrize('suffix', ['.gz', '.zip', '.html'])
+@pytest.mark.parametrize('expected_sha256', [DIGEST, None])
+def test_raw_resume_at_arbitrary_output_name(server, tmp_path, api, suffix, expected_sha256):
+    url, requests = server({'drop': 16})
+    url += suffix + '?token=secret'
+    options = dict(raw=True, resume=True, expected_sha256=expected_sha256,
+                   expected_size=len(PAYLOAD), chunk_size=8, retry_backoff=0,
+                   record_provenance=True)
+    if api == 'fetch_file':
+        call = lambda: fetch_file(url, destination=tmp_path / 'data.csv', **options)
+    else:
+        cache = Cache(cache_root=tmp_path)
+        call = lambda: cache.fetch(url, filename='data.csv', **options)
+    path = Path(call())
+    assert path.name == 'data.csv'
+    assert path.read_bytes() == PAYLOAD
+    assert requests[1]['Range'] == 'bytes=16-'
+    assert requests[1]['If-Range'] == '"v1"'
+    assert inspect_file(path).recorded_sha256 == expected_sha256
+    assert call() == str(path)
+    assert len(requests) == 2

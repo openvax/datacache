@@ -21,6 +21,12 @@ def main():
         assert Path(path).read_bytes() == data
         assert cache.inspect(filename="records.csv", expected_sha256=digest).verified
 
+        archive = source.read_bytes()
+        raw_path = cache.fetch(source.as_uri(), filename="archive.bin", raw=True,
+                               expected_sha256=hashlib.sha256(archive).hexdigest(),
+                               expected_size=len(archive))
+        assert Path(raw_path).read_bytes() == archive
+
         with closing(fetch_csv_db(
                 "records", source.as_uri(), csv_filename="records.csv",
                 download_options={"cache_root": root / "cache", "expected_sha256": digest})) as connection:

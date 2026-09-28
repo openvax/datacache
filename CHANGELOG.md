@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.14.0
+
+- Allow `resume=True` with `expected_size` alone when the server supplies a
+  strong ETag. Resume uses `If-Range` and validates the returned range and
+  validator; servers without a strong ETag still require `expected_sha256`.
+  Complete size-only partials restart instead of being published without a
+  fresh response. Size-only validation does not verify content checksums (#80).
+- Add `raw=True` to `fetch_file` and `Cache.fetch` to disable archive
+  decompression and HTML conversion at arbitrary output names. It composes
+  with integrity checks, atomic replacement, progress, provenance, and resume;
+  existing suffix inference is unchanged when raw mode is omitted (#81).
+
 ## 1.13.0
 
 - Add integrity-pinned resumable raw HTTP downloads with `resume=True`, private

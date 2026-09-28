@@ -147,8 +147,11 @@ read-only offline inspection, and keeps returned paths usable during refreshes.
 The [bundle guide](docs/bundles.md) covers shared OpenVax roots, generated indices,
 and migration from downstream registries.
 
-For large raw HTTP files, pass `resume=True` with `expected_sha256` and
-`expected_size` to `fetch_file` or `Cache.fetch`. Interrupted transfers retain
+For large raw HTTP files, pass `resume=True` and `expected_size` to `fetch_file`
+or `Cache.fetch`. Supply `expected_sha256` when available; otherwise the server
+must provide a strong ETag for safe range continuation. Size-only validation
+does not verify a content checksum. Pass `raw=True` to preserve gzip, ZIP, or
+HTML payloads at arbitrary output names without conversion. Interrupted transfers retain
 private partials and continue on retry. See [resumable downloads](docs/downloads.md#resumable-http-downloads).
 
 ## Choose the right API

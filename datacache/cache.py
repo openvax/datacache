@@ -125,7 +125,8 @@ class Cache:
             show_progress=False,
             record_provenance=False,
             allow_empty=False,
-            resume=False):
+            resume=False,
+            raw=False):
         """
         Return the local path to the downloaded copy of a given URL.
         Don't download the file again if it's already present,
@@ -138,6 +139,9 @@ class Cache:
         record_provenance=True records where the file came from, for
         inspect_file, as described for fetch_file.
         allow_empty=True accepts an empty file, which is otherwise rejected.
+        raw=True disables decompression and HTML conversion even for an explicit
+        filename. It cannot be combined with decompress=True. Resume options
+        have the same size, hash, and strong-ETag requirements as fetch_file.
 
         `use_wget_if_available` is deprecated and ignored (datacache always uses
         its streaming Python downloader now); passing it emits a warning.
@@ -162,7 +166,8 @@ class Cache:
             show_progress=show_progress,
             record_provenance=record_provenance,
             allow_empty=allow_empty,
-            resume=resume)
+            resume=resume,
+            raw=raw)
 
         self._local_paths[key] = path
         return path
