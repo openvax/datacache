@@ -10,6 +10,13 @@
   pointer preserve readers and old installations through refreshes; completed
   local generations can be recovered offline. Supports hitlist's registry
   mapping and independently versioned source bundles (#59).
+- Check full source URL fingerprints and decompression settings before reusing
+  bundle assets without trusted hashes. Hash-pinned generations remain shareable
+  across libraries using different mirrors or compression settings.
+- Accept precreated empty bundle directories without forcing an install, keep
+  their access modes, and reject asset/provenance-sidecar collisions before writes.
+  Publish generations with their final sharing permissions while keeping failed
+  or interrupted resumable work inside a private staging directory.
 - Remove the redundant test-local FASTA downloader and unused private `ext`
   option; use urllib3's public exception import. Keep the published 2.0
   deprecation deadline for `DatabaseTable.from_fasta_dict` (#67).

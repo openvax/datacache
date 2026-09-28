@@ -64,9 +64,12 @@ state = inspect_bundle(source_directory, assets)
 
 `assets` is the same mapping of relative names to metadata. Names cannot escape
 the bundle, collide as files/directories or by letter case, or occupy DataCache's
-reserved metadata names. Source directories are managed stores: installation
-refuses to take over a nonempty directory without its ownership marker, even
-with `force=True`. Store generated indices, predictions, and other derived
+reserved metadata names. A file or directory at another asset's automatic
+provenance sidecar path is also rejected before installation starts. Source
+directories are managed stores: an existing empty directory is reported as
+`missing` and can be initialized without `force=True`, preserving its access
+mode. Installation refuses to take over a nonempty directory without its
+ownership marker, even with `force=True`. Store generated indices and other derived
 outputs under a separate application-owned directory. Reinstalling sources does
 not visit those outputs.
 
@@ -82,13 +85,26 @@ means every file matched the supplied SHA-256 just now. Every completed generati
 also has its own manifest recording sizes, observed SHA-256 digests, source URLs,
 and fetch time. `inspect_bundle(directory)` can check those recorded hashes
 without a registry or network, but returns `verified=False`: a local receipt is
-not an independent authority. URLs omit credentials, queries and fragments;
-paths are retained, so do not use secret-bearing URL paths.
+not an independent authority. Display URLs omit credentials, queries and
+fragments; a separate SHA-256 fingerprint identifies the full source URL without
+storing that omitted text. Paths are retained, so do not use secret-bearing URL
+paths.
 
 `verified=False` on installation or registry construction explicitly permits
 acquiring assets without trusted hashes/sizes. Their observed hashes are still
 recorded and checked on reuse, but cannot authenticate the original download.
 Use this mode only for upstream data without immutable integrity metadata.
+Without a trusted hash, reuse requires the same full URL fingerprint and
+decompression setting. Changing either reports an invalid installation; use
+`force=True` to acquire the newly requested data. Older receipts without source
+fingerprints still support offline consistency checks and trusted-hash reuse,
+but need an explicit refresh before reuse without trusted hashes.
+
+Trusted SHA-256 expectations identify the installed bytes. Libraries using the
+same root, dataset name, version and asset names can therefore share a verified
+generation even when they use different mirrors, signed URLs or compression
+settings. DataCache checks the supplied hashes and sizes without downloading or
+rewriting a matching generation.
 
 Cache reuse and inspection are read-only. Corrupt entries require `force=True`.
 If publication was interrupted after creating a complete generation, inspection
@@ -115,7 +131,12 @@ calls can legitimately select different generations.
 
 Installation is supported on POSIX local filesystems providing `flock` and atomic
 sibling `os.replace` (Linux and macOS). Shared caches use normal umask-derived
-permissions; readers need only read/search access. Atomic publication covers
+permissions; readers need only read/search access. A private outer staging
+directory protects unfinished files while the inner generation already has its
+final sharing permissions. Renaming that generation makes it recoverable with
+the correct permissions immediately, including after an interruption. A failed
+rename leaves resumable work protected by the private outer directory.
+Atomic publication covers
 process interruption, not guaranteed durability after power loss. Distributed
 coordination and arbitrary network filesystem semantics are outside this API.
 An unhandled termination can leave staging directories; successful generations

@@ -15,7 +15,7 @@ from uuid import uuid4
 from ._filesystem import file_lock, open_regular, path_present, read_json, write_json
 from .integrity import FileValidationError, _validate_expectations
 from .inspection import inspect_file
-from .provenance import redact_url
+from .provenance import redact_url, sidecar_path
 
 STORE = '.datacache-bundle.json'
 MANIFEST = '.datacache-manifest.json'
@@ -68,11 +68,19 @@ def _assets(assets, verified=True):
         result[name] = dict(url=url, sha256=digest.lower() if digest else None,
                             size=size, decompress=decompress)
     folded = {name.casefold() for name in result}
-    if len(folded) != len(result) or any(
-            '/'.join(name.split('/')[:i]).casefold() in folded
-            for name in result for i in range(1, len(name.split('/')))):
+    parents = {'/'.join(name.split('/')[:i]).casefold()
+               for name in result for i in range(1, len(name.split('/')))}
+    if len(folded) != len(result) or folded & parents:
         raise ValueError('asset paths collide as files/directories or ignoring case')
+    sidecars = {Path(sidecar_path(name)).as_posix().casefold() for name in result}
+    if sidecars & (folded | parents):
+        raise ValueError('asset paths collide with automatic provenance sidecars')
     return result
+
+
+def _source_fingerprint(url):
+    """Identify the complete source without storing credentials or query text."""
+    return hashlib.sha256(url.encode('utf-8')).hexdigest()
 
 
 def _directory(path):
@@ -127,8 +135,13 @@ def _inspect_generation(store, generation, assets):
         if set(recorded) != set(assets):
             raise FileValidationError(directory, 'manifest asset names disagree with registry')
         for name, spec in assets.items():
-            if spec['sha256'] is None and redact_url(spec['url']) != recorded[name]['url']:
-                raise FileValidationError(directory, 'manifest source disagrees with registry')
+            if spec['sha256'] is None:
+                fingerprints = receipt.get('source_fingerprints')
+                if (not isinstance(fingerprints, dict) or
+                        fingerprints.get(name) != _source_fingerprint(spec['url'])):
+                    raise FileValidationError(directory, 'manifest source identity is missing or disagrees with registry')
+                if spec['decompress'] != recorded[name]['decompress']:
+                    raise FileValidationError(directory, 'manifest decompression setting disagrees with registry')
             for key in ('sha256', 'size'):
                 if spec[key] is not None and recorded[name][key] != spec[key]:
                     raise FileValidationError(directory, 'manifest expectations disagree with registry')
@@ -161,7 +174,16 @@ def inspect_bundle(destination, assets=None):
     try:
         if not path_present(path):
             return BundleInspection(str(path), 'missing')
-        _store(path)
+        try:
+            _store(path)
+        except FileNotFoundError:
+            # A caller may create the destination before installing. Existing
+            # recognized stores need no directory listing merely to inspect.
+            if not any(path.iterdir()):
+                return BundleInspection(str(path), 'missing')
+            # Another installer may have initialized an empty directory after
+            # our missing-marker read. Recheck before calling it invalid.
+            _store(path)
         try:
             pointer = read_json(path / CURRENT)
         except FileNotFoundError:
@@ -180,18 +202,21 @@ def _paths(inspection):
 
 
 def _initialize(path):
+    existing_mode = None
     if path_present(path):
         _directory(path)
-        if list(path.iterdir()):
+        if any(path.iterdir()):
             _store(path)  # Never take over an arbitrary nonempty directory.
             return
+        existing_mode = stat.S_IMODE(path.lstat().st_mode)
     # Publish a complete store skeleton at once: concurrent first-time readers
     # see absence or a recognized store, never a half-written ownership marker.
     staging = Path(tempfile.mkdtemp(prefix='.datacache-store-', dir=path.parent))
     try:
         write_json(staging / STORE, {'format': FORMAT}, mode=_file_mode(path.parent))
         (staging / 'generations').mkdir()
-        os.chmod(staging, stat.S_IMODE((staging / 'generations').stat().st_mode))
+        os.chmod(staging, existing_mode if existing_mode is not None else
+                 stat.S_IMODE((staging / 'generations').stat().st_mode))
         os.replace(staging, path)
     finally:
         if staging.exists():
@@ -270,12 +295,18 @@ def install_bundle(destination, assets, *, force=False, verified=True, download_
         resumable = options.get('resume', False)
         staging_key = (hashlib.sha256(json.dumps(expected, sort_keys=True).encode()).hexdigest()
                        + '-%d' % os.getuid()) if resumable else generation
-        staged = path / ('.staging-' + staging_key)
-        staged.mkdir(mode=0o700, exist_ok=resumable)
-        info = staged.lstat()
+        working = path / ('.staging-' + staging_key)
+        working.mkdir(mode=0o700, exist_ok=resumable)
+        info = working.lstat()
         if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid()
                 or stat.S_IMODE(info.st_mode) & 0o077):
-            raise FileValidationError(staged, 'bundle staging must be a private directory')
+            raise FileValidationError(working, 'bundle staging must be a private directory')
+        # The private parent protects unfinished bytes. The inner directory
+        # already has its final sharing mode, including during the atomic
+        # rename, so an interrupted publication is recoverable by other readers.
+        staged = working / 'files'
+        staged.mkdir(exist_ok=resumable)
+        _directory(staged)
         published = False
         try:
             recorded = {}
@@ -300,26 +331,19 @@ def install_bundle(destination, assets, *, force=False, verified=True, download_
                     observed_sha256 = digest.hexdigest()
                 recorded[name] = dict(url=redact_url(spec['url']), sha256=observed_sha256,
                                       size=target.stat().st_size, decompress=spec['decompress'])
-            receipt = dict(format=FORMAT, fetched_at=datetime.now(timezone.utc).isoformat(), assets=recorded)
+            receipt = dict(format=FORMAT, fetched_at=datetime.now(timezone.utc).isoformat(), assets=recorded,
+                           source_fingerprints={name: _source_fingerprint(spec['url'])
+                                                for name, spec in expected.items()})
             write_json(staged / MANIFEST, receipt, mode=_file_mode(staged))
-            # Ordinary directories determine sharing permissions; staged bytes
-            # were inaccessible through their private parent until now.
-            probe = path / ('.mode-' + generation)
-            probe.mkdir()
-            try:
-                directory_mode = stat.S_IMODE(probe.stat().st_mode)
-            finally:
-                probe.rmdir()
             final = path / 'generations' / generation
             os.replace(staged, final)
             published = True
-            os.chmod(final, directory_mode)
             candidate = _inspect_generation(path, generation, expected)
             write_json(path / CURRENT, {'generation': generation}, mode=_file_mode(path))
             return _paths(candidate)
         finally:
-            if not published and not resumable:
-                shutil.rmtree(staged)
+            if published or not resumable:
+                shutil.rmtree(working)
 
 
 class VersionedDatasetRegistry:

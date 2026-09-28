@@ -288,3 +288,233 @@ def test_registry_rejects_symlinked_dataset_directory(tmp_path, assets):
     with pytest.raises(FileValidationError):
         reg.download('example')
     assert list(outside.iterdir()) == []
+
+
+@pytest.mark.parametrize('changed_url', [
+    'https://reader:old-secret@example.test/download?id=new#original',
+    'https://reader:new-secret@example.test/download?id=old#original',
+    'https://reader:old-secret@example.test/download?id=old#changed',
+])
+def test_unverified_reuse_checks_full_source_identity(tmp_path, monkeypatch, changed_url):
+    original_url = 'https://reader:old-secret@example.test/download?id=old#original'
+    bodies = {original_url: b'old data', changed_url: b'new data'}
+    requests = []
+
+    def stream(url, handle, **kwargs):
+        requests.append(url)
+        return handle.write(bodies[url])
+
+    monkeypatch.setattr(download, '_stream_to_file', stream)
+    dest = tmp_path / 'data'
+    original = {'data': {'url': original_url, 'size': 8}}
+    changed = {'data': {'url': changed_url, 'size': 8}}
+    old_paths = install_bundle(dest, original, verified=False)
+    assert install_bundle(dest, original, verified=False) == old_paths
+    assert requests == [original_url]
+    assert inspect_bundle(dest, changed).status == 'invalid'
+    with pytest.raises(FileValidationError, match='force=True'):
+        install_bundle(dest, changed, verified=False)
+    assert requests == [original_url]
+    new_paths = install_bundle(dest, changed, verified=False, force=True)
+    assert Path(new_paths['data']).read_bytes() == b'new data'
+    assert Path(old_paths['data']).read_bytes() == b'old data'
+    assert requests == [original_url, changed_url]
+    receipt = json.loads((Path(inspect_bundle(dest).generation) / bundles.MANIFEST).read_text())
+    assert receipt['source_fingerprints']['data'] == sha256(changed_url.encode()).hexdigest()
+    assert receipt['assets']['data']['url'] == 'https://example.test/download'
+    serialized = json.dumps(receipt)
+    assert 'secret' not in serialized and 'id=' not in serialized and 'reader' not in serialized
+
+
+@pytest.mark.parametrize('decompress', [False, True])
+def test_unverified_reuse_checks_requested_decompression(tmp_path, decompress):
+    import gzip
+    payload = b'plain dataset bytes\n'
+    compressed = gzip.compress(payload)
+    source = tmp_path / 'source.gz'
+    source.write_bytes(compressed)
+    dest = tmp_path / 'bundle'
+    original = {'data.gz': dict(url=source.as_uri(), decompress=decompress)}
+    changed = {'data.gz': dict(url=source.as_uri(), decompress=not decompress)}
+    old_paths = install_bundle(dest, original, verified=False)
+    assert Path(old_paths['data.gz']).read_bytes() == (payload if decompress else compressed)
+    assert inspect_bundle(dest, changed).status == 'invalid'
+    with pytest.raises(FileValidationError, match='force=True'):
+        install_bundle(dest, changed, verified=False)
+    new_paths = install_bundle(dest, changed, verified=False, force=True)
+    assert Path(new_paths['data.gz']).read_bytes() == (compressed if decompress else payload)
+
+
+def test_trusted_hashes_allow_cross_library_reuse_across_mirrors(tmp_path, assets, monkeypatch):
+    root = tmp_path / 'shared'
+    mapping = {'reference': dict(default_version='v1', versions={'v1': assets})}
+    first = VersionedDatasetRegistry(mapping, cache_root=root)
+    paths = first.download('reference')
+    mirrored = {name: dict(spec, url='https://mirror.example.test/' + name + '.gz?token=renewed',
+                           decompress=True) for name, spec in assets.items()}
+    second = VersionedDatasetRegistry(
+        {'reference': dict(default_version='v1', versions={'v1': mirrored})}, cache_root=root)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError('trusted shared reuse must not download or write')
+
+    monkeypatch.setattr(download, 'fetch_file', forbidden)
+    monkeypatch.setattr(bundles, 'file_lock', forbidden)
+    monkeypatch.setattr(bundles, 'write_json', forbidden)
+    assert second.download('reference') == paths
+    assert second.inspect('reference').verified
+
+
+def test_first_install_into_empty_directory_is_missing_and_preserves_mode(tmp_path, assets):
+    dest = tmp_path / 'precreated'
+    dest.mkdir(mode=0o700)
+    assert inspect_bundle(dest, assets).status == 'missing'
+    assert list(dest.iterdir()) == []
+    paths = install_bundle(dest, assets)
+    assert inspect_bundle(dest, assets).verified
+    assert all(Path(path).is_file() for path in paths.values())
+    assert dest.stat().st_mode & 0o777 == 0o700
+
+
+def test_empty_symlink_is_not_an_uninitialized_bundle(tmp_path, assets):
+    target = tmp_path / 'outside'
+    target.mkdir()
+    dest = tmp_path / 'symlink'
+    dest.symlink_to(target)
+    assert inspect_bundle(dest, assets).status == 'invalid'
+    with pytest.raises(FileValidationError):
+        install_bundle(dest, assets)
+    assert list(target.iterdir()) == []
+
+
+@pytest.mark.parametrize('creation_mask', [0o022, 0o002, 0o077])
+def test_generation_is_shared_before_it_can_be_recovered(tmp_path, assets, monkeypatch, creation_mask):
+    dest = tmp_path / 'bundle'
+    replace = os.replace
+    installed_modes = []
+
+    def interrupt_after_rename(source, target):
+        replace(source, target)
+        if Path(target).parent == dest / 'generations':
+            installed_modes.append(Path(target).stat().st_mode & 0o777)
+            raise KeyboardInterrupt('interrupted immediately after generation rename')
+
+    monkeypatch.setattr(os, 'replace', interrupt_after_rename)
+    previous_mask = os.umask(creation_mask)
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            install_bundle(dest, assets)
+        assert installed_modes == [0o777 & ~creation_mask]
+        assert inspect_bundle(dest, assets).status == 'recovery-required'
+        monkeypatch.setattr(os, 'replace', replace)
+
+        def forbidden(*args, **kwargs):
+            raise AssertionError('recoverable shared generation must not be downloaded again')
+
+        monkeypatch.setattr(download, 'fetch_file', forbidden)
+        paths = install_bundle(dest, assets)
+        assert inspect_bundle(dest, assets).verified
+        assert Path(inspect_bundle(dest).generation).stat().st_mode & 0o777 == 0o777 & ~creation_mask
+        assert all(Path(path).is_file() for path in paths.values())
+    finally:
+        os.umask(previous_mask)
+
+
+@pytest.mark.parametrize('names', [
+    ('data', '.data.datacache.json'),
+    ('dir/data', 'dir/.data.datacache.json'),
+    ('dir/DATA', 'DIR/.data.datacache.JSON'),
+    ('data', '.data.datacache.json/nested'),
+])
+@pytest.mark.parametrize('reverse', [False, True])
+def test_provenance_sidecar_collisions_fail_before_any_writes(tmp_path, assets, monkeypatch, names, reverse):
+    if reverse:
+        names = names[::-1]
+    dest = tmp_path / 'missing' / 'bundle'
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError('invalid asset mapping must not download or create files')
+
+    monkeypatch.setattr(download, 'fetch_file', forbidden)
+    monkeypatch.setattr(Path, 'mkdir', forbidden)
+    with pytest.raises(ValueError, match='provenance'):
+        install_bundle(dest, {name: next(iter(assets.values())) for name in names})
+    assert not dest.parent.exists()
+
+
+def test_existing_bundle_inspection_needs_no_directory_listing(tmp_path, assets, monkeypatch):
+    dest = tmp_path / 'bundle'
+    paths = install_bundle(dest, assets)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError('known bundle files need search access, not a directory listing')
+
+    monkeypatch.setattr(Path, 'iterdir', forbidden)
+    assert inspect_bundle(dest, assets).verified
+    assert install_bundle(dest, assets) == paths
+
+
+def test_legacy_receipts_still_verify_but_cannot_prove_unpinned_source_identity(tmp_path, assets):
+    dest = tmp_path / 'bundle'
+    paths = install_bundle(dest, assets)
+    manifest = Path(inspect_bundle(dest).generation) / bundles.MANIFEST
+    receipt = json.loads(manifest.read_text())
+    del receipt['source_fingerprints']
+    manifest.write_text(json.dumps(receipt))
+    assert inspect_bundle(dest).status == 'available'
+    assert install_bundle(dest, assets) == paths
+    unpinned = {name: {'url': spec['url']} for name, spec in assets.items()}
+    assert inspect_bundle(dest, unpinned).status == 'invalid'
+    with pytest.raises(FileValidationError, match='force=True'):
+        install_bundle(dest, unpinned, verified=False)
+    refreshed = install_bundle(dest, unpinned, verified=False, force=True)
+    assert refreshed != paths
+    assert inspect_bundle(dest, unpinned).status == 'available'
+
+
+def test_sidecar_like_asset_without_collision_remains_supported(tmp_path, assets):
+    mapping = {'.data.datacache.json': assets['records.json'], 'other/data': assets['release/manifest.json']}
+    dest = tmp_path / 'bundle'
+    paths = install_bundle(dest, mapping)
+    assert set(paths) == set(mapping)
+    assert inspect_bundle(dest, mapping).verified
+
+
+@pytest.mark.parametrize('force', [False, True])
+def test_hidden_foreign_files_are_never_treated_as_an_empty_destination(tmp_path, assets, force):
+    dest = tmp_path / 'bundle'
+    dest.mkdir()
+    precious = dest / '.user-owned'
+    precious.write_text('keep me')
+    assert inspect_bundle(dest, assets).status == 'invalid'
+    with pytest.raises((FileNotFoundError, FileValidationError)):
+        install_bundle(dest, assets, force=force)
+    assert list(dest.iterdir()) == [precious]
+    assert precious.read_text() == 'keep me'
+
+
+def test_concurrent_initialization_of_precreated_directory_reuses_winner(tmp_path, assets, monkeypatch):
+    dest = tmp_path / 'bundle'
+    dest.mkdir()
+    missing_marker, resume_inspection = threading.Event(), threading.Event()
+    read_json = bundles.read_json
+
+    def pause_after_missing_marker(path, *args, **kwargs):
+        try:
+            return read_json(path, *args, **kwargs)
+        except FileNotFoundError:
+            if Path(path) == dest / bundles.STORE and not missing_marker.is_set():
+                missing_marker.set()
+                assert resume_inspection.wait(5)
+            raise
+
+    monkeypatch.setattr(bundles, 'read_json', pause_after_missing_marker)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(install_bundle, dest, assets)
+        assert missing_marker.wait(5)
+        try:
+            winner = install_bundle(dest, assets)
+        finally:
+            resume_inspection.set()
+        assert future.result() == winner
+    assert len(list((dest / 'generations').iterdir())) == 1

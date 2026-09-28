@@ -352,8 +352,34 @@ def test_resumable_bundle_repairs_corrupt_unpublished_asset(server, tmp_path):
         install_bundle(dest, assets, download_options=dict(
             resume=True, chunk_size=8, progress_callback=callback))
     working = next(dest.glob('.staging-*'))
-    (working / 'first').write_bytes(b'corrupted private working state')
+    (working / 'files' / 'first').write_bytes(b'corrupted private working state')
     paths = install_bundle(dest, assets, download_options=dict(resume=True, chunk_size=8))
     assert all(Path(path).read_bytes() == PAYLOAD for path in paths.values())
     assert len(requests) == 4
     assert requests[-1]['Range'] == 'bytes=8-'
+
+
+def test_failed_bundle_rename_keeps_private_resumable_work(server, tmp_path, monkeypatch):
+    from datacache import install_bundle
+    url, requests = server()
+    dest = tmp_path / 'bundle'
+    assets = {'data': dict(url=url, sha256=DIGEST, size=len(PAYLOAD))}
+    replace = os.replace
+
+    def fail_generation_rename(source, target):
+        if Path(target).parent == dest / 'generations':
+            assert Path(source).parent.stat().st_mode & 0o077 == 0
+            raise OSError('cannot publish generation')
+        return replace(source, target)
+
+    monkeypatch.setattr(os, 'replace', fail_generation_rename)
+    with pytest.raises(OSError, match='cannot publish generation'):
+        install_bundle(dest, assets, download_options=dict(resume=True, chunk_size=8))
+    working = next(dest.glob('.staging-*'))
+    assert working.stat().st_mode & 0o077 == 0
+    assert (working / 'files' / 'data').read_bytes() == PAYLOAD
+    monkeypatch.setattr(os, 'replace', replace)
+    paths = install_bundle(dest, assets, download_options=dict(resume=True, chunk_size=8))
+    assert Path(paths['data']).read_bytes() == PAYLOAD
+    assert len(requests) == 1
+    assert not working.exists()
