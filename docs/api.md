@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.13.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.14.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -60,7 +60,8 @@ fetch_file(
     timeout=None, use_wget_if_available=None, chunk_size=1048576,
     progress_callback=None, *, destination=None, cache_root=None, expected_sha256=None,
     expected_size=None, max_retries=2, retry_backoff=1.0, retry_max_delay=30.0,
-    show_progress=False, record_provenance=False, allow_empty=False, resume=False
+    show_progress=False, record_provenance=False, allow_empty=False, resume=False,
+    raw=False
 )
 ```
 
@@ -75,6 +76,7 @@ replacement leaves the previous file intact.
 | `download_url` | Source URL string: HTTP, HTTPS, FTP, or `file://`. |
 | `filename` | Optional string cache key. Omitted names are inferred from the full URL. Names are normalized by [build_local_filename](#build_local_filename), not treated as exact paths. |
 | `decompress` | Request gzip/ZIP contents. With inferred filenames, `False` retains the archive and `True` selects a separate decompressed key. An explicit output lacking the source's compression suffix also implies decompression. |
+| `raw` | Boolean disabling archive decompression and HTML conversion regardless of the output name. Default `False` preserves legacy inference; cannot be combined with `decompress=True`. Expectations describe the unchanged payload after HTTP transfer decoding. |
 | `subdir` | Application name selecting a platform cache directory; `None` selects `datacache`. See [get_data_dir](#get_data_dir). |
 | `force` | Download even when a cached file exists. Does not automatically broaden its permissions. |
 | `timeout` | Per-attempt timeout in seconds; `None` supplies no timeout. HTTP also accepts a Requests `(connect, read)` tuple. Timeouts limit connection/read inactivity, not overall elapsed time. |
@@ -89,7 +91,7 @@ replacement leaves the previous file intact.
 | `retry_backoff` | Initial retry delay in seconds, doubled for subsequent retries. Must be finite and non-negative. |
 | `retry_max_delay` | Maximum retry delay in seconds, finite and non-negative. A server `Retry-After` exceeding this limit stops retries. |
 | `show_progress` | Boolean enabling optional tqdm download, decompression, and hash bars. Requires `datacache[progress]` when a bar is needed. Cache hits are quiet. |
-| `resume` | Boolean retaining private partials for raw integrity-pinned HTTP transfers. Requires SHA-256, size and a POSIX local filesystem. See [resumable downloads](downloads.md#resumable-http-downloads). |
+| `resume` | Boolean retaining private partials for raw HTTP transfers. Requires size and a POSIX local filesystem. Without an expected SHA-256, every accepted response must supply a strong ETag. Size-only cache hits check only byte count. See [resumable downloads](downloads.md#resumable-http-downloads). |
 | `record_provenance` | Boolean; after publishing a download, also write a hidden `.<name>.datacache.json` record of the source URL (without user name, password, query string, or fragment; the path is kept as is, so avoid recording URLs with secrets in their path), the fetch time, the size, and the SHA-256 when `expected_sha256` verified it. [inspect_file](#inspect_file) reports these offline. The record has the file's permissions. Default `False`: a caller that downloads to a temporary name and then moves the file would leave the record behind. Cache hits never write one, any new download removes a previous record first, and a failure to write one never fails the download. |
 | `allow_empty` | Boolean accepting an empty installed file; default `False`. A complete but empty response, such as a withdrawn upstream record, is otherwise never published: HTTP retries it as transient, then raises `FileValidationError`. An empty cached file is likewise an invalid hit. `expected_size=0` also allows an empty file. |
 
@@ -867,7 +869,8 @@ Cache.fetch(
     url, filename=None, decompress=False, force=False, timeout=None,
     use_wget_if_available=None, *, chunk_size=1048576, progress_callback=None,
     expected_sha256=None, expected_size=None, max_retries=2, retry_backoff=1.0,
-    retry_max_delay=30.0, show_progress=False, record_provenance=False, allow_empty=False, resume=False
+    retry_max_delay=30.0, show_progress=False, record_provenance=False, allow_empty=False,
+    resume=False, raw=False
 )
 ```
 

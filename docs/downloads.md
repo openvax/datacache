@@ -32,15 +32,37 @@ cached file can be reused offline in a readable, non-writable installation.
 
 Both expectations always describe **installed bytes**, after decompression or
 HTML-to-CSV conversion. They do not describe HTTP wire bytes or a compressed
-archive when its contents are being installed. To verify and retain an archive,
-keep its `.gz` or `.zip` suffix at the destination and leave `decompress=False`.
+archive when its contents are being installed. To verify and retain an archive
+at any output name, pass `raw=True`. This also disables HTML-to-CSV conversion:
+
+```python
+path = fetch_file(
+    archive_url,
+    destination="reference.bin",
+    raw=True,
+    expected_sha256=release_metadata["archive_sha256"],
+    expected_size=release_metadata["archive_size"],
+    record_provenance=True,
+)
+```
+
+`Cache.fetch` accepts the same `raw=True` option with `filename`. Raw mode is
+incompatible with `decompress=True`. It preserves the downloaded payload after
+normal HTTP transfer decoding, not encoded HTTP wire bytes. Hashes and sizes
+refer to that payload. A cache hit still uses the supplied local validation
+checks; changing transformation options does not replace an existing output.
+Use distinct names, trusted expectations, or `force=True` when switching modes.
+
+Without `raw=True`, keeping the source's `.gz` or `.zip` suffix at the destination
+and leaving `decompress=False` retains an archive as before.
 With an inferred filename, archives are retained by default, including URLs
 with query strings or fragments; their existing cache keys are preserved.
 `decompress=True` uses a distinct key for the decompressed contents, keeping the
 full URL in the key's digest. When a download endpoint's inferred filename
 has no removable archive suffix, `.decompressed` distinguishes its output.
 With an explicit `filename` or `destination`, a
-missing compression suffix still implies decompression for compatibility.
+missing compression suffix still implies decompression for compatibility unless
+`raw=True` is supplied.
 `decompress=True` explicitly requests decompression while preserving an explicit
 destination's exact name. Format detection prefers a supported extension on
 the URL path (case-insensitively). For download endpoints without a supported
@@ -249,24 +271,49 @@ APIs.
 
 Use `fetch_file(..., resume=True, expected_sha256=sha256, expected_size=size)`
 (or the same options on `Cache.fetch`) for large immutable raw HTTP/HTTPS files.
-Both trusted expectations are required. Keep an archive's suffix to download
-its raw bytes; resumable decompression and HTML conversion are not supported.
-The option is off by default and requires a POSIX local filesystem.
+`expected_size` is required. Prefer a trusted `expected_sha256` when available.
+For sources such as Ensembl that do not publish SHA-256 digests, omit the hash:
+
+```python
+path = fetch_file(
+    ensembl_dna_url,
+    destination="reference.download",
+    raw=True,
+    resume=True,
+    expected_size=ensembl_dna_size,
+)
+```
+
+Without `expected_sha256`, every accepted response must supply a syntactically
+valid strong ETag. Missing or weak ETags (including a Last-Modified value alone)
+raise `FileValidationError` before response bytes are retained or published.
+Strong ETags prevent joining bytes from different server representations; they
+are not independently verified checksums. Callers can still apply their source's
+checksum to the completed archive. Size-only cache hits remain offline and check
+only the local byte count, not remote freshness or same-size corruption. Optional
+provenance records no verified SHA-256 unless the caller supplied one.
+
+Use `raw=True` for an arbitrary destination name, or keep the source archive's
+suffix. Resumable decompression and HTML conversion are not supported. Resume is
+off by default and requires a POSIX local filesystem.
 
 Each destination gets a private, owner-only working directory beside it, with
 one bounded partial file, metadata and a permanent advisory lock. Threads and
 processes serialize on that destination for the same user; other users retain
 separate private state. A valid destination remains intact throughout transfer,
-verification, and publication. Complete partials are verified and reused without
-network; oversized or corrupt ones restart. Interruptions and exhausted transport
+verification, and publication. With an expected SHA-256, complete partials are
+verified and reused without network; oversized or corrupt ones restart. Without
+one, a complete-size partial restarts to obtain a fresh validated response, and
+an incomplete partial without a saved strong ETag is discarded. Interruptions and exhausted transport
 retries keep safely written partial bytes for the next call.
 
 Range requests use `Accept-Encoding: identity`. DataCache checks the exact
-`Content-Range` offset and total, carries `If-Range` for a strong ETag, compares Last-Modified when no strong
-ETag is available, and restarts on changed validators, ignored or
-incompatible ranges, or 416 responses. Final SHA-256 and size checks are always
-required. A Last-Modified value alone is not a cryptographic identity; these
-checks remain the authority. HTTP range behavior follows
+`Content-Range` offset and total, carries `If-Range` for a strong ETag, and only
+appends bytes from a matching representation. A 200 response replaces the
+partial; incompatible ranges, changed validators, or 416 responses restart it.
+When a trusted SHA-256 is supplied, downloads can also resume without strong
+ETags, with Last-Modified changes triggering restarts and the final digest
+authorizing publication. The final byte count is always checked. HTTP range behavior follows
 [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110.html#name-range-requests).
 
 Progress reports bytes present in the current transfer, including the retained

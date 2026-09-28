@@ -1,4 +1,4 @@
-"""Integrity-pinned raw HTTP downloads with private, persistent partials."""
+"""Hash- or strong-ETag-validated HTTP downloads with private partials."""
 
 from contextlib import closing
 import hashlib
@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 def validate_resume(download_url, expected_sha256, expected_size):
     _validate_expectations(expected_sha256, expected_size)
-    if expected_sha256 is None or expected_size is None:
-        raise ValueError('resume=True requires expected_sha256 and expected_size')
+    if expected_size is None:
+        raise ValueError('resume=True requires expected_size')
     if urlsplit(download_url).scheme.lower() not in ('http', 'https'):
         raise ValueError('resume=True supports only raw HTTP/HTTPS downloads')
     if os.name != 'posix':
@@ -61,9 +61,15 @@ def discard_partial(destination):
             (directory / name).unlink(missing_ok=True)
 
 
+def _strong_etag(value):
+    # RFC 9110 entity-tag syntax, without the weak W/ prefix. Embedded quotes,
+    # whitespace, and control characters cannot authorize an If-Range request.
+    return isinstance(value, str) and re.fullmatch(r'"[\x21\x23-\x7e\x80-\xff]*"', value) is not None
+
+
 def _validator(headers):
     etag = headers.get('ETag', '')
-    if etag.startswith('"') and etag.endswith('"'):
+    if _strong_etag(etag):
         return {'header': 'ETag', 'value': etag}
     # Last-Modified is not always strong, but changes still invalidate a partial.
     modified = headers.get('Last-Modified')
@@ -80,7 +86,8 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
     directory = _prepare_directory(destination)
     partial = directory / 'partial'
     metadata_path = directory / 'metadata.json'
-    identity = {'sha256': expected_sha256.lower(), 'size': expected_size,
+    identity = {'sha256': expected_sha256.lower() if expected_sha256 is not None else None,
+                'size': expected_size,
                 'url_hash': hashlib.sha256(download_url.encode()).hexdigest()}
     with file_lock(directory / 'lock', private=True):
         # Another installer may have completed while we waited for its lock.
@@ -100,10 +107,14 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
             # Unlink, never truncate an unknown path planted in the state dir.
             partial.unlink(missing_ok=True)
         validator = metadata.get('validator')
-        if validator is not None and not (
+        valid_validator = (
                 isinstance(validator, dict) and validator.get('header') in ('ETag', 'Last-Modified')
                 and isinstance(validator.get('value'), str)
-                and '\r' not in validator['value'] and '\n' not in validator['value']):
+                and '\r' not in validator['value'] and '\n' not in validator['value']
+                and (validator['header'] != 'ETag' or _strong_etag(validator['value'])))
+        strong_validator = (valid_validator and validator['header'] == 'ETag')
+        if ((validator is not None and not valid_validator)
+                or (expected_sha256 is None and not strong_validator)):
             metadata['validator'] = None
             partial.unlink(missing_ok=True)
         write_json(metadata_path, metadata)
@@ -122,16 +133,20 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
                     offset = output.tell()
                     if offset >= expected_size:
                         output.flush()
-                        try:
-                            validate_file(partial, expected_sha256, expected_size)
-                        except FileValidationError:
-                            output.seek(0)
-                            output.truncate()
-                            offset = 0
-                            metadata['validator'] = None
-                        else:
-                            report()
-                            break
+                        if expected_sha256 is not None:
+                            try:
+                                validate_file(partial, expected_sha256, expected_size)
+                            except FileValidationError:
+                                pass
+                            else:
+                                report()
+                                break
+                        # Size alone cannot validate a completed persistent
+                        # partial, including an empty one. Request fresh bytes.
+                        output.seek(0)
+                        output.truncate()
+                        offset = 0
+                        metadata['validator'] = None
                     callback_failed = False
                     try:
                         # One protocol restart per attempt, independent of retries.
@@ -175,6 +190,10 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
                                     offset = 0
                                 else:
                                     raise FileValidationError(destination, 'expected HTTP 200 or 206')
+                                if expected_sha256 is None and (
+                                        current_validator is None or current_validator['header'] != 'ETag'):
+                                    raise FileValidationError(
+                                        destination, 'resume without expected_sha256 requires a strong ETag')
                                 metadata['validator'] = current_validator
                                 write_json(metadata_path, metadata)
                                 for chunk in response.iter_content(chunk_size=chunk_size):

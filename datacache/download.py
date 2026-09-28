@@ -533,7 +533,8 @@ def fetch_file(
         show_progress=False,
         record_provenance=False,
         allow_empty=False,
-        resume=False):
+        resume=False,
+        raw=False):
     """
     Download a remote file and store it locally in a cache directory. Don't
     download it again if it's already present (unless `force` is True.)
@@ -552,6 +553,12 @@ def fetch_file(
         for URLs with query strings or fragments. Set True to decompress them
         under a distinct cache key. An explicit filename or destination lacking
         the source's .zip/.gz suffix still implies decompression for compatibility.
+
+    raw : bool, optional
+        Disable archive decompression and HTML-to-CSV conversion regardless of
+        the output name. Incompatible with decompress=True. Defaults to False,
+        preserving legacy output-name inference. Integrity expectations then
+        describe the unchanged payload, after HTTP transfer decoding.
 
     subdir : str, optional
         Application name selecting a platform cache directory, "datacache" by
@@ -619,8 +626,12 @@ def fetch_file(
 
     resume : bool, optional
         Keep private partials and resume raw HTTP(S) transfers, default False.
-        Requires both expected_sha256 and expected_size, and a POSIX local
-        filesystem. Does not support decompression or HTML conversion. Retries
+        Requires expected_size and a POSIX local filesystem. If expected_sha256
+        is omitted, the server must supply a strong ETag on every accepted
+        response; it is sent as If-Range when resuming. ETags prevent mixing
+        representations, but do not verify a trusted checksum. Cache hits with
+        size alone check only their byte count. Does not support decompression
+        or HTML conversion; raw=True permits arbitrary output names. Retries
         report cumulative bytes, resetting only when the server requires a
         fresh transfer. discard_partial(destination) explicitly drops partials.
         Interrupted downloads retain at most expected_size partial bytes.
@@ -654,6 +665,10 @@ def fetch_file(
     """
     if not isinstance(resume, bool):
         raise ValueError("resume must be a boolean")
+    if not isinstance(raw, bool):
+        raise ValueError("raw must be a boolean")
+    if raw and decompress:
+        raise ValueError("raw=True cannot be combined with decompress=True")
     if resume:
         from .resume import validate_resume
         validate_resume(download_url, expected_sha256, expected_size)
@@ -683,11 +698,14 @@ def fetch_file(
         destination=destination, cache_root=cache_root)
     source_suffix = _source_suffix(download_url)
     output_suffix = os.path.splitext(full_path)[1].lower()
-    archive_decompression = bool(decompress or (explicit_output and output_suffix != source_suffix))
+    archive_decompression = not raw and bool(
+        decompress or (explicit_output and output_suffix != source_suffix))
+    html_conversion = (not raw and explicit_output and source_suffix in (".htm", ".html")
+                       and output_suffix == ".csv")
     if resume and (decompress or
                    (source_suffix in (".gz", ".zip") and archive_decompression) or
-                   (explicit_output and source_suffix in (".htm", ".html") and output_suffix == ".csv")):
-        raise ValueError("resume=True supports raw downloads only; retain the archive suffix")
+                   html_conversion):
+        raise ValueError("resume=True supports raw downloads only; use raw=True or retain the archive suffix")
     if not force:
         try:
             validate_file(full_path, expected_sha256, expected_size)
@@ -728,7 +746,7 @@ def fetch_file(
         chunk_size=chunk_size,
         progress_callback=progress_callback,
         decompress=archive_decompression,
-        convert_html=explicit_output,
+        convert_html=html_conversion,
         explicit_output=explicit_output,
         expected_sha256=expected_sha256,
         expected_size=expected_size,
