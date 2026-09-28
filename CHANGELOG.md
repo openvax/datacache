@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.13.0 (unreleased)
+## 1.13.0
 
 - Add integrity-pinned resumable raw HTTP downloads with `resume=True`, private
   persistent partials, validated ranges, bounded retries, and explicit
