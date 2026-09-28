@@ -66,6 +66,23 @@ permission errors; it rejects non-regular files. Fetching propagates transport,
 decompression, and filesystem errors so applications can translate them.
 Expectations are optional; omitting them provides no integrity guarantee.
 
+## Provenance
+
+Pass `record_provenance=True` to `fetch_file` or `Cache.fetch` to record where a
+download came from. After publishing, datacache writes a hidden sidecar,
+`.<name>.datacache.json`, beside the file with the source URL (credentials,
+query text, and fragment removed, since signed URLs carry secrets there), the
+fetch time, the size, and the SHA-256 when `expected_sha256` verified it.
+`inspect_file` and `Cache.inspect` then report `source_url` and `fetched_at`,
+and count the recorded SHA-256 as verified without rehashing, but only while
+the file's size and modification time match the record. A file changed since,
+or a missing, unreadable, or malformed record, reads as unrecorded; inspection
+never writes. The record is written on downloads only, never on cache hits, and
+a failure to write it does not fail the download. Recording is off by default
+because a caller that downloads to a temporary name and then moves the file
+would leave the record behind. `Cache.delete_url` removes records with their
+files.
+
 Downloads and transformed output use unique staging files in the destination
 directory. Only a complete, validated file is published, using `os.replace`.
 Transfer, transformation, validation, or publication failure leaves an existing

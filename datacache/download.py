@@ -24,7 +24,7 @@ import zipfile
 import urllib.parse
 import urllib.request
 
-from . import common
+from . import common, provenance
 from .common import _source_suffix, build_local_filename
 from .integrity import FileValidationError, _validate_expectations, validate_file
 from .inspection import path_exists
@@ -255,6 +255,28 @@ def _publish_staged_file(staged_path, full_path):
     os.replace(staged_path, full_path)
 
 
+def _record_provenance(full_path, download_url, sha256):
+    """Write the provenance sidecar for a just-published download.
+
+    Best effort: a download that succeeded never fails for want of a record,
+    and inspection treats a missing record as unknown provenance.
+    """
+    staged_path = None
+    try:
+        text = provenance.describe(full_path, download_url, sha256)
+        with _open_staging_file(
+                directory=os.path.dirname(full_path) or ".",
+                prefix=".datacache-provenance-") as output:
+            staged_path = output.name
+            output.write(text.encode("utf-8"))
+        _publish_staged_file(staged_path, provenance.sidecar_path(full_path))
+    except (OSError, ValueError) as error:
+        logger.debug("Could not record provenance for %s: %s", full_path, error)
+    finally:
+        if staged_path is not None:
+            _remove_staging_file(staged_path)
+
+
 def _decompress_to_file(src_stream, full_path):
     """Compatibility entry point for atomically copying a decompressed stream."""
     staged_path = None
@@ -460,7 +482,8 @@ def fetch_file(
         max_retries=DEFAULT_MAX_RETRIES,
         retry_backoff=DEFAULT_RETRY_BACKOFF,
         retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
-        show_progress=False):
+        show_progress=False,
+        record_provenance=False):
     """
     Download a remote file and store it locally in a cache directory. Don't
     download it again if it's already present (unless `force` is True.)
@@ -550,6 +573,14 @@ def fetch_file(
     destination unchanged and remove their staging files. Atomic replacement
     requires a local filesystem supporting os.replace; concurrent writers
     publish complete files with the last successful replacement winning.
+
+    record_provenance : bool, optional
+        After publishing a download, also write a hidden ".<name>.datacache.json"
+        sidecar recording the source URL (without credentials or query text),
+        fetch time, size, and the SHA-256 when expected_sha256 verified it, so
+        inspect_file can report them offline. Off by default: a caller that
+        downloads to a temporary name and then moves the file would leave the
+        record behind. Cache hits never write one.
     Staging files remain private until publication. New files use normal
     creation permissions (0666 filtered by umask); replacements preserve the
     existing file's read/write/execute permission bits.
@@ -559,6 +590,8 @@ def fetch_file(
     _validate_expectations(expected_sha256, expected_size)
     if not isinstance(show_progress, bool):
         raise ValueError("show_progress must be a boolean")
+    if not isinstance(record_provenance, bool):
+        raise ValueError("record_provenance must be a boolean")
     if progress_callback is not None and not callable(progress_callback):
         raise ValueError("progress_callback must be callable")
     retry_backoff, retry_max_delay = validate_retry_options(max_retries, retry_backoff, retry_max_delay)
@@ -614,6 +647,8 @@ def fetch_file(
         retry_backoff=retry_backoff,
         retry_max_delay=retry_max_delay,
         show_progress=show_progress)
+    if record_provenance:
+        _record_provenance(full_path, download_url, expected_sha256)
     return full_path
 
 

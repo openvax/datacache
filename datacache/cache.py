@@ -16,6 +16,7 @@ from shutil import rmtree
 
 from . import common
 from . import download
+from . import provenance
 from .download import expected_path
 from .database_helpers import db_from_dataframe
 from .inspection import inspect_file, path_exists
@@ -51,18 +52,20 @@ class Cache:
 
         Removes files this instance fetched from url, including under explicit
         filenames, and the URL-derived raw and decompressed paths under this
-        root whichever instance created them. Explicit filenames used by other
-        instances are not recorded and are left in place.
+        root whichever instance created them, with their provenance records.
+        Explicit filenames used by other instances are not recorded and are
+        left in place.
         """
         keys = [key for key in self._local_paths if key[0] == url]
         paths = {self._local_paths[key] for key in keys}
         # Include inferred paths created by another Cache instance or fetch_file.
         paths.update(self.local_path(url, decompress=value) for value in (False, True))
         for path in paths:
-            try:
-                remove(path)
-            except FileNotFoundError:
-                pass
+            for target in (path, provenance.sidecar_path(path)):
+                try:
+                    remove(target)
+                except FileNotFoundError:
+                    pass
         for key in keys:
             del self._local_paths[key]
 
@@ -119,7 +122,8 @@ class Cache:
             max_retries=download.DEFAULT_MAX_RETRIES,
             retry_backoff=download.DEFAULT_RETRY_BACKOFF,
             retry_max_delay=download.DEFAULT_RETRY_MAX_DELAY,
-            show_progress=False):
+            show_progress=False,
+            record_provenance=False):
         """
         Return the local path to the downloaded copy of a given URL.
         Don't download the file again if it's already present,
@@ -129,6 +133,8 @@ class Cache:
         disables automatic retries of transient HTTP failures.
         show_progress=True enables optional tqdm displays; callbacks remain
         supported independently. Existing cache hits are quiet.
+        record_provenance=True records where the file came from, for
+        inspect_file, as described for fetch_file.
 
         `use_wget_if_available` is deprecated and ignored (datacache always uses
         its streaming Python downloader now); passing it emits a warning.
@@ -150,7 +156,8 @@ class Cache:
             max_retries=max_retries,
             retry_backoff=retry_backoff,
             retry_max_delay=retry_max_delay,
-            show_progress=show_progress)
+            show_progress=show_progress,
+            record_provenance=record_provenance)
 
         self._local_paths[key] = path
         return path

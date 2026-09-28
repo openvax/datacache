@@ -6,6 +6,7 @@ from pathlib import PurePosixPath, PureWindowsPath
 import stat
 from typing import Dict, Optional
 
+from . import provenance
 from .integrity import FileValidationError, _validate_expectations, validate_file
 
 
@@ -14,14 +15,23 @@ class FileInspection:
     """File status: available, missing, corrupt, or inaccessible.
 
     available means readable, regular, and matching any supplied expectations.
-    verified is True only when a supplied SHA-256 expectation was checked.
-    error retains the validation or OS exception for unavailable files.
+    verified is True when a supplied SHA-256 expectation matched, or when
+    fetch_file verified the file's SHA-256 when it downloaded it and the file is
+    unchanged since. error retains the exception for unavailable files.
+    size (bytes) and mtime (seconds since the epoch) describe an available
+    file. source_url (without credentials or query text) and fetched_at (UTC,
+    ISO 8601) are the provenance fetch_file recorded, while the file is
+    unchanged since. All four are None when unknown.
     """
 
     path: str
     status: str
     verified: bool = False
     error: Optional[Exception] = None
+    size: Optional[int] = None
+    mtime: Optional[float] = None
+    source_url: Optional[str] = None
+    fetched_at: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -58,6 +68,10 @@ def inspect_file(path, expected_sha256=None, expected_size=None):
 
     Invalid expectation arguments raise ValueError. Filesystem and integrity
     problems are returned as distinct statuses with their original exceptions.
+    An available file's size and mtime are reported, along with any provenance
+    fetch_file(..., record_provenance=True) recorded for it. A SHA-256 verified
+    at that download counts as verified, without rehashing, while the file's
+    size and mtime are unchanged.
     """
     _validate_expectations(expected_sha256, expected_size)
     path = os.fspath(path)
@@ -69,7 +83,18 @@ def inspect_file(path, expected_sha256=None, expected_size=None):
         return FileInspection(path, "corrupt", error=error)
     except OSError as error:
         return FileInspection(path, "inaccessible", error=error)
-    return FileInspection(path, "available", verified=expected_sha256 is not None)
+    try:
+        info = os.stat(path)
+    except FileNotFoundError as error:  # removed since it was validated
+        return FileInspection(path, "missing", error=error)
+    except OSError as error:
+        return FileInspection(path, "inaccessible", error=error)
+    record = provenance.read(path, info)
+    verified = expected_sha256 is not None or bool(record and record["sha256"])
+    return FileInspection(
+        path, "available", verified=verified, size=info.st_size, mtime=info.st_mtime,
+        source_url=record["url"] if record else None,
+        fetched_at=record["fetched_at"] if record else None)
 
 
 def inspect_files(cache_root, files):

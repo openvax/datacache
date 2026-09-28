@@ -60,7 +60,7 @@ fetch_file(
     timeout=None, use_wget_if_available=None, chunk_size=1048576,
     progress_callback=None, *, destination=None, cache_root=None, expected_sha256=None,
     expected_size=None, max_retries=2, retry_backoff=1.0, retry_max_delay=30.0,
-    show_progress=False
+    show_progress=False, record_provenance=False
 )
 ```
 
@@ -89,6 +89,7 @@ replacement leaves the previous file intact.
 | `retry_backoff` | Initial retry delay in seconds, doubled for subsequent retries. Must be finite and non-negative. |
 | `retry_max_delay` | Maximum retry delay in seconds, finite and non-negative. A server `Retry-After` exceeding this limit stops retries. |
 | `show_progress` | Boolean enabling optional tqdm download, decompression, and hash bars. Requires `datacache[progress]` when a bar is needed. Cache hits are quiet. |
+| `record_provenance` | Boolean; after publishing a download, also write a hidden `.<name>.datacache.json` record of the source URL (without credentials, query text, or fragment), fetch time, size, and the SHA-256 when `expected_sha256` verified it, which [inspect_file](#inspect_file) reports offline. Default `False`: a caller that downloads to a temporary name and then moves the file would leave the record behind. Cache hits never write one, and a failure to write it never fails the download. |
 
 ZIP downloads install the member stored at the output name; otherwise a member
 with that name, ignoring letter case, in any folder: the one nearest the archive
@@ -458,7 +459,12 @@ inspect_file(path, expected_sha256=None, expected_size=None)
 
 Inspect a string or `Path` using the same optional expectations as
 `validate_file`, entirely offline and without writes. Filesystem and validation
-failures become result statuses instead of being raised.
+failures become result statuses instead of being raised. An available file's
+size and modification time are reported. If `fetch_file(...,
+record_provenance=True)` recorded where it came from, and the file's size and
+modification time are unchanged since, its source URL and fetch time are
+reported too, and a SHA-256 verified at that download counts as verified
+without rehashing. A missing, unreadable, or malformed record is ignored.
 
 **Returns:** [`FileInspection`](#fileinspection). **Raises:** `ValueError` for
 invalid expectation arguments. Unsupported path types can raise `TypeError`.
@@ -467,6 +473,7 @@ invalid expectation arguments. Unsupported path types can raise `TypeError`.
 inspection = dc.inspect_file(path, expected_sha256=sha256)
 assert inspection.status == "available" and inspection.verified
 assert dc.inspect_file(root / "absent.csv").status == "missing"
+assert inspection.size == len(contents)
 ```
 
 ### `inspect_files`
@@ -488,8 +495,8 @@ a snapshot across concurrent changes.
 **Returns:** [`CacheInspection`](#cacheinspection), including individual file
 results when the root is an accessible directory. A missing root is `missing`;
 an existing root missing a required file is `corrupt`. Inaccessibility takes
-precedence over corrupt or missing files. `verified=True` requires a matching
-SHA-256 for every required file.
+precedence over corrupt or missing files. `verified=True` requires every
+required file to be verified, as defined for `FileInspection`.
 
 **Raises:** `ValueError` for an empty mapping, invalid names, unexpected metadata
 keys, or invalid expectations. Malformed mapping/metadata types can raise
@@ -507,7 +514,10 @@ assert inventory.files["records.csv"].path == path
 
 ```text
 FileInspection(
-    path: str, status: str, verified: bool = False, error: Optional[Exception] = None
+    path: str, status: str, verified: bool = False,
+    error: Optional[Exception] = None, size: Optional[int] = None,
+    mtime: Optional[float] = None, source_url: Optional[str] = None,
+    fetched_at: Optional[str] = None
 )
 ```
 
@@ -517,8 +527,12 @@ Frozen dataclass returned by `inspect_file` and `Cache.inspect`.
 | --- | --- |
 | `path` | Inspected path string. |
 | `status` | `available` (readable regular file matching supplied expectations), `missing` (absent), `corrupt` (wrong type or failed expectations), or `inaccessible` (other filesystem error). |
-| `verified` | `True` only when a supplied SHA-256 matched. Readability or matching size alone leaves it `False`. |
+| `verified` | `True` when a supplied SHA-256 matched, or when a download with `record_provenance=True` verified the file's SHA-256 and its size and modification time are unchanged since. Readability or matching size alone leaves it `False`. |
 | `error` | Original exception for an unavailable file, or `None` on success. |
+| `size` | Size in bytes of an available file; otherwise `None`. |
+| `mtime` | Modification time of an available file, in seconds since the epoch; otherwise `None`. |
+| `source_url` | Recorded source URL, without credentials, query text, or fragment, while the file is unchanged since it was recorded; otherwise `None`. |
+| `fetched_at` | Recorded fetch time, UTC in ISO 8601, under the same condition; otherwise `None`. |
 
 **Construction:** returns a `FileInspection` instance; fields are assigned as
 given, with no validation of manually supplied status/type combinations.
@@ -846,7 +860,7 @@ Cache.fetch(
     url, filename=None, decompress=False, force=False, timeout=None,
     use_wget_if_available=None, *, chunk_size=1048576, progress_callback=None,
     expected_sha256=None, expected_size=None, max_retries=2, retry_backoff=1.0,
-    retry_max_delay=30.0, show_progress=False
+    retry_max_delay=30.0, show_progress=False, record_provenance=False
 )
 ```
 
@@ -987,13 +1001,13 @@ with closing(cache.db_from_dataframe(
 Cache.delete_url(url)
 ```
 
-Remove local files for a URL string. Includes paths successfully fetched by
-this `Cache` instance (including explicit filenames), plus the URL-derived
-raw/decompressed paths that may have been created by other instances.
-Missing files are ignored. Explicit filenames used by earlier instances are
-not recorded persistently and cannot be rediscovered by URL alone. Files
-unrelated to those paths are left alone. A symlink at a selected file path is
-unlinked without deleting its target.
+Remove local files for a URL string. Includes paths successfully fetched by this
+`Cache` instance (including explicit filenames), plus the URL-derived
+raw/decompressed paths that may have been created by other instances, along with
+their provenance records. Missing files are ignored. Explicit filenames used by
+earlier instances are not recorded persistently and cannot be rediscovered by
+URL alone. Files unrelated to those paths are left alone. A symlink at a
+selected file path is unlinked without deleting its target.
 
 **Returns:** `None`. **Raises:** naming errors and `OSError` subclasses such as
 `PermissionError` or a directory-removal error. Deletion is not transactional:

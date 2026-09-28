@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Report `size` and `mtime` for an available file from `inspect_file`,
+  `Cache.inspect`, and `inspect_files`, so a cache listing needs no extra `stat`
+  (#75).
+- Add `record_provenance=True` to `fetch_file` and `Cache.fetch`. After
+  publishing, a hidden `.<name>.datacache.json` records the source URL (without
+  credentials or query text), fetch time, size, and the SHA-256 when
+  `expected_sha256` verified it. Inspection reports `source_url` and
+  `fetched_at` and counts the recorded digest as verified without rehashing,
+  while the file is unchanged. Recording is off by default (#75).
+
 ## 1.12.0
 
 - Add `get_cache_root(name, *envkeys)`, which selects a cache root shared by
