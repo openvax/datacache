@@ -12,6 +12,13 @@
   Inspection reports `source_url`, `fetched_at`, and `recorded_sha256` while the
   file is unchanged; `verified` still means a supplied digest matched just now.
   Any new download removes a stale record. Recording is off by default (#75).
+- Reject empty downloads. A complete but empty response, such as a withdrawn
+  upstream record, was published and then reused as a valid cache entry. An
+  empty HTTP response is now retried like a transient failure, then raises
+  `FileValidationError` without publishing; an empty decompressed archive
+  member is rejected too. An empty file already in a cache is an invalid hit
+  that `force=True` replaces. Pass `allow_empty=True` to `fetch_file` or
+  `Cache.fetch`, or `expected_size=0`, when an empty file is expected (#74).
 
 ## 1.12.0
 

@@ -66,6 +66,16 @@ permission errors; it rejects non-regular files. Fetching propagates transport,
 decompression, and filesystem errors so applications can translate them.
 Expectations are optional; omitting them provides no integrity guarantee.
 
+An empty installed file is rejected even without expectations, because a
+complete but empty response, such as a withdrawn upstream record, would
+otherwise be cached as a valid file and parse to zero records much later. An
+empty HTTP response is retried like a transient failure, then raises
+`FileValidationError`; nothing is published and an existing file stays in
+place. After decompression, an empty archive member is rejected the same way.
+An empty file already in the cache is an invalid hit, which `force=True`
+replaces. Pass `allow_empty=True`, or `expected_size=0`, when an empty file is
+the correct result.
+
 ## Provenance
 
 Pass `record_provenance=True` to `fetch_file` or `Cache.fetch` to record where a

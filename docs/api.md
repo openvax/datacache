@@ -60,7 +60,7 @@ fetch_file(
     timeout=None, use_wget_if_available=None, chunk_size=1048576,
     progress_callback=None, *, destination=None, cache_root=None, expected_sha256=None,
     expected_size=None, max_retries=2, retry_backoff=1.0, retry_max_delay=30.0,
-    show_progress=False, record_provenance=False
+    show_progress=False, record_provenance=False, allow_empty=False
 )
 ```
 
@@ -90,6 +90,7 @@ replacement leaves the previous file intact.
 | `retry_max_delay` | Maximum retry delay in seconds, finite and non-negative. A server `Retry-After` exceeding this limit stops retries. |
 | `show_progress` | Boolean enabling optional tqdm download, decompression, and hash bars. Requires `datacache[progress]` when a bar is needed. Cache hits are quiet. |
 | `record_provenance` | Boolean; after publishing a download, also write a hidden `.<name>.datacache.json` record of the source URL (without user name, password, query string, or fragment; the path is kept as is, so avoid recording URLs with secrets in their path), the fetch time, the size, and the SHA-256 when `expected_sha256` verified it. [inspect_file](#inspect_file) reports these offline. The record has the file's permissions. Default `False`: a caller that downloads to a temporary name and then moves the file would leave the record behind. Cache hits never write one, any new download removes a previous record first, and a failure to write one never fails the download. |
+| `allow_empty` | Boolean accepting an empty installed file; default `False`. A complete but empty response, such as a withdrawn upstream record, is otherwise never published: HTTP retries it as transient, then raises `FileValidationError`. An empty cached file is likewise an invalid hit. `expected_size=0` also allows an empty file. |
 
 ZIP downloads install the member stored at the output name; otherwise a member
 with that name, ignoring letter case, in any folder: the one nearest the archive
@@ -865,7 +866,7 @@ Cache.fetch(
     url, filename=None, decompress=False, force=False, timeout=None,
     use_wget_if_available=None, *, chunk_size=1048576, progress_callback=None,
     expected_sha256=None, expected_size=None, max_retries=2, retry_backoff=1.0,
-    retry_max_delay=30.0, show_progress=False, record_provenance=False
+    retry_max_delay=30.0, show_progress=False, record_provenance=False, allow_empty=False
 )
 ```
 

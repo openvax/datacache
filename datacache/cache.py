@@ -123,7 +123,8 @@ class Cache:
             retry_backoff=download.DEFAULT_RETRY_BACKOFF,
             retry_max_delay=download.DEFAULT_RETRY_MAX_DELAY,
             show_progress=False,
-            record_provenance=False):
+            record_provenance=False,
+            allow_empty=False):
         """
         Return the local path to the downloaded copy of a given URL.
         Don't download the file again if it's already present,
@@ -135,6 +136,7 @@ class Cache:
         supported independently. Existing cache hits are quiet.
         record_provenance=True records where the file came from, for
         inspect_file, as described for fetch_file.
+        allow_empty=True accepts an empty file, which is otherwise rejected.
 
         `use_wget_if_available` is deprecated and ignored (datacache always uses
         its streaming Python downloader now); passing it emits a warning.
@@ -157,7 +159,8 @@ class Cache:
             retry_backoff=retry_backoff,
             retry_max_delay=retry_max_delay,
             show_progress=show_progress,
-            record_provenance=record_provenance)
+            record_provenance=record_provenance,
+            allow_empty=allow_empty)
 
         self._local_paths[key] = path
         return path
