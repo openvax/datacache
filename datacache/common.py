@@ -57,7 +57,8 @@ def get_data_dir(subdir=None, envkey=None):
 
     subdir is the application name, "datacache" when omitted or empty. If the
     environment variable named by envkey is set and nonempty, its value is the
-    root instead, with subdir appended when supplied.
+    root instead, with subdir appended when supplied. To use a variable's value
+    as the root itself, see get_cache_root.
     """
     if envkey and environ.get(envkey):
         envdir = environ[envkey]
@@ -66,6 +67,26 @@ def get_data_dir(subdir=None, envkey=None):
         else:
             return envdir
     return appdirs.user_cache_dir(subdir if subdir else "datacache")
+
+
+def get_cache_root(name, *envkeys):
+    """Return a cache root shared by name, honoring environment overrides.
+
+    The first variable in envkeys that is set to a non-blank value is the root
+    itself, trimmed and with ~ expanded; otherwise the platform cache
+    directory for name. Unlike get_data_dir(subdir, envkey), nothing is
+    appended to an environment value, so every package reading the same
+    variable agrees on one location. Nothing is created.
+    """
+    if not isinstance(name, str) or not name:
+        raise ValueError("name must be a non-empty string")
+    if not all(isinstance(envkey, str) and envkey for envkey in envkeys):
+        raise ValueError("environment variable names must be non-empty strings")
+    for envkey in envkeys:
+        value = environ.get(envkey, "").strip()
+        if value:
+            return os.path.expanduser(value)
+    return appdirs.user_cache_dir(name)
 
 def resolve_path(filename, subdir=None, *, cache_root=None):
     """Resolve a cache path without filesystem access or directory creation.

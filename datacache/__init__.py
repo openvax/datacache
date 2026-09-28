@@ -24,6 +24,7 @@ from .database_helpers import (
 from .common import (
     ensure_dir,
     get_data_dir,
+    get_cache_root,
     build_path,
     resolve_path,
     clear_cache,
@@ -54,6 +55,7 @@ __all__ = [
     'connect_if_correct_version',
     'ensure_dir',
     'get_data_dir',
+    'get_cache_root',
     'build_path',
     'clear_cache',
     'build_local_filename',

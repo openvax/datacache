@@ -24,9 +24,6 @@ import zipfile
 import urllib.parse
 import urllib.request
 
-import requests
-import pandas as pd
-
 from . import common
 from .common import _source_suffix, build_local_filename
 from .integrity import FileValidationError, _validate_expectations, validate_file
@@ -38,6 +35,22 @@ from .retries import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def __getattr__(name):
+    """Keep download.pd and download.requests, now imported only when needed.
+
+    pandas and requests are imported inside the functions that use them, so
+    importing datacache stays fast. Existing references to these module
+    attributes, such as test patches, still reach the same modules.
+    """
+    if name == "pd":
+        import pandas
+        return pandas
+    if name == "requests":
+        import requests
+        return requests
+    raise AttributeError("module %r has no attribute %r" % (__name__, name))
 
 # Number of bytes to read/write at a time when streaming a download to disk.
 DEFAULT_CHUNK_SIZE = 2 ** 20  # 1 MB
@@ -84,6 +97,7 @@ def _stream_to_file(
             progress_callback(bytes_downloaded, total_bytes)
 
     if urllib.parse.urlsplit(download_url).scheme.lower() in ("http", "https"):
+        import requests
         with closing(requests.get(download_url, timeout=timeout, stream=True)) as response:
             response.raise_for_status()
             # Requests decodes content encoding before yielding chunks; a wire
@@ -369,6 +383,7 @@ def _download_and_decompress_if_necessary(
                 with gzip.GzipFile(tmp_path) as src, open(staged_path, "wb") as dst:
                     _copy_with_progress(src, dst, show_progress)
             else:
+                import pandas as pd
                 df = pd.read_html(tmp_path, header=0)[0]
                 df.to_csv(staged_path, sep=',', index=False, encoding='utf-8')
         try:
@@ -706,4 +721,5 @@ def fetch_csv_dataframe(
         decompress=True,
         subdir=subdir,
         **options)
+    import pandas as pd
     return pd.read_csv(path, **pandas_kwargs)

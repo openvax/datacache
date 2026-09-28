@@ -13,28 +13,33 @@
 import datetime
 import warnings
 
-import numpy as np
-import pandas as pd
-
 from .database import fold_identifier
 from .database_types import db_type
 
-# pd.NA was introduced after the original supported pandas versions. Missing
-# nullable scalars only exist when that feature is installed.
-_PANDAS_NA = getattr(pd, "NA", object())
 
+def _sqlite_converter():
+    """Return a converter keeping scalar types and integer precision, with
+    missing values as NULL. numpy and pandas are imported only once a
+    DataFrame is converted, so importing datacache stays fast."""
+    import numpy as np
+    import pandas as pd
 
-def _sqlite_value(value):
-    """Keep scalar types and integer precision; turn missing values into NULL."""
-    if value is None or value is _PANDAS_NA or value is pd.NaT:
-        return None
-    if isinstance(value, np.generic):
-        value = value.item()
-    if isinstance(value, float) and pd.isnull(value):
-        return None
-    if isinstance(value, (datetime.datetime, datetime.date)):
-        return value.isoformat()
-    return value
+    # pd.NA was introduced after the original supported pandas versions.
+    # Missing nullable scalars only exist when that feature is installed.
+    pandas_na = getattr(pd, "NA", object())
+
+    def convert(value):
+        if value is None or value is pandas_na or value is pd.NaT:
+            return None
+        if isinstance(value, np.generic):
+            value = value.item()
+        if isinstance(value, float) and pd.isnull(value):
+            return None
+        if isinstance(value, (datetime.datetime, datetime.date)):
+            return value.isoformat()
+        return value
+
+    return convert
 
 def validate_column_names(columns):
     """Require the non-empty string column names a database table needs."""
@@ -110,12 +115,14 @@ class DatabaseTable:
             column_db_type = db_type(values.dtype)
             column_types.append((column_name.replace(" ", "_"), column_db_type))
 
+        convert = _sqlite_converter()
+
         def make_rows():
             # df.values coerces mixed numeric columns to floats and exposes
             # numpy integers that sqlite3 binds as blobs. Read column scalars.
             # Column iteration also works on pandas versions predating the
             # name=None option of itertuples; zip remains lazy on Python 3.
-            return (tuple(_sqlite_value(value) for value in row)
+            return (tuple(convert(value) for value in row)
                     for row in zip(*(df[column] for column in df.columns)))
 
         return cls(
