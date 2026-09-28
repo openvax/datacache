@@ -22,6 +22,10 @@ import appdirs
 
 COMPRESSION_SUFFIXES = (".gz", ".zip")
 
+# Longest file name ext4 accepts, in UTF-8 bytes. APFS and NTFS instead limit
+# characters or UTF-16 units, which a UTF-8 byte count never undercounts.
+MAX_NAME_BYTES = 255
+
 
 def _source_suffix(download_url):
     """Prefer a supported path suffix, then a filename in the final query value.
@@ -94,6 +98,30 @@ def name_digest(text):
     return hashlib.md5(text.encode("utf-8", "surrogatepass"), usedforsecurity=False).hexdigest()
 
 
+def name_length(name):
+    """Measure a file name in UTF-8 bytes, so a name within limits fits anywhere."""
+    return len(name.encode("utf-8", "surrogatepass"))
+
+
+def _fit_name(filename):
+    """Shorten a cache name the filesystem could not hold, keeping its end.
+
+    normalize_filename shortens by characters, so a non-ASCII name can still
+    exceed ext4's 255 bytes and could never be created on Linux. Keep a digest
+    of such a name plus as much of its end, and so its extension, as fits.
+    Every name within the limit is unchanged, so existing cache keys still work.
+    """
+    if name_length(filename) <= MAX_NAME_BYTES:
+        return filename
+    digest = name_digest(filename)
+    budget = MAX_NAME_BYTES - len(digest)
+    start, used = len(filename), 0
+    while start > 0 and used + name_length(filename[start - 1]) <= budget:
+        start -= 1
+        used += name_length(filename[start])
+    return digest + filename[start:]
+
+
 def normalize_filename(filename):
     """
     Remove special characters and shorten if name is too long
@@ -142,4 +170,4 @@ def build_local_filename(download_url=None, filename=None, decompress=False):
             # Keep raw and decompressed contents under different cache keys.
             filename += ".decompressed"
 
-    return filename
+    return _fit_name(filename)

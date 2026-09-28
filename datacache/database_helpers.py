@@ -25,7 +25,7 @@ from typechecks import (
     require_iterable_of
 )
 
-from .common import build_local_filename, name_digest, resolve_path
+from .common import MAX_NAME_BYTES, build_local_filename, name_digest, name_length, resolve_path
 from .download import (
     fetch_csv_dataframe, _open_staging_file, _normal_creation_mode,
     _remove_staging_file,
@@ -38,10 +38,9 @@ from .inspection import path_exists
 
 logger = logging.getLogger(__name__)
 
-# Longest file name local filesystems accept. Rebuilding a database creates
-# "<name>-journal" beside it, so database names need that much room to spare.
-_MAX_NAME_LENGTH = 255
-_MAX_DB_NAME_LENGTH = _MAX_NAME_LENGTH - len("-journal")
+# Rebuilding a database creates "<name>-journal" beside it, so database names
+# need that much room to spare within the filesystem's name limit.
+_MAX_DB_NAME_LENGTH = MAX_NAME_BYTES - len("-journal")
 # Characters some supported platform forbids in a file name, separators included.
 _UNSAFE_NAME_CHARACTERS = re.compile(r'[\x00-\x1f<>:"/\\|?*\ud800-\udfff]')
 # Separators this platform's filesystem interprets.
@@ -409,15 +408,6 @@ def db_from_dataframe(
         show_progress=show_progress)
 
 
-def _name_length(name):
-    """Measure a file name in UTF-8 bytes.
-
-    That is what ext4 limits, and never less than APFS characters or NTFS
-    UTF-16 units, so a name within the limit fits on every platform.
-    """
-    return len(name.encode("utf-8", "surrogatepass"))
-
-
 def _truncate_name(name, limit):
     """Return the longest prefix of name within limit UTF-8 bytes."""
     return name.encode("utf-8", "surrogatepass")[:limit].decode("utf-8", "ignore")
@@ -435,8 +425,8 @@ def _db_filenames_from_dataframe(base_filename, df):
     all supported platforms and SQLite's journal still fits beside it. Other
     names use a digest, so column names from downloaded data can never add
     directories or leave the cache directory. Lengths are measured the same way
-    on every platform (see _name_length); only an explicit CSV filename's path
-    separators are interpreted by the local platform.
+    on every platform (see common.name_length); only an explicit CSV filename's
+    path separators are interpreted by the local platform.
     """
     validate_column_names(df.columns)
     columns = [(column_name, db_type(df[column_name].dtype)) for column_name in df.columns]
@@ -447,7 +437,7 @@ def _db_filenames_from_dataframe(base_filename, df):
     cut = max((match.end() for match in _SEPARATORS.finditer(prefix)), default=0)
     directory, stem = prefix[:cut], prefix[cut:]
     if (not _UNSAFE_NAME_CHARACTERS.search(stem + schema) and
-            _name_length(stem + schema + ".db") <= _MAX_DB_NAME_LENGTH):
+            name_length(stem + schema + ".db") <= _MAX_DB_NAME_LENGTH):
         return historical, None
     # The spelled-out schema is ambiguous (column "a_INT.b" of TEXT reads like
     # two columns), so digest an unambiguous encoding instead.
