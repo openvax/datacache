@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Map numpy's fixed-width types in `db_type` on Python 3: `str_` (`dtype('U…')`)
+  becomes `TEXT`, and `bytes_` (`dtype('S…')`) and `bytes` become `BLOB`,
+  instead of raising `ValueError`. Databases built from DataFrames are
+  unchanged, since pandas stores such arrays with the `object` dtype.
+- Remove leftover Travis, pylint, and Python 2 configuration and syntax.
+
 ## 1.11.1
 
 - Shorten cache names longer than 255 UTF-8 bytes. Names were shortened by

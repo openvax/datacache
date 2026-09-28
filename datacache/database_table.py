@@ -42,7 +42,7 @@ def validate_column_names(columns):
         raise ValueError("DataFrame columns must be non-empty strings")
 
 
-class DatabaseTable(object):
+class DatabaseTable:
     """Converts between a DataFrame and a sqlite3 database table"""
 
     def __init__(
