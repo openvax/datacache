@@ -74,7 +74,10 @@ def write_json(path, value, mode=0o600):
             handle.write('\n')
             handle.flush()
             os.fsync(handle.fileno())
-            os.fchmod(handle.fileno(), mode)
+            if hasattr(os, 'fchmod'):
+                os.fchmod(handle.fileno(), mode)
+            else:  # Windows: no descriptor chmod; staging is still private.
+                os.chmod(temporary, mode)
         os.replace(temporary, path)
     finally:
         Path(temporary).unlink(missing_ok=True)

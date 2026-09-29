@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.15.0
+
+- Add `VersionedFileRegistry` for established single-file caches with fixed
+  version paths and root provenance manifests. Legacy files are reused offline
+  without relocation; transfers use the shared downloader, and new receipts
+  use bounded-memory hashing and atomic JSON publication (#83). Writers serialize
+  per root to prevent the legacy registry’s lost manifest-update race.
+
 ## 1.14.0
 
 - Allow `resume=True` with `expected_size` alone when the server supplies a

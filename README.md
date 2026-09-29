@@ -162,6 +162,7 @@ lists every public signature, default, return value, exception, and example.
 | Task | API | Result |
 | --- | --- | --- |
 | Install or reuse a versioned dataset | `VersionedDatasetRegistry`, `install_bundle(...)` | Mapping of asset names to snapshot paths |
+| Reuse an established fixed-path versioned file cache | `VersionedFileRegistry` | One Path and a legacy-compatible root receipt |
 | Inspect a complete dataset generation | `inspect_bundle(...)` | `BundleInspection` |
 | Discard retained partial download bytes | `discard_partial(destination)` | Installed file unchanged |
 | Download or reuse one file | `fetch_file(...)`, `Cache.fetch(...)` | Local path string |
