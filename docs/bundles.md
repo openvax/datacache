@@ -158,7 +158,10 @@ progress, disk-space and partial-discard details.
 
 ## Adopting from downstream libraries
 
-- **hitlist / tsarina:** the existing `{filename, urls, default_version}` mapping
+- **hitlist / tsarina:** use [VersionedFileRegistry](file_registry.md) to retain
+  fixed paths, single-Path returns and legacy root manifests without moving old
+  caches. For a deliberate migration to generation bundles, the existing
+  `{filename, urls, default_version}` mapping
   is accepted with `verified=False`, as is the `cache_dir` root callable. This is
   mapping compatibility, not a drop-in filesystem or return-value migration:
   `download` returns asset paths, `local_path` requires an installed bundle, and

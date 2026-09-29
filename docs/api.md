@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.14.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.15.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -1132,3 +1132,22 @@ The [bundle guide](bundles.md) includes an example and downstream migration note
 | `ensure(name, version=None, **download_options)` | Download/reuse, then return `local_path`. |
 | `is_cached(name, version=None)` | Whether verified inspection reports `available`. |
 | `status()` | One row per dataset's pinned default: name, version, description, available_versions and inspection. |
+
+## VersionedFileRegistry
+
+`VersionedFileRegistry(datasets, *, cache_dir, error_cls=RuntimeError)`
+
+Fixed-path single-file compatibility registry. Definitions contain `filename`,
+`urls` (version to URL), `default_version`, and optional `description`. The
+zero-argument root callable may return a string or Path. Construction creates
+nothing. See the [fixed-path guide](file_registry.md) for legacy receipt semantics,
+trust boundaries, and the distinction from transactional generation bundles.
+
+| Method | Result |
+| --- | --- |
+| `resolve_version(name, version=None)` | Concrete version; unknown names/versions raise the caller's error_cls. |
+| `local_path(name, version=None)` | Expected fixed Path, even when absent, without writes. |
+| `is_cached(name, version=None)` | Presence only, not verified integrity. |
+| `download(name, version=None, *, force=False, **download_options)` | One fixed Path; fetch_file options control acquisition. Ordinary cache hits do not hash or write; explicit size/hash expectations are checked. |
+| `ensure(name, version=None, **download_options)` | Same download/reuse behavior and Path result. |
+| `status()` | Legacy status dicts with name, description, default_version, available_versions, cached, cached_version, bytes, downloaded_at and path. |

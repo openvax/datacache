@@ -1,3 +1,7 @@
+# Fixed-path registry adoption (#83)
+
+See [fixed_path_registry.md](fixed_path_registry.md) for the specification and checklist.
+
 # Datacache #80 and #81: resumable and raw downloads
 
 ## Specification
