@@ -33,7 +33,8 @@ def test_missing_lookup_and_status_are_read_only(registry, tmp_path):
     assert reg.status() == [{
         'name': 'thing', 'description': 'reference', 'default_version': 'v2',
         'available_versions': ['v1', 'v2'], 'cached': False, 'cached_version': None,
-        'bytes': None, 'downloaded_at': None, 'path': str(reg.local_path('thing')),
+        'url': None, 'bytes': None, 'sha256': None, 'downloaded_at': None,
+        'path': str(reg.local_path('thing')),
     }]
     assert not (tmp_path / 'cache').exists()
 
@@ -55,7 +56,10 @@ def test_download_receipt_and_multiple_versions(registry, tmp_path):
     second = reg.ensure('thing')
     assert first.exists() and second.exists()
     assert first != second
-    assert reg.status()[0]['cached_version'] == 'v2'
+    status = reg.status()[0]
+    assert status['cached_version'] == 'v2'
+    assert status['url'] == source.as_uri()
+    assert status['sha256'] == hashlib.sha256(b'original').hexdigest()
     assert not list(manifest_path.parent.glob('.datacache-json-*'))
 
 

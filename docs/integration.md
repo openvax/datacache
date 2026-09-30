@@ -27,6 +27,34 @@ helper transform flags retain the public parsed-URL behavior.
 7. Let original network and filesystem exceptions propagate, or retain them
    as causes when adding domain-specific context. `FileValidationError.path`
    and `.reason` provide structured validation details.
+8. Use `install_archive` when a released tar file owns a directory tree. Treat
+   only `inspect_archive(...).status == "available"` as installed and resolve
+   member paths from the returned generation, never from the managed store.
+
+## Reusable downstream toolkit
+
+Downstream libraries should keep domain catalogues, CLI wording and generated
+indexes, while delegating acquisition and source-store lifecycle to DataCache:
+
+| Downstream shape | DataCache API | Shared behavior |
+| --- | --- | --- |
+| One established file path, as in PyEnsembl annotation/FASTA sources | `fetch_file` or `VersionedFileRegistry` | Atomic download, decompression, retries, resume, progress, integrity and provenance |
+| A released tar tree, as in MHCflurry weights/data | `VersionedArchiveRegistry` or `install_archive` | Ordered parts, safe extraction, consumer receipts, immutable publication, status and recovery |
+| Several separately published files forming one source snapshot | `VersionedDatasetRegistry` or `install_bundle` | Pinned versions, all-files-before-pointer publication, inspection and recovery |
+
+All explicit download methods forward `show_progress`, callback, timeout and
+bounded retry options to the shared transport. Registry construction, status,
+inspection and local-path resolution are offline. Applications can therefore
+offer consistent `list`/`info`/`download` behavior without maintaining private
+network or extraction implementations.
+
+PyEnsembl can preserve its fixed paths and derived SQLite/FASTA indexes while
+continuing to use `fetch_file`; direct callers can set `record_provenance=True`
+and expose `inspect_file` results for download visibility. Those derived
+artifacts remain application-owned.
+
+MHCflurry can preserve release selection, exact URL receipts and public model
+paths through the archive registry's `store_path` callback and generation path.
 
 ## Shared OpenVax cache
 
@@ -74,7 +102,10 @@ logging handlers or change the process umask. Download retry counts and waits
 are bounded, while `timeout` limits connection/read inactivity per attempt,
 not total elapsed time.
 
-Use [versioned bundles](bundles.md) when files must be installed together.
+Use [versioned bundles](bundles.md) when named files must be installed together,
+or [archive installation](archives.md) when a tar archive defines the complete
+tree. Archive stores use cross-platform locks; generation bundles currently
+require POSIX `flock`.
 Individual atomic downloads do not provide multi-file transactions or distributed
 locking. Unhandled termination can leave staging files behind. SQLite operations depend on
 SQLite's filesystem locking and journaling. New database publication needs

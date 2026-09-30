@@ -158,6 +158,11 @@ progress, disk-space and partial-discard details.
 
 ## Adopting from downstream libraries
 
+- **MHCflurry:** use [`install_archive`](archives.md) for released `.tar.bz2`
+  trees and ordered historical parts. Resolve member paths from the returned
+  generation; preserve `DOWNLOAD_INFO.csv` with `extra_files`. Do not enumerate
+  model files as bundle assets or treat the managed store's existence as a
+  completed download.
 - **hitlist / tsarina:** use [VersionedFileRegistry](file_registry.md) to retain
   fixed paths, single-Path returns and legacy root manifests without moving old
   caches. For a deliberate migration to generation bundles, the existing

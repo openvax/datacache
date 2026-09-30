@@ -19,7 +19,7 @@ registry = VersionedFileRegistry({
 }, cache_dir=lambda: Path("existing-cache"))
 
 expected = registry.local_path("reference")  # works before installation; no writes
-status = registry.status()                  # presence and legacy receipt, offline
+status = registry.status()                  # presence, URL/hash receipt, offline
 path = registry.ensure("reference", timeout=60, record_provenance=True)
 ```
 

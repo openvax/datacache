@@ -33,6 +33,8 @@ from .common import (
 from .cache import Cache
 from .resume import discard_partial
 from .bundles import BundleInspection, VersionedDatasetRegistry, inspect_bundle, install_bundle
+from .archives import (
+    ArchiveInspection, VersionedArchiveRegistry, inspect_archive, install_archive)
 from .file_registry import VersionedFileRegistry
 from .version import __version__
 
@@ -41,10 +43,14 @@ __all__ = [
     'fetch_file',
     'discard_partial',
     'BundleInspection',
+    'ArchiveInspection',
+    'VersionedArchiveRegistry',
     'VersionedDatasetRegistry',
     'VersionedFileRegistry',
     'inspect_bundle',
     'install_bundle',
+    'inspect_archive',
+    'install_archive',
     'expected_path',
     'file_exists',
     'resolve_path',

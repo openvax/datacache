@@ -5,8 +5,9 @@
 
 Download, verify, transform, and cache datasets for Python applications,
 including OpenVax libraries such as pyensembl. DataCache provides streaming
-downloads, gzip/ZIP decompression, reusable local paths, offline inspection,
-and SQLite caches built from pandas DataFrames.
+downloads, gzip/ZIP decompression, transactional tar-tree installation,
+reusable local paths, offline inspection, and SQLite caches built from pandas
+DataFrames.
 
 ## Install
 
@@ -162,8 +163,10 @@ lists every public signature, default, return value, exception, and example.
 | Task | API | Result |
 | --- | --- | --- |
 | Install or reuse a versioned dataset | `VersionedDatasetRegistry`, `install_bundle(...)` | Mapping of asset names to snapshot paths |
+| Install versioned archive trees | `VersionedArchiveRegistry`, `install_archive(...)` | Immutable extracted-generation `Path` |
 | Reuse an established fixed-path versioned file cache | `VersionedFileRegistry` | One Path and a legacy-compatible root receipt |
 | Inspect a complete dataset generation | `inspect_bundle(...)` | `BundleInspection` |
+| Inspect an installed archive tree | `inspect_archive(...)` | `ArchiveInspection` |
 | Discard retained partial download bytes | `discard_partial(destination)` | Installed file unchanged |
 | Download or reuse one file | `fetch_file(...)`, `Cache.fetch(...)` | Local path string |
 | Compute a path without filesystem access | `expected_path(...)`, `Cache.local_path(...)` | Path string |
@@ -186,6 +189,8 @@ FASTA files with `fetch_file`, then parse them in the consuming library.
 
 - [Versioned datasets and bundles](docs/bundles.md): pinned versions, atomic installation,
   offline recovery, path lifetime, and downstream adoption.
+- [Archive directory installation](docs/archives.md): safe tar extraction, split archives,
+  transactional consumer receipts, and legacy-directory migration.
 - [API reference](https://github.com/openvax/datacache/blob/master/docs/api.md):
   all public functions, `Cache` methods, inspection results, and exceptions.
 - [Downloads and cache inspection](https://github.com/openvax/datacache/blob/master/docs/downloads.md): destinations, naming,
@@ -202,7 +207,8 @@ FASTA files with `fetch_file`, then parse them in the consuming library.
 
 ## Guarantees and limits
 
-Downloads are staged privately and published atomically after validation.
+Downloads and complete archive trees are staged privately and published
+atomically after validation.
 New files respect the process umask; replacements preserve existing access
 permissions. This includes pyensembl's private download helpers.
 
