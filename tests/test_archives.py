@@ -206,8 +206,6 @@ def test_unsafe_members_are_rejected_without_publication(tmp_path, bad_member):
         bad_member.linkname = "../outside"
     elif bad_member.name.endswith("fifo"):
         bad_member.type = tarfile.FIFOTYPE
-    else:
-        bad_member.size = 1
     path = make_tar(tmp_path / "bad.tar.bz2", [(bad_member.name, bad_member)])
     outside = tmp_path / "escape"
     destination = tmp_path / "download"
