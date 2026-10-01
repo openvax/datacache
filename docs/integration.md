@@ -96,7 +96,7 @@ DataCache caches by path or database version, not by tracking remote content
 changes. Refreshing a URL does not invalidate arbitrary downstream artifacts.
 Libraries own dataset versions and their dependency relationships.
 
-Progress is optional; install the `progress` extra when enabling tqdm. HTML
+tqdm is installed by default; enable displays with `show_progress=True`. HTML
 table conversion requires the `html` extra. The library does not install
 logging handlers or change the process umask. Download retry counts and waits
 are bounded, while `timeout` limits connection/read inactivity per attempt,

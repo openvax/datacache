@@ -14,7 +14,7 @@ def test_importing_datacache_loads_no_heavy_dependencies():
     loaded = subprocess.run(
         [sys.executable, "-c",
          "import sys, datacache; "
-         "print(sorted(m for m in ('pandas', 'numpy', 'requests', 'urllib3') if m in sys.modules))"],
+         "print(sorted(m for m in ('pandas', 'numpy', 'requests', 'urllib3', 'tqdm') if m in sys.modules))"],
         capture_output=True, text=True, check=True).stdout.strip()
     assert loaded == "[]"
 

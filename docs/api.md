@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.16.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.16.1. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -103,7 +103,7 @@ replacement leaves the previous file intact.
 | `max_retries` | Non-negative integer number of additional attempts after transient HTTP failures. Default `2` allows three total attempts; `0` disables retries. File and FTP downloads are not retried. |
 | `retry_backoff` | Initial retry delay in seconds, doubled for subsequent retries. Must be finite and non-negative. |
 | `retry_max_delay` | Maximum retry delay in seconds, finite and non-negative. A server `Retry-After` exceeding this limit stops retries. |
-| `show_progress` | Boolean enabling optional tqdm download, decompression, and hash bars. Requires `datacache[progress]` when a bar is needed. Cache hits are quiet. |
+| `show_progress` | Boolean enabling tqdm download, decompression, and hash bars. tqdm is installed with datacache; no extra is needed. Displays are opt-in and cache hits are quiet. |
 | `resume` | Boolean retaining private partials for raw HTTP transfers. Requires size and a POSIX local filesystem. Without an expected SHA-256, every accepted response must supply a strong ETag. Size-only cache hits check only byte count. See [resumable downloads](downloads.md#resumable-http-downloads). |
 | `record_provenance` | Boolean; after publishing a download, also write a hidden `.<name>.datacache.json` record of the source URL (without user name, password, query string, or fragment; the path is kept as is, so avoid recording URLs with secrets in their path), the fetch time, the size, and the SHA-256 when `expected_sha256` verified it. [inspect_file](#inspect_file) reports these offline. The record has the file's permissions. Default `False`: a caller that downloads to a temporary name and then moves the file would leave the record behind. Cache hits never write one, any new download removes a previous record first, and a failure to write one never fails the download. |
 | `allow_empty` | Boolean accepting an empty installed file; default `False`. A complete but empty response, such as a withdrawn upstream record, is otherwise never published: HTTP retries it as transient, then raises `FileValidationError`. An empty cached file is likewise an invalid hit. `expected_size=0` also allows an empty file. |

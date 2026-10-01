@@ -15,12 +15,14 @@ Python 3.9 or newer is required.
 
 ```sh
 python -m pip install datacache
-# Optional progress bars and HTML-table conversion:
-python -m pip install "datacache[progress,html]"
+# Optional HTML-table conversion:
+python -m pip install "datacache[html]"
 ```
 
-Progress is opt-in with `show_progress=True`. Normal use does not import tqdm
-or configure your application's logging.
+tqdm is installed by default; progress displays are opt-in with
+`show_progress=True`. Normal use does not import tqdm or configure your
+application's logging. The old `datacache[progress]` install syntax remains
+supported as a compatibility alias.
 
 The existing pandas dependency range is unchanged; upgrading DataCache does
 not introduce a pandas 1.5 requirement. CI covers pandas 1.4.4, 1.5.3, and
@@ -44,8 +46,8 @@ assert cache.fetch(url, filename="LICENSE") == path
 
 Replace the URL and filename with your dataset. Existing files are reused until
 you explicitly refresh them with `force=True`; DataCache does not check whether
-the remote file has changed. Add `show_progress=True` to display a download bar
-after installing `datacache[progress]`.
+the remote file has changed. Add `show_progress=True` to display a download bar;
+no extra installation is needed.
 
 ### Find, inspect, or clear your cache
 
@@ -131,7 +133,7 @@ path = fetch_file(
     destination="references/v1/records.tsv",
     decompress=True,
     timeout=30,
-    show_progress=True,  # Requires datacache[progress].
+    show_progress=True,
 )
 ```
 

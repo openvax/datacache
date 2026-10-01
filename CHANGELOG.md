@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.16.1
+
+- Always install `tqdm>=4.64` as a required dependency. Progress displays remain
+  opt-in with `show_progress=True` and tqdm stays lazily imported. Keep the
+  `progress` extra as a compatibility alias for existing installation commands.
+
 ## 1.16.0
 
 - Add `install_archive` and `inspect_archive` for safely installing a complete
