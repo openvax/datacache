@@ -7,6 +7,8 @@
   concatenated byte-for-byte; URL and local-path sources share the same API.
   Extraction rejects traversal, links, special files, path collisions and
   reserved metadata names, and ignores archive ownership and permission bits.
+  Standard `.` / `./` tar paths are normalized safely; resource limits stop
+  header scanning at the first violation, and local FIFOs cannot block a writer.
 - Add `VersionedArchiveRegistry`, a catalogue facade with pinned defaults,
   explicit versions, reusable status rows, fast local path resolution, consumer
   layout callbacks, local predownloaded-part overrides, and the same progress,
@@ -17,6 +19,9 @@
   same transaction with `extra_files`. Archive receipts record the ordered
   source identities, assembled and per-part observed hashes, and every extracted
   file. Trusted expectations remain distinct from observed consistency checks.
+  Reuse checks the complete consumer metadata inventory, including removals.
+  Large manifests are read without the small control-record size cap and
+  validated in staging before the generation is published.
 - Serialize archive writers with a cross-platform file lock, retain immutable
   generations across refreshes, and recover a complete generation after an
   interrupted pointer publication. Legacy or otherwise foreign directories are

@@ -197,11 +197,13 @@ def _manifest(receipt):
     archive = receipt.get("archive")
     sources = receipt.get("sources")
     files = receipt.get("files")
+    extra_files = receipt.get("extra_files")
     directories = receipt.get("directories")
     fetched_at = receipt.get("fetched_at")
     if (not isinstance(archive, dict) or not isinstance(sources, list) or
             not sources or not isinstance(files, dict) or not files or
-            not isinstance(directories, list) or not isinstance(fetched_at, str)):
+            not isinstance(extra_files, dict) or not isinstance(directories, list) or
+            not isinstance(fetched_at, str)):
         raise ValueError("invalid archive manifest")
     _validate_expectations(archive.get("sha256"), archive.get("size"))
     if archive.get("sha256") is None or archive.get("size") is None:
@@ -230,6 +232,9 @@ def _manifest(receipt):
         if spec["sha256"] is None or spec["size"] is None:
             raise ValueError("extracted file receipt does not identify observed bytes")
         normalized_files[name] = spec
+    for name, spec in extra_files.items():
+        if name not in normalized_files or spec != normalized_files[name]:
+            raise ValueError("consumer extra file receipt disagrees with tree manifest")
     normalized_directories = []
     folded = set()
     for name in directories:
@@ -242,7 +247,7 @@ def _manifest(receipt):
     file_keys = {name.casefold() for name in normalized_files}
     if len(file_keys) != len(normalized_files) or file_keys & folded:
         raise ValueError("colliding paths in archive manifest")
-    return archive, normalized_sources, normalized_files, normalized_directories, fetched_at
+    return archive, normalized_sources, normalized_files, normalized_directories, fetched_at, extra_files
 
 
 def _hash_handle(handle):
@@ -254,12 +259,8 @@ def _hash_handle(handle):
 
 
 def _open_local_source(path):
-    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(path, flags)
+    descriptor = open_regular(path, os.O_RDONLY | getattr(os, "O_BINARY", 0))
     try:
-        info = os.fstat(descriptor)
-        if not stat.S_ISREG(info.st_mode):
-            raise FileValidationError(path, "expected a regular archive part")
         return os.fdopen(descriptor, "rb")
     except BaseException:
         os.close(descriptor)
@@ -307,7 +308,7 @@ def _walk_tree(root, receipt=None):
     return observed, directories, inspections
 
 
-def _matches_definition(receipt_archive, receipt_sources, receipt_files, definition):
+def _matches_definition(receipt_archive, receipt_sources, receipt_extras, definition):
     expected_sha256 = definition["expected_sha256"]
     expected_size = definition["expected_size"]
     if expected_sha256 is not None and receipt_archive["sha256"] != expected_sha256:
@@ -326,18 +327,20 @@ def _matches_definition(receipt_archive, receipt_sources, receipt_files, definit
         expected = [source["fingerprint"] for source in definition["sources"]]
         if fingerprints != expected:
             raise FileValidationError("archive", "ordered archive source identities disagree")
+    if set(receipt_extras) != set(definition["extra_files"]):
+        raise FileValidationError("archive", "consumer extra file names disagree with requested definition")
     for name, value in definition["extra_files"].items():
         expected = {"sha256": hashlib.sha256(value).hexdigest(), "size": len(value)}
-        if receipt_files.get(name) != expected:
+        if receipt_extras[name] != expected:
             raise FileValidationError(name, "extra file disagrees with requested content")
 
 
-def _inspect_generation(store, generation, definition, verify_files=True):
-    directory = _generation(store, generation)
-    receipt = read_json(directory / MANIFEST)
-    archive, sources, files, directories, fetched_at = _manifest(receipt)
+def _inspect_tree(store, directory, definition, verify_files=True):
+    # Tree inventories grow with the archive; the writer has no fixed size cap.
+    receipt = read_json(directory / MANIFEST, limit=None)
+    archive, sources, files, directories, fetched_at, extras = _manifest(receipt)
     if definition is not None:
-        _matches_definition(archive, sources, files, definition)
+        _matches_definition(archive, sources, extras, definition)
     metadata = {
         "source_urls": tuple(source["url"] for source in sources),
         "fetched_at": fetched_at,
@@ -353,6 +356,11 @@ def _inspect_generation(store, generation, definition, verify_files=True):
     return ArchiveInspection(
         str(store), "available", bool(definition and definition["trusted"]),
         str(directory), inspections, **metadata)
+
+
+def _inspect_generation(store, generation, definition, verify_files=True):
+    return _inspect_tree(
+        store, _generation(store, generation), definition, verify_files=verify_files)
 
 
 def inspect_archive(
@@ -423,16 +431,15 @@ def _recover(path, definition):
 
 def _archive_members(
         archive, max_members=None, max_extracted_size=None, extra_names=()):
-    members = archive.getmembers()
-    if not members:
-        raise FileValidationError(archive.name, "archive is empty")
-    if max_members is not None and len(members) > max_members:
-        raise FileValidationError(archive.name, "archive has more than %d members" % max_members)
     nodes = {}
     planned = []
     total = 0
     regular_files = 0
-    for member in members:
+    member_count = 0
+    for member in archive:
+        member_count += 1
+        if max_members is not None and member_count > max_members:
+            raise FileValidationError(archive.name, "archive has more than %d members" % max_members)
         if member.isdir():
             name, kind = member.name.rstrip("/"), "directory"
         elif member.isfile():
@@ -440,10 +447,18 @@ def _archive_members(
             if member.size < 0:
                 raise FileValidationError(archive.name, "archive member has negative size")
             total += member.size
+            if max_extracted_size is not None and total > max_extracted_size:
+                raise FileValidationError(
+                    archive.name, "archive expands to more than %d bytes" % max_extracted_size)
             regular_files += 1
         else:
             raise FileValidationError(
                 archive.name, "archive contains a link or special member: %s" % member.name)
+        # Standard tar tools use '.' for the root and './' for relative paths.
+        while name.startswith("./"):
+            name = name[2:]
+        if kind == "directory" and name == ".":
+            continue
         try:
             _relative_name(name)
         except ValueError as error:
@@ -469,6 +484,8 @@ def _archive_members(
         else:
             nodes[key] = (name, kind, True)
         planned.append((member, name, kind))
+    if not member_count:
+        raise FileValidationError(archive.name, "archive is empty")
     for name in extra_names:
         parts = name.split("/")
         for index in range(1, len(parts)):
@@ -486,9 +503,6 @@ def _archive_members(
         nodes[name.casefold()] = (name, "file", True)
     if not regular_files:
         raise FileValidationError(archive.name, "archive contains no regular files")
-    if max_extracted_size is not None and total > max_extracted_size:
-        raise FileValidationError(
-            archive.name, "archive expands to more than %d bytes" % max_extracted_size)
     return planned
 
 
@@ -711,16 +725,18 @@ def install_archive(
                 "archive": archive_record,
                 "sources": source_records,
                 "files": files,
+                "extra_files": {name: files[name] for name in definition["extra_files"]},
                 "directories": directories,
             }
             write_json(tree / MANIFEST, receipt, mode=_file_mode(tree))
+            # Read back and validate the receipt and complete tree while private.
+            _inspect_tree(path, tree, definition)
             generation = uuid4().hex
             final = path / "generations" / generation
             os.replace(tree, final)
             published = True
-            candidate = _inspect_generation(path, generation, definition)
             write_json(path / CURRENT, {"generation": generation}, mode=_file_mode(path))
-            return Path(candidate.generation)
+            return final
         finally:
             if published or not resumable:
                 shutil.rmtree(working)

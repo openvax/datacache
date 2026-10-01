@@ -1112,10 +1112,14 @@ hashes are still recorded and checked, but do not authenticate the source.
 `extra_files` maps safe relative names to text or bytes written after extraction
 and before publication. It is intended for consumer receipts such as
 `DOWNLOAD_INFO.csv`; collisions with archive content fail the installation.
+The complete metadata inventory participates in generation identity: additions,
+removals, and content changes require an explicit refresh.
 `download_options` accepts timeout, chunk size, progress, retry, and resume
 settings from `fetch_file`. Resumable URL parts each require a trusted hash and
 size. Optional `max_members` and `max_extracted_size` limits are checked before
-files are extracted.
+files are extracted, as headers arrive; scanning stops when a limit is exceeded.
+Benign leading `./` paths are normalized and root `.` directory entries ignored.
+Local special files such as FIFOs are rejected without blocking.
 
 **Returns:** the immutable extracted-generation `Path`, not the managed store
 path. Existing returned paths remain usable across forced refreshes.

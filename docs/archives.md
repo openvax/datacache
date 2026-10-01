@@ -134,7 +134,9 @@ claims it silently, including with `force=True`.
 ## Extraction policy
 
 DataCache parses tar, gzip-compressed tar, bzip2-compressed tar and xz-compressed
-tar archives using format detection. Before writing members it rejects:
+tar archives using format detection. Leading `./` components are normalized and
+the `.` root directory entry is ignored, so archives created with
+`tar -cf archive.tar -C tree .` work. Before writing members it rejects:
 
 - absolute, parent-traversing, non-portable, and reserved DataCache paths;
 - symbolic links, hard links, devices, FIFOs and every other special member;
@@ -146,11 +148,17 @@ Extraction writes regular files itself rather than calling `extractall`. Archive
 ownership, timestamps and permission bits—including executable and set-ID bits—
 are not applied. New files and directories use ordinary umask-derived modes.
 `max_members` and `max_extracted_size` can impose application-specific resource
-limits based on tar headers before extraction begins.
+limits. They are enforced as each header arrives, before traversing the payload
+of a member that exceeds the limit; scanning stops at the first violation.
+The member count includes root directory entries even though they are not
+extracted. Local sources must be regular files; links and special inputs such
+as FIFOs are rejected without waiting for a writer.
 
 After extraction, the generation receipt records the assembled archive's
 observed hash and size, every part's observed hash, ordered source fingerprints,
-and a sorted hash/size manifest of every installed file. Inspection rejects
+and a sorted hash/size manifest of every installed file. The complete consumer
+`extra_files` inventory is recorded separately. Manifest reading supports the
+same sizes as writing, including inventories larger than 1 MiB. Inspection rejects
 missing, changed, additional, linked or special files and directory changes.
 `ArchiveInspection` also exposes the redacted source URLs, fetch time, assembled
 size and recorded digest for downstream `list` and `info` commands.
@@ -168,14 +176,15 @@ tree by default; `verify_files=False` provides a receipt/source-identity-only
 path lookup and never reports `verified=True`. Invalid installations require an
 explicit `force=True`; inaccessible installations propagate their permission
 error. Consumer metadata is part of the requested generation identity, so a
-different `DOWNLOAD_INFO.csv` requires an explicit refresh.
+different, added, or removed metadata entry requires an explicit refresh.
 
 ## Publication, recovery and platforms
 
 Writers serialize on a permanent sibling lock. Downloads, concatenation,
 extraction, consumer metadata and the DataCache receipt complete in private
 staging. The finished tree is renamed to `generations/<id>` and `current.json`
-is atomically replaced only after the generation validates. A failed refresh
+is atomically replaced only after the complete tree and its written receipt
+have been read back and validated in staging. A failed refresh
 leaves the previous pointer and generation active. On a first installation, an
 interruption between the generation rename and pointer update is reported as
 `recovery-required`; the next explicit installation recovers matching local

@@ -14,10 +14,13 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from hashlib import sha256
+import gzip
 import io
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tarfile
 import threading
 
@@ -92,7 +95,9 @@ def test_install_inspect_and_read_only_reuse(tmp_path, archive_file, monkeypatch
         archives, "_walk_tree",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             AssertionError("fast inspection hashed the tree")))
-    assert inspect_archive(destination, sources, verify_files=False).status == "available"
+    assert inspect_archive(
+        destination, sources, extra_files={"DOWNLOAD_INFO.csv": receipt},
+        verify_files=False).status == "available"
     monkeypatch.setattr(archives, "_walk_tree", walk_tree)
 
     refreshed = install_archive(
@@ -110,6 +115,113 @@ def test_install_inspect_and_read_only_reuse(tmp_path, archive_file, monkeypatch
     assert install_archive(
         destination, sources, expected_sha256=digest, expected_size=len(data),
         extra_files={"DOWNLOAD_INFO.csv": receipt}) == refreshed
+
+
+def test_standard_dot_prefixed_tar_tree_installs_and_inspects(tmp_path):
+    source = make_tar(tmp_path / "standard.tar.bz2", [
+        (".", None), ("././", None), ("./models/", None),
+        ("./models/model.json", b"model"), ("././README.txt", b"readme"),
+    ])
+    data = source.read_bytes()
+    destination = tmp_path / "download"
+    generation = install_archive(
+        destination, source, expected_sha256=sha256(data).hexdigest(),
+        expected_size=len(data))
+
+    assert (generation / "models/model.json").read_bytes() == b"model"
+    inspected = inspect_archive(destination)
+    assert inspected.status == "available"
+    assert set(inspected.files) == {"models/model.json", "README.txt"}
+
+
+@pytest.mark.parametrize("members", [
+    [("./file", b"one"), ("file", b"two")],
+    [("./Models/file", b"one"), ("models/other", b"two")],
+    [("./../escape", b"unsafe")],
+    [("./.datacache-archive-manifest.json", b"forged")],
+])
+def test_dot_prefix_normalization_preserves_path_safety(tmp_path, members):
+    source = make_tar(tmp_path / "unsafe.tar.bz2", members)
+    destination = tmp_path / "download"
+    with pytest.raises(FileValidationError):
+        install_archive(destination, source, verified=False)
+    assert inspect_archive(destination).status == "missing"
+    assert not (tmp_path / "escape").exists()
+
+
+def test_large_tree_manifest_installs_and_recovers_offline(tmp_path):
+    source = make_tar(tmp_path / "large.tar.bz2", [
+        ("file-%05d" % index, b"") for index in range(12000)
+    ])
+    data = source.read_bytes()
+    options = {"expected_sha256": sha256(data).hexdigest(), "expected_size": len(data)}
+    destination = tmp_path / "download"
+    generation = install_archive(destination, source, **options)
+    assert (generation / archives.MANIFEST).stat().st_size > 1024 * 1024
+    inspected = inspect_archive(destination, source, **options)
+    assert inspected.status == "available" and inspected.verified
+    assert len(inspected.files) == 12000
+
+    (destination / archives.CURRENT).unlink()
+    source.unlink()
+    assert inspect_archive(destination).status == "recovery-required"
+    assert install_archive(destination, source, **options) == generation
+    assert inspect_archive(destination, source, verify_files=False, **options).status == "available"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX FIFO sources")
+def test_fifo_source_fails_promptly_and_releases_writer_lock(tmp_path, archive_file):
+    fifo = tmp_path / "source.fifo"
+    os.mkfifo(fifo)
+    destination = tmp_path / "download"
+    # A subprocess timeout makes a blocking open a bounded test failure.
+    script = """
+import sys
+from pathlib import Path
+from datacache import FileValidationError, install_archive
+try:
+    install_archive(Path(sys.argv[1]), Path(sys.argv[2]), verified=False)
+except FileValidationError:
+    pass
+else:
+    raise AssertionError("FIFO archive source was accepted")
+"""
+    subprocess.run(
+        [sys.executable, "-c", script, str(destination), str(fifo)],
+        timeout=5, check=True, capture_output=True, text=True)
+    assert inspect_archive(destination).status == "missing"
+    source, data, digest = archive_file
+    assert install_archive(
+        destination, source, expected_sha256=digest, expected_size=len(data)).is_dir()
+
+
+@pytest.mark.parametrize("new_extras", [
+    {}, {"DOWNLOAD_INFO.csv": "url\noriginal\n"},
+    {"DOWNLOAD_INFO.csv": "url\nchanged\n", "INFO.txt": "old"},
+    {"NEW_INFO.txt": "new"},
+])
+def test_changed_or_removed_consumer_metadata_requires_refresh(
+        tmp_path, archive_file, new_extras):
+    source, data, digest = archive_file
+    options = {"expected_sha256": digest, "expected_size": len(data)}
+    destination = tmp_path / "download"
+    old_extras = {"DOWNLOAD_INFO.csv": "url\noriginal\n", "INFO.txt": "old"}
+    old = install_archive(destination, source, extra_files=old_extras, **options)
+    manifest = json.loads((old / archives.MANIFEST).read_text())
+    assert set(manifest["extra_files"]) == set(old_extras)
+    for verify_files in (True, False):
+        assert inspect_archive(
+            destination, source, extra_files=new_extras,
+            verify_files=verify_files, **options).status == "invalid"
+    with pytest.raises(FileValidationError, match="force=True"):
+        install_archive(destination, source, extra_files=new_extras, **options)
+
+    refreshed = install_archive(
+        destination, source, extra_files=new_extras, force=True, **options)
+    assert refreshed != old
+    assert inspect_archive(destination, source, extra_files=new_extras, **options).verified
+    assert {name for name in old_extras if (refreshed / name).exists()} == set(old_extras) & set(new_extras)
+    assert all((old / name).read_text() == value for name, value in old_extras.items())
 
 
 def test_ordered_split_archive_and_logical_source_urls(tmp_path, archive_file):
@@ -354,6 +466,24 @@ def test_failed_manifest_write_leaves_no_apparently_installed_tree(
     assert generation.is_dir()
 
 
+def test_unreadable_generated_manifest_is_rejected_before_generation_rename(
+        tmp_path, archive_file, monkeypatch):
+    source, data, digest = archive_file
+    destination = tmp_path / "download"
+    original = archives.write_json
+
+    def corrupt(path, value, **kwargs):
+        original(path, value, **kwargs)
+        if Path(path).name == archives.MANIFEST:
+            Path(path).write_text("invalid JSON")
+
+    monkeypatch.setattr(archives, "write_json", corrupt)
+    with pytest.raises(ValueError):
+        install_archive(destination, source, expected_sha256=digest, expected_size=len(data))
+    assert inspect_archive(destination).status == "missing"
+    assert not list((destination / "generations").iterdir())
+
+
 def test_foreign_directories_are_never_claimed_even_with_force(tmp_path, archive_file):
     source, data, digest = archive_file
     for name, contents in (("empty", None), ("legacy", "keep me")):
@@ -469,6 +599,27 @@ def test_limits_and_verification_requirements_fail_before_publication(tmp_path, 
         install_archive(
             tmp_path / "size", source, expected_sha256=digest,
             expected_size=len(data), max_extracted_size=1)
+
+
+def test_member_limit_stops_before_parsing_later_headers(tmp_path):
+    # Parsing the deliberately invalid third header must never be necessary.
+    source = tmp_path / "many.tar"
+    source.write_bytes(
+        tarfile.TarInfo("first").tobuf() + tarfile.TarInfo("second").tobuf() +
+        b"invalid header".ljust(512, b"\0"))
+    with pytest.raises(FileValidationError, match="more than 1 members"):
+        install_archive(tmp_path / "download", source, verified=False, max_members=1)
+
+
+def test_expansion_limit_stops_before_traversing_compressed_member_data(tmp_path):
+    member = tarfile.TarInfo("huge")
+    member.size = 2 ** 30
+    # The advertised payload is absent: scanning to the next header would fail.
+    source = tmp_path / "huge.tar.gz"
+    source.write_bytes(gzip.compress(member.tobuf()))
+    with pytest.raises(FileValidationError, match="expands to more than 1024 bytes"):
+        install_archive(
+            tmp_path / "download", source, verified=False, max_extracted_size=1024)
 
 
 def test_resumable_split_downloads_require_part_integrity(tmp_path, archive_file):
