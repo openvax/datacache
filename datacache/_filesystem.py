@@ -58,9 +58,10 @@ def file_lock(path, *, private=False):
 
 
 def read_json(path, limit=1024 * 1024):
+    """Read a regular JSON file; ``limit=None`` permits growing tree manifests."""
     with os.fdopen(open_regular(path), 'rb') as handle:
-        data = handle.read(limit + 1)
-    if len(data) > limit:
+        data = handle.read() if limit is None else handle.read(limit + 1)
+    if limit is not None and len(data) > limit:
         raise ValueError('JSON record is too large')
     return json.loads(data)
 

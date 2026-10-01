@@ -161,7 +161,9 @@ class VersionedFileRegistry:
                     "available_versions": sorted(spec["urls"]),
                     "cached": path.exists(),
                     "cached_version": record.get("version") if record else None,
+                    "url": record.get("url") if path.exists() else None,
                     "bytes": record.get("bytes") if path.exists() else None,
+                    "sha256": record.get("sha256") if path.exists() else None,
                     "downloaded_at": record.get("downloaded_at") if path.exists() else None,
                     "path": str(path),
                 }

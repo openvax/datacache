@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.16.0
+
+- Add `install_archive` and `inspect_archive` for safely installing a complete
+  tar archive tree as one immutable generation. Ordered split archives are
+  concatenated byte-for-byte; URL and local-path sources share the same API.
+  Extraction rejects traversal, links, special files, path collisions and
+  reserved metadata names, and ignores archive ownership and permission bits.
+  Standard `.` / `./` tar paths are normalized safely; resource limits stop
+  header scanning at the first violation, and local FIFOs cannot block a writer.
+- Add `VersionedArchiveRegistry`, a catalogue facade with pinned defaults,
+  explicit versions, reusable status rows, fast local path resolution, consumer
+  layout callbacks, local predownloaded-part overrides, and the same progress,
+  retry, verification and recovery behavior as `install_archive`.
+- Include the recorded URL and observed SHA-256 in `VersionedFileRegistry`
+  status rows so fixed-file consumers can report the same download provenance.
+- Publish consumer metadata such as MHCflurry's `DOWNLOAD_INFO.csv` inside the
+  same transaction with `extra_files`. Archive receipts record the ordered
+  source identities, assembled and per-part observed hashes, and every extracted
+  file. Trusted expectations remain distinct from observed consistency checks.
+  Reuse checks the complete consumer metadata inventory, including removals.
+  Large manifests are read without the small control-record size cap and
+  validated in staging before the generation is published.
+- Serialize archive writers with a cross-platform file lock, retain immutable
+  generations across refreshes, and recover a complete generation after an
+  interrupted pointer publication. Legacy or otherwise foreign directories are
+  never claimed, including with `force=True` (#85).
+
 ## 1.15.0
 
 - Add `VersionedFileRegistry` for established single-file caches with fixed

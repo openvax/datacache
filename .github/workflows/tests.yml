@@ -57,3 +57,19 @@ jobs:
         # error. Don't let that flake fail the whole test run.
         continue-on-error: true
         uses: coverallsapp/github-action@v2.2.3
+
+  archive-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install package and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+      - name: Test cross-platform archive publication
+        run: python -m pytest -q tests/test_archives.py

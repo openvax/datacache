@@ -1,12 +1,12 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.15.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.16.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
 Start with the [quickstart](../README.md#quickstart) for a first download.
-The [download guide](downloads.md), [data guide](data.md),
+The [download guide](downloads.md), [archive guide](archives.md), [data guide](data.md),
 [progress guide](progress.md), and [shared-cache guide](shared-caches.md)
 explain the longer workflows and compatibility guarantees.
 
@@ -15,6 +15,8 @@ explain the longer workflows and compatibility guarantees.
 | Area | APIs |
 | --- | --- |
 | Downloading | [fetch_file](#fetch_file), [fetch_csv_dataframe](#fetch_csv_dataframe), [fetch_and_transform](#fetch_and_transform) |
+| Complete archive trees | [install_archive](#install_archive), [inspect_archive](#inspect_archive), [ArchiveInspection](#archiveinspection), [VersionedArchiveRegistry](#versionedarchiveregistry) |
+| Versioned file bundles | [install_bundle](#install_bundle), [inspect_bundle](#inspect_bundle), [BundleInspection](#bundleinspection), [VersionedDatasetRegistry](#versioneddatasetregistry), [VersionedFileRegistry](#versionedfileregistry) |
 | Paths and presence | [expected_path](#expected_path), [file_exists](#file_exists), [build_local_filename](#build_local_filename), [get_data_dir](#get_data_dir), [get_cache_root](#get_cache_root), [resolve_path](#resolve_path), [build_path](#build_path), [ensure_dir](#ensure_dir), [clear_cache](#clear_cache) |
 | Integrity and permissions | [validate_file](#validate_file), [inspect_file](#inspect_file), [inspect_files](#inspect_files), [make_file_readable](#make_file_readable) |
 | Results and exceptions | [FileInspection](#fileinspection), [CacheInspection](#cacheinspection), [FileValidationError](#filevalidationerror) |
@@ -34,7 +36,9 @@ from contextlib import closing
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import hashlib
+import io
 import os
+import tarfile
 
 import pandas as pd
 import datacache as dc
@@ -48,6 +52,15 @@ source.write_bytes(contents)
 url = source.as_uri()
 sha256 = hashlib.sha256(contents).hexdigest()
 frame = pd.DataFrame({"id": [1, 2], "value": [10, 20]})
+
+archive_source = root / "models.tar.bz2"
+with tarfile.open(archive_source, "w:bz2") as archive:
+    member_contents = b'{"model": "example"}\n'
+    member = tarfile.TarInfo("models/model.json")
+    member.size = len(member_contents)
+    archive.addfile(member, io.BytesIO(member_contents))
+archive_contents = archive_source.read_bytes()
+archive_sha256 = hashlib.sha256(archive_contents).hexdigest()
 ```
 
 ## Downloading
@@ -1064,13 +1077,6 @@ It is independent of the integer `version` used to identify a SQLite cache.
 print(dc.__version__)
 ```
 
-After finishing the examples, remove their temporary files:
-
-```python
-temporary.cleanup()
-```
-
-
 ## discard_partial
 
 ```text
@@ -1080,6 +1086,122 @@ discard_partial(destination)
 Explicitly discard this user's private resumable bytes for an exact destination,
 under its writer lock. The installed file is unchanged; absent state is a no-op.
 See [resumable downloads](downloads.md#resumable-http-downloads).
+
+## install_archive
+
+```text
+install_archive(
+    destination, sources, *, expected_sha256=None, expected_size=None,
+    extra_files=None, force=False, verified=True, download_options=None,
+    max_members=None, max_extracted_size=None
+)
+```
+
+Safely extract a complete tar archive into a private directory and publish the
+tree as one immutable generation. `sources` is one URL, one `Path`, or an
+explicitly ordered sequence. A mapping may contain `url`, `path`, `sha256`, and
+`size`; supplying both `url` and `path` reads local bytes while retaining the URL
+as the logical source identity. Multiple sources are concatenated byte-for-byte,
+which supports historical split archives.
+
+By default the assembled archive needs trusted `expected_sha256` and
+`expected_size`, or every part needs `sha256` and `size`. Set `verified=False`
+explicitly for historical sources without published integrity metadata. Observed
+hashes are still recorded and checked, but do not authenticate the source.
+
+`extra_files` maps safe relative names to text or bytes written after extraction
+and before publication. It is intended for consumer receipts such as
+`DOWNLOAD_INFO.csv`; collisions with archive content fail the installation.
+The complete metadata inventory participates in generation identity: additions,
+removals, and content changes require an explicit refresh.
+`download_options` accepts timeout, chunk size, progress, retry, and resume
+settings from `fetch_file`. Resumable URL parts each require a trusted hash and
+size. Optional `max_members` and `max_extracted_size` limits are checked before
+files are extracted, as headers arrive; scanning stops when a limit is exceeded.
+Benign leading `./` paths are normalized and root `.` directory entries ignored.
+Local special files such as FIFOs are rejected without blocking.
+
+**Returns:** the immutable extracted-generation `Path`, not the managed store
+path. Existing returned paths remain usable across forced refreshes.
+
+**Raises:** `ValueError` for invalid definitions or options;
+`FileValidationError` for integrity failures, unsafe members, malformed tar
+archives, or invalid installations; transport and filesystem errors otherwise.
+An invalid current installation requires `force=True`. A legacy or otherwise
+foreign destination is never claimed, even with force.
+
+```python
+archive_store = root / "archive-store"
+archive_generation = dc.install_archive(
+    archive_store,
+    archive_source,
+    expected_sha256=archive_sha256,
+    expected_size=len(archive_contents),
+    extra_files={"DOWNLOAD_INFO.csv": "url\n" + archive_source.as_uri() + "\n"},
+)
+assert (archive_generation / "models/model.json").is_file()
+```
+
+See the [archive installation guide](archives.md) for split sources, safe-member
+rules, publication semantics, and an MHCflurry adapter.
+
+## inspect_archive
+
+```text
+inspect_archive(
+    destination, sources=None, *, expected_sha256=None, expected_size=None,
+    extra_files=None, verify_files=True
+)
+```
+
+Inspect one installed archive generation without writes, locks, repair, or
+network access. Omit `sources` for receipt-only consistency checking, which
+returns `verified=False`. Supply the same source definition, expectations, and
+consumer metadata used for installation to validate the requested identity.
+Set `verify_files=False` for a fast published-generation/source-identity check
+that does not hash the extracted tree. Fast results have an empty `files`
+mapping and `verified=False`; use the default before asserting content integrity.
+
+## ArchiveInspection
+
+A frozen record with `path`, `status`, `verified`, `generation`, `files`,
+`error`, `source_urls`, `fetched_at`, `archive_size`, and `recorded_sha256`.
+Status is `available`, `missing`, `invalid`, `inaccessible`, or
+`recovery-required`. `generation` is the extracted tree applications should use;
+`files` maps every installed relative file name to a `FileInspection`, or is
+empty for a fast `verify_files=False` inspection. Source URLs are redacted for
+display. The recorded digest is observed receipt data, not trusted verification.
+
+## VersionedArchiveRegistry
+
+```text
+VersionedArchiveRegistry(
+    archives, *, cache_root=None, store_path=None, verified=True
+)
+```
+
+Reusable version catalogue for archive-tree consumers. Each named archive has a
+`default_version`, optional description, and `versions` mapping. A concrete
+version may be one source, an ordered source sequence, or a mapping containing
+`sources`, `expected_sha256`, `expected_size`, `extra_files`, `max_members`, and
+`max_extracted_size`. Definitions are validated without filesystem access.
+
+Select exactly one destination strategy. `cache_root` stores versions at
+`<root>/<name>/<version>`. A two-argument `store_path(name, version)` callback
+lets an adapter retain an established layout such as
+`<MHCFLURRY_DATA>/<release>/<download>` without putting layout policy in
+DataCache. `verified=False` explicitly enables historical unpinned catalogues.
+
+| Method | Result |
+| --- | --- |
+| `resolve_version(name, version=None)` | Concrete version, applying the pinned default. |
+| `store_path(name, version=None)` | Managed store `Path`, without creating or inspecting it. |
+| `inspect(name, version=None, *, verify_files=True)` | Offline `ArchiveInspection`. |
+| `download(name, version=None, *, force=False, source_paths=None, **download_options)` | Install/reuse and return the generation `Path`; `source_paths` overlays ordered local files while retaining catalogue identities. |
+| `local_path(name, version=None, *, verify_files=False)` | Resolve a published generation without network, writes, or repair. |
+| `ensure(name, version=None, **download_options)` | Install if needed and return the generation. |
+| `is_cached(name, version=None, *, verify_files=False)` | Whether a published generation is available; full verification is optional. |
+| `status(name=None)` | One read-only row per concrete version, including catalogue and downloaded source URLs, store/generation paths, default flag, status, fetch time, observed archive size/hash and inspection. |
 
 ## install_bundle
 
@@ -1150,4 +1272,10 @@ trust boundaries, and the distinction from transactional generation bundles.
 | `is_cached(name, version=None)` | Presence only, not verified integrity. |
 | `download(name, version=None, *, force=False, **download_options)` | One fixed Path; fetch_file options control acquisition. Ordinary cache hits do not hash or write; explicit size/hash expectations are checked. |
 | `ensure(name, version=None, **download_options)` | Same download/reuse behavior and Path result. |
-| `status()` | Legacy status dicts with name, description, default_version, available_versions, cached, cached_version, bytes, downloaded_at and path. |
+| `status()` | Legacy status dicts with name, description, default_version, available_versions, cached, cached_version, URL, bytes, observed SHA-256, downloaded_at and path. |
+
+After finishing the examples, remove their temporary files:
+
+```python
+temporary.cleanup()
+```
