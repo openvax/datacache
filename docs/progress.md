@@ -2,7 +2,8 @@
 
 See the [API reference](api.md) for signatures, defaults, return values, and errors.
 
-Install the optional dependency with `python -m pip install "datacache[progress]"`.
+tqdm is a required dependency, installed by `python -m pip install datacache`.
+The old `datacache[progress]` extra remains a supported compatibility alias.
 Set `show_progress=True` on `fetch_file`, `Cache.fetch`, or the CSV and database
 helpers. DataCache uses [tqdm.auto](https://tqdm.github.io/docs/shortcuts/), which
 selects a terminal or notebook display. Terminal bars use stderr; stdout remains
@@ -25,9 +26,9 @@ can show a checksum pass over an already cached file.
 ## Application callbacks
 
 The existing `progress_callback(completed, total)` API remains supported and
-can be used with or without tqdm. `completed` is cumulative for the current
-download attempt; `total` may be `None`. Retries restart from zero, so counts
-may decrease. Callbacks cover transfer bytes only, not transformation or
+can be used with or without built-in progress bars. `completed` is cumulative
+for the current download attempt; `total` may be `None`. Retries restart from
+zero, so counts may decrease. Callbacks cover transfer bytes only, not transformation or
 database work. Empty downloads do not invoke the callback.
 
 ```python

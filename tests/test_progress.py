@@ -143,7 +143,7 @@ def test_database_progress_reports_completed_batches(tmp_path, bars):
     assert bars[0].closed
 
 
-def test_tqdm_is_optional_and_missing_extra_has_actionable_error(tmp_path, monkeypatch):
+def test_missing_required_tqdm_has_actionable_error(tmp_path, monkeypatch):
     original_import = builtins.__import__
 
     def no_tqdm(name, *args, **kwargs):
@@ -155,7 +155,7 @@ def test_tqdm_is_optional_and_missing_extra_has_actionable_error(tmp_path, monke
     source = tmp_path / "source"
     source.write_bytes(b"data")
     fetch_file(source.as_uri(), destination=tmp_path / "quiet")
-    with pytest.raises(ImportError, match=r"datacache\[progress\]"):
+    with pytest.raises(ImportError, match=r"tqdm is a required datacache dependency"):
         fetch_file(source.as_uri(), destination=tmp_path / "progress", show_progress=True)
     assert not (tmp_path / "progress").exists()
     assert not list(tmp_path.glob(".datacache-*"))

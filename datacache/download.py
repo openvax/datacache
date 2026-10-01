@@ -94,7 +94,7 @@ def _stream_to_file(
     ``progress_callback(bytes_downloaded, total_bytes)`` after each chunk is
     written, where `total_bytes` is taken from the server's Content-Length
     header (or None when the server doesn't report a size). This lets callers
-    drive e.g. a tqdm progress bar without datacache depending on tqdm.
+    drive an application's own progress display instead of the built-in bar.
 
     Returns the total number of bytes written.
     """
@@ -586,11 +586,11 @@ def fetch_file(
         If provided, called as ``progress_callback(bytes_downloaded,
         total_bytes)`` after each chunk is written, where `total_bytes` is the
         server-reported size or None if unknown. Lets callers render a progress
-        bar (e.g. tqdm) without datacache taking on that dependency.
+        display in their application's own UI instead of the built-in bar.
 
     show_progress : bool, optional
         Show tqdm download, decompression, and hash-verification progress.
-        Requires datacache[progress]. Defaults to False; cache hits are quiet.
+        tqdm is installed with datacache. Defaults to False; cache hits are quiet.
         Can be combined with progress_callback. Each retry starts a fresh bar.
 
     destination : str or os.PathLike, optional

@@ -1,4 +1,4 @@
-"""Optional progress displays. Importing datacache never imports tqdm."""
+"""Opt-in progress displays using the required, lazily imported tqdm dependency."""
 
 
 class Progress:
@@ -17,8 +17,8 @@ class Progress:
                 from tqdm.auto import tqdm
             except ImportError as error:
                 raise ImportError(
-                    "Progress displays require tqdm; install 'datacache[progress]' "
-                    "or use show_progress=False") from error
+                    "tqdm is a required datacache dependency; install 'tqdm>=4.64' "
+                    "or reinstall datacache") from error
             self.bar = tqdm(
                 desc=self.description, total=self.total, unit=self.unit,
                 unit_scale=self.unit == "B", unit_divisor=1024,
