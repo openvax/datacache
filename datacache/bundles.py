@@ -367,17 +367,22 @@ class VersionedDatasetRegistry:
     Each dataset is {default_version, versions: {version: {asset: metadata}}}.
     The hitlist shape {filename, urls: {version: url}, default_version} is also
     accepted with verified=False. cache_root is a path; cache_dir optionally
-    accepts hitlist's zero-argument root callable. Construction never writes.
+    accepts hitlist's zero-argument root callable. Alternatively, store_path is
+    a two-argument (name, version) callback selecting an exact managed store.
+    Construction never writes or invokes either callback.
     """
 
-    def __init__(self, datasets, *, cache_root=None, cache_dir=None, verified=True):
-        if (cache_root is None) == (cache_dir is None):
-            raise ValueError('provide exactly one of cache_root or cache_dir')
+    def __init__(self, datasets, *, cache_root=None, cache_dir=None, store_path=None, verified=True):
+        if sum(value is not None for value in (cache_root, cache_dir, store_path)) != 1:
+            raise ValueError('provide exactly one of cache_root, cache_dir or store_path')
         if not isinstance(verified, bool):
             raise ValueError('verified must be a boolean')
         self._root = cache_dir if cache_dir is not None else lambda: cache_root
-        if not callable(self._root):
+        if cache_dir is not None and not callable(cache_dir):
             raise ValueError('cache_dir must be callable')
+        if store_path is not None and not callable(store_path):
+            raise ValueError('store_path must be callable')
+        self._store_path = store_path
         self.verified = verified
         self._datasets = {}
         for name, spec in datasets.items():
@@ -405,6 +410,8 @@ class VersionedDatasetRegistry:
     def bundle_path(self, name, version=None):
         """Resolve the store path without checking it or creating directories."""
         version = self.resolve_version(name, version)
+        if self._store_path is not None:
+            return Path(self._store_path(name, version))
         parent = Path(self._root()) / name
         if path_present(parent):
             _directory(parent)

@@ -2,6 +2,11 @@
 
 ## 1.17.0
 
+- Add a `store_path(name, version)` callback to `VersionedDatasetRegistry` for
+  exact consumer-chosen managed-store locations. It is mutually exclusive with
+  root configuration, does not run at construction, and preserves immutable
+  generations and foreign-directory protection (#93).
+
 - Add `verify_files=False` bundle inspection and cache-hit checks that validate
   ownership, source identity, required file types, readability and recorded
   sizes without reading payloads. Fast results never claim hash verification.

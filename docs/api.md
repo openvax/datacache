@@ -1243,12 +1243,16 @@ generation. Paths remain usable across refreshes until explicitly removed.
 ## VersionedDatasetRegistry
 
 ```text
-VersionedDatasetRegistry(datasets, *, cache_root=None, cache_dir=None, verified=True)
+VersionedDatasetRegistry(datasets, *, cache_root=None, cache_dir=None, store_path=None, verified=True)
 ```
 
-Select exactly one root path or a zero-argument `cache_dir` callable. Each dataset
+Select exactly one root path, zero-argument `cache_dir` callable, or
+`store_path(name, version)` callback selecting the exact managed store path.
+Root strategies keep `<root>/<name>/<version>`; the exact-path callback owns
+the consumer layout but not the internal generation layout. Each dataset
 specifies a `default_version` and `versions`, mapping concrete versions to asset
-mappings. Construction validates metadata and performs no writes or networking.
+mappings. Construction validates metadata and performs no writes or networking,
+and does not invoke callbacks. Path callbacks should be pure path computations.
 The [bundle guide](bundles.md) includes an example and downstream migration notes.
 
 | Method | Result |
