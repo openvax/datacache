@@ -88,10 +88,10 @@ def _directory(path):
         raise FileValidationError(path, 'expected a directory, not a link')
 
 
-def _store(path):
+def _store(path, *, marker=STORE):
     _directory(path)
-    if read_json(path / STORE) != {'format': FORMAT}:
-        raise FileValidationError(path, 'unrecognized bundle store')
+    if read_json(path / marker) != {'format': FORMAT}:
+        raise FileValidationError(path, 'unrecognized generation store')
     _directory(path / 'generations')
 
 
@@ -214,19 +214,19 @@ def _paths(inspection):
     return {name: value.path for name, value in inspection.files.items()}
 
 
-def _initialize(path):
+def _initialize(path, *, marker=STORE):
     existing_mode = None
     if path_present(path):
         _directory(path)
         if any(path.iterdir()):
-            _store(path)  # Never take over an arbitrary nonempty directory.
+            _store(path, marker=marker)  # Never adopt a foreign directory.
             return
         existing_mode = stat.S_IMODE(path.lstat().st_mode)
     # Publish a complete store skeleton at once: concurrent first-time readers
     # see absence or a recognized store, never a half-written ownership marker.
     staging = Path(tempfile.mkdtemp(prefix='.datacache-store-', dir=path.parent))
     try:
-        write_json(staging / STORE, {'format': FORMAT}, mode=_file_mode(path.parent))
+        write_json(staging / marker, {'format': FORMAT}, mode=_file_mode(path.parent))
         (staging / 'generations').mkdir()
         os.chmod(staging, existing_mode if existing_mode is not None else
                  stat.S_IMODE((staging / 'generations').stat().st_mode))

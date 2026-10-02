@@ -150,6 +150,11 @@ rebuild a matching database; also increment `version` when its data changes.
 
 ## Custom single-file transformations
 
+For versioned dependencies, multiple outputs, resumable compressed inputs or
+automatic post-publication source cleanup, use the
+[derived-artifact materialization API](materialization.md). The existing helper
+below retains its compatible single-file behavior.
+
 ```python
 from pathlib import Path
 from datacache import fetch_and_transform

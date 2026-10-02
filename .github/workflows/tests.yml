@@ -51,6 +51,7 @@ jobs:
         run: |
           python -m examples.basic_usage
           python -m examples.versioned_datasets
+          python -m examples.reference_dna_materialization
       - name: Publish coverage to Coveralls
         # Coverage upload is best-effort: parallel matrix jobs race to post to
         # the same Coveralls build, and the loser gets a "build already closed"

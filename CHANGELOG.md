@@ -2,6 +2,13 @@
 
 ## 1.17.0
 
+- Add `materialize` and offline `inspect_materialization` for caller-built
+  multi-file artifacts with complete raw-input/transform/output dependency
+  receipts. Preserve completed inputs and HTTP resume state across failures,
+  publish immutable output generations atomically, and discard owned inputs
+  only after successful publication unless retention is requested. Local
+  sources stay caller-owned; scientific validation stays in the builder (#90).
+
 - Add a `store_path(name, version)` callback to `VersionedDatasetRegistry` for
   exact consumer-chosen managed-store locations. It is mutually exclusive with
   root configuration, does not run at construction, and preserves immutable

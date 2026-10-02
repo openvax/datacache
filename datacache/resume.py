@@ -244,7 +244,8 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
                 staged = handle.name
                 with partial.open('rb') as source:
                     download.copyfileobj(source, handle)
-            record = (provenance.describe(download_url, os.stat(staged), expected_sha256)
+            record = (provenance.describe(download_url, os.stat(staged), expected_sha256,
+                                          transport=metadata.get('validator'))
                       if record_provenance else None)
             download._publish_file(staged, destination, record)
         finally:

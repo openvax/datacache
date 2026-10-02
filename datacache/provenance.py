@@ -60,22 +60,27 @@ def redact_url(url):
     return urlunsplit((parts.scheme, host, parts.path, "", ""))
 
 
-def describe(download_url, info, sha256=None):
+def describe(download_url, info, sha256=None, *, transport=None):
     """Provenance, as JSON text, for the bytes that stat info describes.
 
     info must come from the exact bytes being published (the staged file), not
     from whatever is at the destination afterwards, which a concurrent writer
     may have replaced. sha256 is recorded only when those bytes were verified
     against a trusted expectation: a digest of what a server sent proves nothing.
+    transport optionally records the validator accepted by resumable transport;
+    it is evidence of representation consistency, not a trusted content hash.
     """
-    return json.dumps({
+    record = {
         "format": FORMAT,
         "url": redact_url(download_url),
         "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "size": info.st_size,
         "mtime_ns": info.st_mtime_ns,
         "sha256": sha256.lower() if sha256 else None,
-    }, sort_keys=True)
+    }
+    if transport is not None:
+        record['transport'] = transport
+    return json.dumps(record, sort_keys=True)
 
 
 def remove(path):
