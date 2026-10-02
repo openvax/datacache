@@ -36,6 +36,7 @@ from .bundles import BundleInspection, VersionedDatasetRegistry, inspect_bundle,
 from .archives import (
     ArchiveInspection, VersionedArchiveRegistry, inspect_archive, install_archive)
 from .file_registry import VersionedFileRegistry
+from .materialization import MaterializationInspection, inspect_materialization, materialize
 from .version import __version__
 
 __all__ = [
@@ -43,6 +44,9 @@ __all__ = [
     'fetch_file',
     'discard_partial',
     'BundleInspection',
+    'MaterializationInspection',
+    'inspect_materialization',
+    'materialize',
     'ArchiveInspection',
     'VersionedArchiveRegistry',
     'VersionedDatasetRegistry',

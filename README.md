@@ -19,8 +19,9 @@ python -m pip install datacache
 python -m pip install "datacache[html]"
 ```
 
-tqdm is installed by default; progress displays are opt-in with
-`show_progress=True`. Normal use does not import tqdm or configure your
+tqdm is installed by default; existing download APIs enable displays with
+`show_progress=True`, while `materialize` enables them by default. Quiet use
+does not import tqdm or configure your
 application's logging. The old `datacache[progress]` install syntax remains
 supported as a compatibility alias.
 
@@ -165,6 +166,7 @@ lists every public signature, default, return value, exception, and example.
 | Task | API | Result |
 | --- | --- | --- |
 | Install or reuse a versioned dataset | `VersionedDatasetRegistry`, `install_bundle(...)` | Mapping of asset names to snapshot paths |
+| Build derived files from versioned dependencies | `materialize(...)` | Mapping of output names to snapshot paths |
 | Install versioned archive trees | `VersionedArchiveRegistry`, `install_archive(...)` | Immutable extracted-generation `Path` |
 | Reuse an established fixed-path versioned file cache | `VersionedFileRegistry` | One Path and a legacy-compatible root receipt |
 | Inspect a complete dataset generation | `inspect_bundle(...)` | `BundleInspection` |
@@ -189,6 +191,9 @@ FASTA files with `fetch_file`, then parse them in the consuming library.
 
 ## Guides
 
+- [Derived-artifact materialization](docs/materialization.md): caller-owned
+  scientific builders, atomic output generations, dependency receipts, resumable
+  inputs and post-publication input cleanup.
 - [Versioned datasets and bundles](docs/bundles.md): pinned versions, atomic installation,
   offline recovery, path lifetime, and downstream adoption.
 - [Archive directory installation](docs/archives.md): safe tar extraction, split archives,

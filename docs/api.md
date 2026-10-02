@@ -17,6 +17,7 @@ explain the longer workflows and compatibility guarantees.
 | Downloading | [fetch_file](#fetch_file), [fetch_csv_dataframe](#fetch_csv_dataframe), [fetch_and_transform](#fetch_and_transform) |
 | Complete archive trees | [install_archive](#install_archive), [inspect_archive](#inspect_archive), [ArchiveInspection](#archiveinspection), [VersionedArchiveRegistry](#versionedarchiveregistry) |
 | Versioned file bundles | [install_bundle](#install_bundle), [inspect_bundle](#inspect_bundle), [BundleInspection](#bundleinspection), [VersionedDatasetRegistry](#versioneddatasetregistry), [VersionedFileRegistry](#versionedfileregistry) |
+| Derived artifacts | [materialize](#materialize), [inspect_materialization](#inspect_materialization), [MaterializationInspection](#materializationinspection) |
 | Paths and presence | [expected_path](#expected_path), [file_exists](#file_exists), [build_local_filename](#build_local_filename), [get_data_dir](#get_data_dir), [get_cache_root](#get_cache_root), [resolve_path](#resolve_path), [build_path](#build_path), [ensure_dir](#ensure_dir), [clear_cache](#clear_cache) |
 | Integrity and permissions | [validate_file](#validate_file), [inspect_file](#inspect_file), [inspect_files](#inspect_files), [make_file_readable](#make_file_readable) |
 | Results and exceptions | [FileInspection](#fileinspection), [CacheInspection](#cacheinspection), [FileValidationError](#filevalidationerror) |
@@ -1265,6 +1266,52 @@ The [bundle guide](bundles.md) includes an example and downstream migration note
 | `ensure(name, version=None, **download_options)` | Download/reuse, then return `local_path`. |
 | `is_cached(name, version=None, *, verify_files=False)` | Whether inspection reports `available`; payload verification is opt-in. |
 | `status(*, verify_files=False)` | One metadata-only row per pinned default: name, version, description, available_versions and inspection. Pass `verify_files=True` for full checks. |
+
+## materialize
+
+```text
+materialize(destination, sources, *, transform, outputs, builder, force=False,
+            retain_sources=False, verify_files=True, download_options=None)
+```
+
+Install caller-built outputs and their dependency receipt as one immutable
+generation. Sources map relative names to `{url: ...}` or `{path: ...}`, plus
+optional raw-byte `sha256`/`size`; outputs map names to optional output-byte
+`sha256`/`size`. Transform is `{version: nonempty_string, options: JSON_value}`.
+The builder receives private `(source_paths, output_paths)` mappings, must leave
+inputs unchanged and create/close exactly the declared regular output files.
+Returns name-to-string snapshot paths; builder return values are ignored.
+
+Dependency mismatch/corruption requires explicit `force=True`. Completed inputs
+survive failures; successful publication removes owned inputs unless retention
+is requested. Caller-owned local inputs and old generations are never deleted.
+Cache hits are offline/read-only. Fast reuse is opt-in; new publication/recovery
+always hash files. Download/copy/verification progress defaults on, configurable
+through download options. Installation initially requires POSIX local storage.
+See the [materialization guide](materialization.md) for receipts, resume, callback
+contracts, retention, recovery and peak/retained disk use.
+
+## inspect_materialization
+
+```text
+inspect_materialization(destination, sources=None, *, transform=None, outputs=None,
+                        verify_files=True)
+```
+
+Return `MaterializationInspection` offline without writes, locks, original
+input access or repair. Supply all of sources/transform/outputs for requested
+dependency checks, or omit all three for receipt-only consistency checks.
+`verify_files=False` validates inventory, types and sizes without payload reads
+and never claims trusted verification.
+
+## MaterializationInspection
+
+A read-only snapshot with `path`, `status`, `verified`, `generation`, `files`,
+`sources`, `transform` and `error`. Status is available, missing, invalid,
+inaccessible or recovery-required. `verified` means all output files matched
+caller-trusted hashes now. Source records separately report raw observed hashes,
+sizes, redacted origins, identity, acquisition time, acquisition-time trusted
+verification and available validated transport metadata.
 
 ## VersionedFileRegistry
 
