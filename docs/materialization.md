@@ -55,7 +55,8 @@ Outputs are a nonempty mapping from relative names to optional `sha256` and
 supported; observation and a local consistency receipt do not authenticate
 these bytes. An expected size of zero supports explicitly empty inputs/outputs.
 Names cannot escape the store, collide by case or as files/directories, or
-occupy reserved metadata/provenance paths.
+occupy reserved metadata names. Sources also cannot collide with their
+automatic provenance-sidecar paths.
 
 `transform` contains a nonempty opaque `version` string and optional JSON
 `options`. Bump this identity when parsing, validation, index format or other

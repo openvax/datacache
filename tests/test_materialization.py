@@ -463,14 +463,15 @@ def test_killed_builder_retries_with_completed_local_input(tmp_path, sources, ou
     store = tmp_path / 'dna'
     ready = tmp_path / 'builder-ready'
     code = '''
-import json, sys, time
+import gzip, json, sys, time
 from pathlib import Path
 from datacache import materialize
 store, source, ready, outputs = sys.argv[1:]
 def builder(inputs, targets):
-    Path(targets['dna.fa']).write_bytes(b'partial')
-    Path(ready).write_text('ready')
-    time.sleep(30)
+    with gzip.open(inputs['dna.fa.gz'], 'rb') as compressed:
+        Path(targets['dna.fa']).write_bytes(compressed.read(4))
+        Path(ready).write_text('ready')
+        time.sleep(30)
 materialize(store, {'dna.fa.gz': {'path': source}}, transform={'version':'fasta-1','options':{'validate':True}},
             outputs=json.loads(outputs), builder=builder, download_options={'show_progress':False})
 '''
@@ -745,3 +746,24 @@ def test_builder_paths_stay_absolute_after_working_directory_change(tmp_path, so
         build(inputs, targets)
     paths = install(Path('relative') / 'dna', sources, outputs, builder=changing_directory)
     assert Path(paths['dna.fa']).read_bytes() == DATA
+
+
+def test_local_copy_honors_chunk_size_and_progress_callback(tmp_path, sources, outputs):
+    events = []
+    install(tmp_path / 'dna', sources, outputs,
+            download_options={'chunk_size': 4, 'progress_callback': lambda *event: events.append(event),
+                              'show_progress': False})
+    assert events == [(count, len(COMPRESSED)) for count in range(4, len(COMPRESSED) + 1, 4)]
+
+
+def test_interrupted_local_copy_never_modifies_original(tmp_path, sources, outputs):
+    store = tmp_path / 'dna'
+    def interrupt(done, total):
+        raise KeyboardInterrupt
+    with pytest.raises(KeyboardInterrupt):
+        install(store, sources, outputs, download_options={'chunk_size': 4, 'progress_callback': interrupt,
+                                                         'show_progress': False})
+    assert Path(sources['dna.fa.gz']['path']).read_bytes() == COMPRESSED
+    assert not (input_dir(store) / 'dna.fa.gz').exists()
+    assert not list(input_dir(store).glob('.copy-*'))
+    assert install(store, sources, outputs)

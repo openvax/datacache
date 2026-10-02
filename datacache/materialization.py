@@ -364,10 +364,12 @@ def _acquire_inputs(directory, definition, acquisition, options, *, force=False)
                 with os.fdopen(open_regular(source), 'rb') as handle, temporary.open('xb') as output:
                     with Progress(options['show_progress'], 'Copying', os.fstat(handle.fileno()).st_size) as progress:
                         size = 0
-                        for chunk in iter(lambda: handle.read(CHUNK_SIZE), b''):
+                        for chunk in iter(lambda: handle.read(options.get('chunk_size', CHUNK_SIZE)), b''):
                             output.write(chunk)
                             size += len(chunk)
                             progress(size, progress.total)
+                            if options.get('progress_callback') is not None:
+                                options['progress_callback'](size, progress.total)
                     output.flush()
                     os.fsync(output.fileno())
                 _observe(temporary, spec, show_progress=options['show_progress'])
