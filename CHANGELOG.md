@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.17.0
+
+- Add `verify_files=False` bundle inspection and cache-hit checks that validate
+  ownership, source identity, required file types, readability and recorded
+  sizes without reading payloads. Fast results never claim hash verification.
+  Dataset registry path lookup, presence and status use this mode by default;
+  explicit inspection and installation retain full checks. New generations and
+  recovery always validate bytes before publication (#88).
+
 ## 1.16.1
 
 - Always install `tqdm>=4.64` as a required dependency. Progress displays remain

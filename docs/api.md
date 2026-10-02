@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.16.1. Import these names from `datacache`.
+public `Cache` method in DataCache 1.17.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -1206,25 +1206,32 @@ DataCache. `verified=False` explicitly enables historical unpinned catalogues.
 ## install_bundle
 
 ```text
-install_bundle(destination, assets, *, force=False, verified=True, download_options=None)
+install_bundle(destination, assets, *, force=False, verified=True, verify_files=True, download_options=None)
 ```
 
 Atomically install a mapping of relative asset names to `{url, sha256, size,
 decompress?}` metadata. Returns a dict of asset names to immutable generation
 paths. Invalid caches require `force=True`. `verified=False` explicitly permits
 unpinned sources; their observed hashes are recorded without authenticating them.
+`verify_files=False` avoids payload reads for existing-generation checks; it
+checks readability, file types and recorded sizes but cannot detect same-size
+corruption. New generations and explicit recovery always validate bytes before
+publication, regardless of this cache-hit setting.
 `download_options` accepts timeout, chunk size, progress, retry settings and resume.
 Publication requires a POSIX local filesystem. [Complete guide](bundles.md).
 
 ## inspect_bundle
 
 ```text
-inspect_bundle(destination, assets=None)
+inspect_bundle(destination, assets=None, *, verify_files=True)
 ```
 
 Return a `BundleInspection` without writes, network, locks or recovery. Supply
 trusted assets to verify against the registry; omit them to check consistency
 against the installed generation's own recorded hashes (`verified=False`).
+`verify_files=False` validates metadata, source expectations, required file types,
+readability and recorded sizes without reading payloads. Its bundle and file
+results always have `verified=False`, even with trusted hashes in the registry.
 
 ## BundleInspection
 
@@ -1248,12 +1255,12 @@ The [bundle guide](bundles.md) includes an example and downstream migration note
 | --- | --- |
 | `resolve_version(name, version=None)` | Concrete version label, applying the pinned default. Unknown names/versions raise `ValueError`. |
 | `bundle_path(name, version=None)` | Expected managed store `Path`, without creating it. |
-| `inspect(name, version=None)` | Read-only `BundleInspection`. |
-| `download(name, version=None, *, force=False, **download_options)` | Install/reuse and return a dict of asset snapshot paths. |
-| `local_path(name, version=None, *, asset=None)` | Installed single asset's `Path`, or a multi-file generation directory; select one asset by name. Missing raises `FileNotFoundError`; invalid/recovery-required raises `FileValidationError`. |
+| `inspect(name, version=None, *, verify_files=True)` | Read-only `BundleInspection`; full payload verification by default. |
+| `download(name, version=None, *, force=False, verify_files=True, **download_options)` | Install/reuse and return a dict of asset snapshot paths; the flag selects cache-hit cost only. |
+| `local_path(name, version=None, *, asset=None, verify_files=False)` | Installed single asset's `Path`, or a multi-file generation directory; select one asset by name. Metadata-only by default. Missing raises `FileNotFoundError`; invalid/recovery-required raises `FileValidationError`. |
 | `ensure(name, version=None, **download_options)` | Download/reuse, then return `local_path`. |
-| `is_cached(name, version=None)` | Whether verified inspection reports `available`. |
-| `status()` | One row per dataset's pinned default: name, version, description, available_versions and inspection. |
+| `is_cached(name, version=None, *, verify_files=False)` | Whether inspection reports `available`; payload verification is opt-in. |
+| `status(*, verify_files=False)` | One metadata-only row per pinned default: name, version, description, available_versions and inspection. Pass `verify_files=True` for full checks. |
 
 ## VersionedFileRegistry
 
