@@ -49,187 +49,23 @@ you explicitly refresh them with `force=True`; DataCache does not check whether
 the remote file has changed. Add `show_progress=True` to display a download bar;
 no extra installation is needed.
 
-### Find, inspect, or clear your cache
 
-`Cache("my-project")` selects a platform cache directory without creating it.
-`Cache()` and top-level helpers without a `subdir` use the name `datacache`.
-
-| Platform | Default directory for `Cache("my-project")` |
-| --- | --- |
-| Linux / Unix | `$XDG_CACHE_HOME/my-project`, or `~/.cache/my-project` when unset |
-| macOS | `~/Library/Caches/my-project` |
-| Windows | `%LOCALAPPDATA%\my-project\my-project\Cache` |
-
-A cache name selects its own application directory; it is not nested inside
-the `datacache` directory. To choose the exact root instead, use
-`Cache("my-project", cache_root="/data/my-project")`. A relative root stays
-relative and is re-resolved against the working directory on every call, so use
-an absolute root if your program may change directories.
-
-Using the cache from the quickstart:
-
-```python
-print(cache.cache_directory_path)  # Directory containing cached files.
-print(cache.local_path(filename="LICENSE"))  # Computes a path without creating it.
-print(cache.inspect(filename="LICENSE").status)  # available, missing, corrupt, or inaccessible
-
-# Explicit cleanup; uncomment only when you want to remove these cached files:
-# cache.delete_url(url)  # Removes this root's downloads for this URL.
-# cache.delete_all()  # Removes ALL contents, keeping the root directory.
-```
-
-Inspection works offline and never repairs files. Without an expected SHA-256,
-`available` means readable and regular; it does not prove the bytes are correct.
-`delete_url` also finds the URL-derived filenames under this root, whichever
-instance created them, but explicit filenames from earlier instances are not
-recorded persistently. Keep a dedicated
-cache directory: `delete_all()` removes every file and subdirectory in it and
-raises `FileNotFoundError` if the root does not exist. For the default platform
-location, `clear_cache("my-project")` removes the root too. See the
-[cleanup API](https://github.com/openvax/datacache/blob/master/docs/api.md#cachedelete_all)
-for details.
-
-### Offline example with integrity checking
-
-This example runs entirely offline and cleans up after itself:
-
-```python
-import gzip
-import hashlib
-from pathlib import Path
-from tempfile import TemporaryDirectory
-
-from datacache import Cache
-
-with TemporaryDirectory() as directory:
-    root = Path(directory)
-    contents = b">reference\nACGT\n"
-    source = root / "reference.fa.gz"
-    source.write_bytes(gzip.compress(contents))
-
-    cache = Cache("references", cache_root=root / "cache")
-    path = cache.fetch(
-        source.as_uri(),  # HTTP, HTTPS, and FTP URLs also work.
-        filename="reference.fa",
-        expected_sha256=hashlib.sha256(contents).hexdigest(),
-    )
-    assert Path(path).read_bytes() == contents
-    source.unlink()
-    assert cache.fetch(source.as_uri(), filename="reference.fa") == path
-    print(cache.inspect(filename="reference.fa").status)  # available
-```
-
-For real releases, get the expected hash from trusted release metadata. Hashes
-describe the installed bytes **after** decompression or conversion. A hash
-computed from an untrusted download does not establish authenticity.
-
-To install at an exact path instead of using a cache key:
-
-```python
-from datacache import fetch_file
-
-path = fetch_file(
-    "https://example.org/releases/v1/records.tsv.gz",
-    destination="references/v1/records.tsv",
-    decompress=True,
-    timeout=30,
-    show_progress=True,
-)
-```
-
-Replace the example URL with your dataset URL. Existing files are reused;
-`force=True` explicitly replaces them. When integrity expectations are supplied,
-an invalid cache hit raises `FileValidationError` instead of silently replacing
-the file. Failed downloads leave the previous file intact.
-
-## Versioned datasets and large downloads
-
-Use `VersionedDatasetRegistry` for pinned single-file or multi-file datasets.
-It verifies every asset before publishing a complete generation, supports
-read-only offline inspection, and keeps returned paths usable during refreshes.
-The [bundle guide](docs/bundles.md) covers shared OpenVax roots, generated indices,
-and migration from downstream registries.
-
-For large raw HTTP files, pass `resume=True` and `expected_size` to `fetch_file`
-or `Cache.fetch`. Supply `expected_sha256` when available; otherwise the server
-must provide a strong ETag for safe range continuation. Size-only validation
-does not verify a content checksum. Pass `raw=True` to preserve gzip, ZIP, or
-HTML payloads at arbitrary output names without conversion. Interrupted transfers retain
-private partials and continue on retry. See [resumable downloads](docs/downloads.md#resumable-http-downloads).
-
-## Choose the right API
-
-The [complete API reference](https://github.com/openvax/datacache/blob/master/docs/api.md)
-lists every public signature, default, return value, exception, and example.
-
-| Task | API | Result |
-| --- | --- | --- |
-| Install or reuse a versioned dataset | `VersionedDatasetRegistry`, `install_bundle(...)` | Mapping of asset names to snapshot paths |
-| Install versioned archive trees | `VersionedArchiveRegistry`, `install_archive(...)` | Immutable extracted-generation `Path` |
-| Reuse an established fixed-path versioned file cache | `VersionedFileRegistry` | One Path and a legacy-compatible root receipt |
-| Inspect a complete dataset generation | `inspect_bundle(...)` | `BundleInspection` |
-| Inspect an installed archive tree | `inspect_archive(...)` | `ArchiveInspection` |
-| Discard retained partial download bytes | `discard_partial(destination)` | Installed file unchanged |
-| Download or reuse one file | `fetch_file(...)`, `Cache.fetch(...)` | Local path string |
-| Compute a path without filesystem access | `expected_path(...)`, `Cache.local_path(...)` | Path string |
-| Choose a root shared by several packages | `get_cache_root(name, *envkeys)` | Path string |
-| Check presence | `file_exists(...)`, `Cache.exists(...)` | Boolean; does not establish integrity |
-| Validate bytes, raising on failure | `validate_file(...)` | Path string |
-| Inspect without repair or network access | `inspect_file(...)`, `Cache.inspect(...)` | `FileInspection` |
-| Inspect a set of required files | `inspect_files(root, files)` | `CacheInspection` |
-| Explicitly share an existing private file | `make_file_readable(...)`, `Cache.make_readable(...)` | Path string; POSIX only |
-| Download and parse CSV/TSV | `fetch_csv_dataframe(...)` | pandas DataFrame |
-| Cache a custom file transformation | `fetch_and_transform(...)` | Transformer/loader result |
-| Create a SQLite cache | `db_from_dataframe(...)`, `db_from_dataframes(...)` | Open SQLite connection |
-| Download CSV into SQLite | `fetch_csv_db(...)` | Open SQLite connection |
-| Reopen a database with matching metadata | `connect_if_correct_version(...)` | Connection or `None` |
-
-The library does not export `fetch_fasta_dict` or `fetch_fasta_db`. Download
-FASTA files with `fetch_file`, then parse them in the consuming library.
+<a id="find-inspect-or-clear-your-cache"></a>
+<a id="offline-example-with-integrity-checking"></a>
+<a id="versioned-datasets-and-large-downloads"></a>
+<a id="choose-the-right-api"></a>
+<a id="guarantees-and-limits"></a>
 
 ## Guides
 
-- [Versioned datasets and bundles](docs/bundles.md): pinned versions, atomic installation,
-  offline recovery, path lifetime, and downstream adoption.
-- [Archive directory installation](docs/archives.md): safe tar extraction, split archives,
-  transactional consumer receipts, and legacy-directory migration.
-- [API reference](https://github.com/openvax/datacache/blob/master/docs/api.md):
-  all public functions, `Cache` methods, inspection results, and exceptions.
-- [Downloads and cache inspection](https://github.com/openvax/datacache/blob/master/docs/downloads.md): destinations, naming,
-  decompression, integrity, retries, concurrency, and downstream compatibility.
-- [Progress and logging](https://github.com/openvax/datacache/blob/master/docs/progress.md): tqdm, callbacks, retries, and
-  independent download options for CSV helpers.
-- [SQLite and transformations](https://github.com/openvax/datacache/blob/master/docs/data.md): numeric fidelity, column names,
-  versioning, rollback, connection ownership, and custom transformations.
-- [Shared caches](https://github.com/openvax/datacache/blob/master/docs/shared-caches.md): permissions, read-only use, and
-  troubleshooting existing installations.
-- [Downstream integration](https://github.com/openvax/datacache/blob/master/docs/integration.md): contracts for consuming libraries.
-- [Release notes](https://github.com/openvax/datacache/blob/master/CHANGELOG.md) and
-  [release procedure](https://github.com/openvax/datacache/blob/master/RELEASING.md).
-
-## Guarantees and limits
-
-Downloads and complete archive trees are staged privately and published
-atomically after validation.
-New files respect the process umask; replacements preserve existing access
-permissions. This includes pyensembl's private download helpers.
-
-Custom single-file transformations publish only successful output. Existing
-SQLite caches rebuild in a transaction: failure rolls back both schema and
-rows. New databases are built privately before publication. Cached data is
-reused by path or database version; DataCache does not automatically discover
-remote changes or repair previously corrupted caches.
-
-Upgrades keep existing cache names and database metadata compatible. Valid
-cache hits do not rewrite files, change permissions, or apply new schema
-constraints. See [upgrading existing caches](https://github.com/openvax/datacache/blob/master/docs/data.md#upgrading-existing-caches)
-and [sharing old private files](https://github.com/openvax/datacache/blob/master/docs/shared-caches.md#files-already-downloaded-as-0600).
-
-File publication requires local filesystem support for atomic replacement;
-new SQLite database publication also requires hard links. SQLite locking and
-transactions govern database rebuilds. Use `install_bundle` for atomic multi-file
-publication. Bundle installation and resumable transfers require POSIX local
-filesystems; distributed coordination is outside their scope.
+- [Working offline example, verification and interface choices](docs/index.md)
+- [Downloads, inspection, integrity, retries and resumption](docs/downloads.md)
+- [Tables, SQLite and transformations](docs/data.md)
+- [Shared caches](docs/shared-caches.md)
+- [Progress and logging](docs/progress.md)
+- [Pinned bundles](docs/bundles.md) and [archive trees](docs/archives.md)
+- [Interface selection and guarantees](docs/reference/choosing.md)
+- [Complete API reference](docs/api.md)
 
 ## Development
 
@@ -242,3 +78,5 @@ python -m examples.basic_usage
 Tests use local files, mocked responses, and local HTTP servers. They do not
 depend on external dataset servers. See CI for the Python, dependency, and
 operating-system combinations exercised.
+
+Build the site with `python -m pip install -r requirements-docs.txt` and `./docs.sh`.
