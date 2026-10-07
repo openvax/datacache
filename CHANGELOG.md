@@ -4,7 +4,10 @@
 
 - Add a `store_path(name, version)` callback to `VersionedDatasetRegistry` for
   exact consumer-chosen managed-store locations. It is mutually exclusive with
-  root configuration and does not run at construction (#93).
+  root configuration and does not run at construction; the first lookup
+  resolves every dataset version once and rejects two versions sharing a
+  store. A populated foreign directory is never taken over, with or without
+  `force=True` (#93).
 - Add opt-in `verify_files=False` to `inspect_bundle`, `install_bundle` and
   `VersionedDatasetRegistry`'s `inspect`, `local_path`, `is_cached`, `status`,
   `download` and `ensure`: checks ownership, source identity, required file
@@ -17,6 +20,16 @@
   instead of inspecting the bundle a second time.
 - `VersionedArchiveRegistry.status` takes `verify_files` like the archive
   registry's other lookups; it stays metadata-only by default.
+
+## 1.18.1
+
+- Reorganize the documentation into a site (`./docs.sh`, published from
+  master): installation and an offline verified-cache example on the home
+  page, guides ordered by common tasks, and an interface and guarantees
+  reference. The README links to the guides by absolute URL, so they work on
+  PyPI, and old README section links land on the guides that replaced them.
+- Run the documentation's examples and check internal links in the
+  documentation build.
 
 ## 1.18.0
 

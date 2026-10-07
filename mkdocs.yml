@@ -1,0 +1,49 @@
+site_name: datacache
+site_description: Download, verify and reuse datasets for Python applications
+site_url: https://openvax.github.io/datacache/
+repo_url: https://github.com/openvax/datacache
+repo_name: openvax/datacache
+edit_uri: edit/master/docs/
+strict: true
+theme:
+  name: material
+  font: false
+  palette:
+    primary: white
+    accent: blue
+  features:
+  - navigation.indexes
+  - navigation.expand
+  - content.code.copy
+validation:
+  links:
+    not_found: warn
+    unrecognized_links: warn
+    anchors: warn
+plugins:
+- search
+markdown_extensions:
+- tables
+- toc:
+    permalink: true
+- pymdownx.superfences
+extra_css:
+- stylesheets/docs.css
+nav:
+- Home: index.md
+- Common tasks:
+  - Download and inspect files: downloads.md
+  - Read tables and build SQLite caches: data.md
+  - Share a cache: shared-caches.md
+  - Report progress: progress.md
+- Versioned datasets:
+  - Install bundles: bundles.md
+  - Install archive trees: archives.md
+  - Use the legacy file registry: file_registry.md
+  - Integrate a consuming library: integration.md
+- Reference:
+  - Choose an interface: reference/choosing.md
+  - API reference: api.md
+  - Release notes: https://github.com/openvax/datacache/blob/master/CHANGELOG.md
+- Contributing:
+  - Documentation style: dev/documentation-style.md
