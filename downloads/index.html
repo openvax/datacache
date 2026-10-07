@@ -1,0 +1,1491 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Download, verify and reuse datasets for Python applications">
+      
+      
+      
+        <link rel="canonical" href="https://openvax.github.io/datacache/downloads/">
+      
+      
+        <link rel="prev" href="..">
+      
+      
+        <link rel="next" href="../data/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Download and inspect files - datacache</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/docs.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="white" data-md-color-accent="blue">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#download-and-cache-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="datacache" class="md-header__button md-logo" aria-label="datacache" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            datacache
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Download and inspect files
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/openvax/datacache" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    openvax/datacache
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="datacache" class="md-nav__button md-logo" aria-label="datacache" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    datacache
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/openvax/datacache" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    openvax/datacache
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common tasks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Common tasks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Download and inspect files
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Download and inspect files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#verified-downloads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verified downloads
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#provenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provenance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#transient-http-failures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transient HTTP failures
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#small-metadata-and-freshness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Small metadata and freshness
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#read-only-cache-inspection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read-only cache inspection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#downstream-compatibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downstream compatibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resumable-http-downloads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resumable HTTP downloads
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read tables and build SQLite caches
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shared-caches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Share a cache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../progress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Report progress
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versioned datasets
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Versioned datasets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bundles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install bundles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archives/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install archive trees
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../file_registry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use the legacy file registry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrate a consuming library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/choosing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Choose an interface
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/openvax/datacache/blob/master/CHANGELOG.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dev/documentation-style/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentation style
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#verified-downloads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Verified downloads
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#provenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provenance
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#transient-http-failures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transient HTTP failures
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#small-metadata-and-freshness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Small metadata and freshness
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#read-only-cache-inspection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Read-only cache inspection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#downstream-compatibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downstream compatibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resumable-http-downloads" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resumable HTTP downloads
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="download-and-cache-reference">Download and cache reference<a class="headerlink" href="#download-and-cache-reference" title="Permanent link">&para;</a></h1>
+<p>See the <a href="../api/">API reference</a> for signatures, defaults, return values, and errors.</p>
+<h2 id="verified-downloads">Verified downloads<a class="headerlink" href="#verified-downloads" title="Permanent link">&para;</a></h2>
+<p>Use <code>destination</code> to install a single file at an exact path, including its
+filename. Supply trusted integrity metadata to check both cached files and new
+downloads:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">datacache</span><span class="w"> </span><span class="kn">import</span> <span class="n">fetch_file</span><span class="p">,</span> <span class="n">validate_file</span><span class="p">,</span> <span class="n">FileValidationError</span>
+
+<span class="n">path</span> <span class="o">=</span> <span class="n">fetch_file</span><span class="p">(</span>
+    <span class="s2">"https://example.org/releases/v1/records.tsv.gz"</span><span class="p">,</span>
+    <span class="n">destination</span><span class="o">=</span><span class="s2">"/data/references/v1/records.tsv"</span><span class="p">,</span>
+    <span class="n">decompress</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">expected_sha256</span><span class="o">=</span><span class="n">release_metadata</span><span class="p">[</span><span class="s2">"installed_sha256"</span><span class="p">],</span>
+    <span class="n">expected_size</span><span class="o">=</span><span class="n">release_metadata</span><span class="p">[</span><span class="s2">"installed_size"</span><span class="p">],</span>
+    <span class="n">timeout</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="c1"># Read-only validation: no requests, directory creation, locks, or repair.</span>
+<span class="n">validate_file</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">expected_sha256</span><span class="o">=</span><span class="n">release_metadata</span><span class="p">[</span><span class="s2">"installed_sha256"</span><span class="p">])</span>
+</code></pre></div>
+<p><code>destination</code> accepts a string or <code>pathlib.Path</code> and cannot be combined with
+<code>filename</code>, <code>subdir</code>, or <code>cache_root</code>. Existing calls using the default cache continue to work
+and can also supply <code>expected_sha256</code> and <code>expected_size</code>. Parent directories are
+created only when fetching a missing file or explicitly refreshing it. A valid
+cached file can be reused offline in a readable, non-writable installation.</p>
+<p>Both expectations always describe <strong>installed bytes</strong>, after decompression or
+HTML-to-CSV conversion. They do not describe HTTP wire bytes or a compressed
+archive when its contents are being installed. To verify and retain an archive
+at any output name, pass <code>raw=True</code>. This also disables HTML-to-CSV conversion:</p>
+<div class="highlight"><pre><span></span><code><span class="n">path</span> <span class="o">=</span> <span class="n">fetch_file</span><span class="p">(</span>
+    <span class="n">archive_url</span><span class="p">,</span>
+    <span class="n">destination</span><span class="o">=</span><span class="s2">"reference.bin"</span><span class="p">,</span>
+    <span class="n">raw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">expected_sha256</span><span class="o">=</span><span class="n">release_metadata</span><span class="p">[</span><span class="s2">"archive_sha256"</span><span class="p">],</span>
+    <span class="n">expected_size</span><span class="o">=</span><span class="n">release_metadata</span><span class="p">[</span><span class="s2">"archive_size"</span><span class="p">],</span>
+    <span class="n">record_provenance</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<p><code>Cache.fetch</code> accepts the same <code>raw=True</code> option with <code>filename</code>. Raw mode is
+incompatible with <code>decompress=True</code>. It preserves the downloaded payload after
+normal HTTP transfer decoding, not encoded HTTP wire bytes. Hashes and sizes
+refer to that payload. A cache hit still uses the supplied local validation
+checks; changing transformation options does not replace an existing output.
+Use distinct names, trusted expectations, or <code>force=True</code> when switching modes.</p>
+<p>Without <code>raw=True</code>, keeping the source's <code>.gz</code> or <code>.zip</code> suffix at the destination
+and leaving <code>decompress=False</code> retains an archive as before.
+With an inferred filename, archives are retained by default, including URLs
+with query strings or fragments; their existing cache keys are preserved.
+<code>decompress=True</code> uses a distinct key for the decompressed contents, keeping the
+full URL in the key's digest. When a download endpoint's inferred filename
+has no removable archive suffix, <code>.decompressed</code> distinguishes its output.
+With an explicit <code>filename</code> or <code>destination</code>, a
+missing compression suffix still implies decompression for compatibility unless
+<code>raw=True</code> is supplied.
+<code>decompress=True</code> explicitly requests decompression while preserving an explicit
+destination's exact name. Format detection prefers a supported extension on
+the URL path (case-insensitively). For download endpoints without a supported
+path extension, a filename in the final query parameter is also recognized
+for compatibility, such as IEDB's <code>downloader.php?file_name=doc/data.zip</code>.
+Bare format hints such as <code>?format=.gz</code> and fragments do not select a format.
+For ZIP files, the member stored at the output filename is selected; otherwise a
+member with that name in any folder, ignoring letter case (such as
+<code>release/data.csv</code> or <code>Data.CSV</code> for <code>data.csv</code>), preferring the one nearest the
+archive root and then an exact-case match. If no member matches, the largest
+non-directory member is installed, and a warning is logged when the output was
+named explicitly and that was a guess among several. No archive paths are
+extracted.
+HTML-to-CSV conversion requires an explicit <code>filename</code> or <code>destination</code> ending
+in <code>.csv</code>. Query strings and fragments in inferred cache keys never request
+conversion; those downloads retain their original HTML bytes.</p>
+<p>A size or SHA-256 mismatch raises <code>FileValidationError</code>, with the path and
+expected/actual values in its message. A corrupt cache hit does not trigger a
+download: call <code>fetch_file(..., force=True)</code> to explicitly attempt replacement.
+<code>validate_file</code> raises <code>FileNotFoundError</code> for missing files and propagates
+permission errors; it rejects non-regular files. Fetching propagates transport,
+decompression, and filesystem errors so applications can translate them.
+Expectations are optional; omitting them provides no integrity guarantee.</p>
+<p>An empty installed file is rejected even without expectations, because a
+complete but empty response, such as a withdrawn upstream record, would
+otherwise be cached as a valid file and parse to zero records much later. An
+empty HTTP response is retried like a transient failure, then raises
+<code>FileValidationError</code>; nothing is published and an existing file stays in
+place. After decompression, an empty archive member is rejected the same way.
+An empty file already in the cache is an invalid hit, which <code>force=True</code>
+replaces. Pass <code>allow_empty=True</code>, or <code>expected_size=0</code>, when an empty file is
+the correct result.</p>
+<h2 id="provenance">Provenance<a class="headerlink" href="#provenance" title="Permanent link">&para;</a></h2>
+<p>Pass <code>record_provenance=True</code> to <code>fetch_file</code> or <code>Cache.fetch</code> to record where a
+download came from. After publishing, datacache writes a hidden record,
+<code>.&lt;name&gt;.datacache.json</code>, beside the file. It holds the source URL, the fetch
+time, the size, and the SHA-256 when <code>expected_sha256</code> verified it. The URL is
+stored without its user name, password, query string, or fragment, since signed
+URLs carry secrets there; its path is kept as is, so do not record URLs that
+embed a secret in the path, as some share links do. The record has the file's
+permissions, and sharing the file with <code>make_file_readable</code> shares it too.</p>
+<p><code>inspect_file</code>, <code>Cache.inspect</code>, and <code>inspect_files</code> report <code>source_url</code>,
+<code>fetched_at</code>, and <code>recorded_sha256</code>, but only while the file's size and
+modification time match the record. <code>recorded_sha256</code> is a record, not a check
+of the current bytes: an in-place edit that keeps the size and modification
+time, or a forged record in a shared cache, would still report it. <code>verified</code>
+therefore keeps its meaning, a supplied SHA-256 matching the bytes now; pass
+<code>recorded_sha256</code> back as <code>expected_sha256</code> to check them. A missing,
+unreadable, or malformed record reads as unrecorded, and inspection never
+writes.</p>
+<p>Recording is off by default because a caller that downloads to a temporary
+name and then moves the file would leave the record behind. A record is
+written only by a download, never by a cache hit, and any later replacement of
+the file removes the previous record first, whether or not it records a new
+one. <code>Cache.delete_url</code> removes records with their files. Recording is best
+effort: failing to write a record never fails the download.</p>
+<h2 id="transient-http-failures">Transient HTTP failures<a class="headerlink" href="#transient-http-failures" title="Permanent link">&para;</a></h2>
+<p>HTTP and HTTPS downloads retry temporary failures by default, with at most
+three attempts (the initial request plus two retries). This includes HTTP
+408, 429, 500, 502, 503, and 504 responses, connection failures, timeouts, and
+interrupted response streams. Configure the policy on <code>fetch_file</code> or
+<code>Cache.fetch</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="n">path</span> <span class="o">=</span> <span class="n">fetch_file</span><span class="p">(</span>
+    <span class="s2">"https://example.org/releases/v1/records.tsv.gz"</span><span class="p">,</span>
+    <span class="n">destination</span><span class="o">=</span><span class="s2">"/data/references/v1/records.tsv"</span><span class="p">,</span>
+    <span class="n">decompress</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">expected_sha256</span><span class="o">=</span><span class="n">release_metadata</span><span class="p">[</span><span class="s2">"installed_sha256"</span><span class="p">],</span>
+    <span class="n">timeout</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+    <span class="n">max_retries</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+    <span class="n">retry_backoff</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+    <span class="n">retry_max_delay</span><span class="o">=</span><span class="mf">30.0</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<p><code>max_retries</code> counts additional attempts; set it to <code>0</code> to disable retries.
+<code>retry_backoff</code> is the first delay in seconds and doubles after each retry,
+capped by <code>retry_max_delay</code>. Defaults therefore wait one second and then two
+seconds. <code>Retry-After</code> supports both integer seconds and HTTP dates. When its
+wait fits within <code>retry_max_delay</code>, the larger of that wait and the backoff is
+used. If the server requests a longer wait, the original error is raised
+immediately instead of retrying sooner than requested. Malformed header values
+are ignored. Both delay settings must be finite non-negative real numbers;
+accepted values are normalized to Python floats before use.</p>
+<p>Each attempt downloads from the beginning into a fresh private staging file.
+Failed responses are closed and partial files are removed before waiting or
+retrying. An existing destination remains intact until a successful transfer
+has been transformed, validated, and published. Retry warnings report the
+attempt count, failure category, and delay; exhaustion raises the original
+Requests exception, preserving its response and cause.</p>
+<p>Permanent HTTP failures such as 404, TLS errors (including proxy-wrapped TLS
+failures), local filesystem errors,
+progress callback exceptions, and transformation/integrity/publication errors
+are not retried. Local file and FTP transfers remain single attempts. Cache
+reuse and read-only inspection make no requests and do not wait. Existing
+pyensembl calls through <code>_download_and_decompress_if_necessary</code> receive the same
+default policy without changes to downstream code.</p>
+<p>Progress byte counts describe the current attempt and may decrease after a
+restart. The same <code>timeout</code> is passed to each request; Requests timeouts govern
+connection/read inactivity, not an overall elapsed-time deadline. Retry count
+and waiting time are bounded independently of the transfer duration.</p>
+<h2 id="small-metadata-and-freshness">Small metadata and freshness<a class="headerlink" href="#small-metadata-and-freshness" title="Permanent link">&para;</a></h2>
+<p><code>fetch_bytes</code> returns a resource's bytes in memory with the same transport,
+TLS trust and retry policy as <code>fetch_file</code>, without writing to disk. It suits
+small resources such as directory listings, and caches that are read-only.</p>
+<p>Metadata that changes upstream, such as a list of releases, can be cached and
+refreshed periodically. <code>expire_after</code> is named as in requests-cache, and
+<code>return_stale_on_error</code> behaves like the HTTP <code>stale-if-error</code> directive:</p>
+<div class="highlight"><pre><span></span><code><span class="n">path</span> <span class="o">=</span> <span class="n">fetch_file</span><span class="p">(</span>
+    <span class="s2">"https://example.org/releases/"</span><span class="p">,</span>
+    <span class="n">destination</span><span class="o">=</span><span class="s2">"/data/references/releases.html"</span><span class="p">,</span>
+    <span class="n">raw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">timeout</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+    <span class="n">expire_after</span><span class="o">=</span><span class="mi">86400</span><span class="p">,</span>  <span class="c1"># seconds or a datetime.timedelta</span>
+    <span class="n">return_stale_on_error</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">validator</span><span class="o">=</span><span class="n">require_release_links</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<ul>
+<li><code>expire_after</code> downloads a cached copy again once it is older than the
+  given time, or once it no longer validates. Age comes from the provenance
+  record's fetch time when there is one (<code>record_provenance=True</code>), otherwise
+  from the file's modification time, which publication sets when the download
+  is written.</li>
+<li><code>return_stale_on_error</code> returns the cached copy, with a logged warning, when a
+  refresh fails, including a rejected validation. Without a valid cached copy
+  the error propagates; so does a progress callback's exception, which cancels
+  the fetch.</li>
+<li><code>validator(path)</code> rejects content that a successful transfer can still get
+  wrong, such as an HTTP 200 error page from a proxy, by raising or returning
+  <code>False</code>. It runs on the staged bytes before publication, so a rejected
+  download never replaces the cached copy, and on cache hits.</li>
+</ul>
+<h2 id="read-only-cache-inspection">Read-only cache inspection<a class="headerlink" href="#read-only-cache-inspection" title="Permanent link">&para;</a></h2>
+<p>Path lookup, presence, and integrity checks have different contracts:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">datacache</span><span class="w"> </span><span class="kn">import</span> <span class="n">Cache</span><span class="p">,</span> <span class="n">expected_path</span><span class="p">,</span> <span class="n">file_exists</span><span class="p">,</span> <span class="n">inspect_file</span><span class="p">,</span> <span class="n">inspect_files</span>
+
+<span class="n">root</span> <span class="o">=</span> <span class="s2">"/data/references/v1"</span>
+<span class="n">path</span> <span class="o">=</span> <span class="n">expected_path</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s2">"records.tsv"</span><span class="p">,</span> <span class="n">cache_root</span><span class="o">=</span><span class="n">root</span><span class="p">)</span>
+<span class="n">present</span> <span class="o">=</span> <span class="n">file_exists</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s2">"records.tsv"</span><span class="p">,</span> <span class="n">cache_root</span><span class="o">=</span><span class="n">root</span><span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">inspect_file</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">expected_sha256</span><span class="o">=</span><span class="n">release_metadata</span><span class="p">[</span><span class="s2">"installed_sha256"</span><span class="p">])</span>
+<span class="k">if</span> <span class="n">result</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="s2">"available"</span> <span class="ow">and</span> <span class="n">result</span><span class="o">.</span><span class="n">verified</span><span class="p">:</span>
+    <span class="n">process_records</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">path</span><span class="p">)</span>
+
+<span class="c1"># The object API uses the same paths and validation contract.</span>
+<span class="n">cache</span> <span class="o">=</span> <span class="n">Cache</span><span class="p">(</span><span class="s2">"references"</span><span class="p">,</span> <span class="n">cache_root</span><span class="o">=</span><span class="n">root</span><span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">cache</span><span class="o">.</span><span class="n">inspect</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s2">"records.tsv"</span><span class="p">,</span>
+                       <span class="n">expected_sha256</span><span class="o">=</span><span class="n">release_metadata</span><span class="p">[</span><span class="s2">"installed_sha256"</span><span class="p">])</span>
+
+<span class="c1"># Inventory required files using trusted, caller-supplied metadata.</span>
+<span class="n">installation</span> <span class="o">=</span> <span class="n">inspect_files</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="p">{</span>
+    <span class="s2">"records.tsv"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"expected_sha256"</span><span class="p">:</span> <span class="n">release_metadata</span><span class="p">[</span><span class="s2">"installed_sha256"</span><span class="p">]},</span>
+    <span class="s2">"manifest.json"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"expected_sha256"</span><span class="p">:</span> <span class="n">release_metadata</span><span class="p">[</span><span class="s2">"manifest_sha256"</span><span class="p">]},</span>
+<span class="p">})</span>
+</code></pre></div>
+<p><code>expected_path</code>, <code>resolve_path</code>, and <code>Cache.local_path(download=False)</code> only
+compute paths, with no filesystem access. <code>file_exists</code> and <code>Cache.exists</code>
+check presence without requiring a readable regular file: directories count as
+present, broken symlinks count as absent, and permission errors propagate.
+None of these operations creates a directory or a lock file.</p>
+<p><code>inspect_file</code>, <code>inspect_files</code>, and <code>Cache.inspect</code> return results with <code>path</code>,
+<code>status</code>, <code>verified</code>, and <code>error</code> attributes:</p>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>File inspection</th>
+<th>Required-file inventory</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>available</code></td>
+<td>Readable regular file matching supplied metadata</td>
+<td>Every required file is available</td>
+</tr>
+<tr>
+<td><code>missing</code></td>
+<td>File absent</td>
+<td>Cache root absent</td>
+</tr>
+<tr>
+<td><code>corrupt</code></td>
+<td>Wrong file type or size/hash mismatch</td>
+<td>Wrong root type, corrupt file, or incomplete installation</td>
+</tr>
+<tr>
+<td><code>inaccessible</code></td>
+<td>Permission or other filesystem error</td>
+<td>Root or required file cannot be inspected</td>
+</tr>
+</tbody>
+</table>
+<p><code>verified</code> is true only when a supplied SHA-256 digest matched; presence,
+readability, or a size check alone does not establish verified integrity.
+<code>error</code> retains the original filesystem or validation exception when unavailable.
+Invalid integrity arguments raise <code>ValueError</code> rather than reporting a cache
+problem. <code>inspect_files</code> also returns a <code>files</code> mapping of individual results;
+for example, a missing manifest makes the installation <code>corrupt</code> while that
+manifest's individual status is <code>missing</code>. Inaccessible files take precedence
+over corrupt or missing files in the aggregate result. Required names must be
+normalized relative paths; nested names are supported. Use <code>{}</code> or <code>None</code> for
+an entry without integrity metadata. The required mapping must be nonempty.</p>
+<p>Inspection only reads local files. It never downloads, writes manifests,
+creates locks, or attempts recovery, so a valid read-only version and a missing
+sibling version can be inspected independently. The caller supplies required
+files and trusted integrity metadata; these individual-file helpers do not
+discover versions. Symlinks are followed as in ordinary file access. Inventory
+is not a snapshot across concurrent external changes or a multi-file
+installation mechanism. Use <a href="../bundles/">versioned bundles</a> for atomic
+multi-file installation and inspection of one complete generation.</p>
+<p><code>cache_root</code> accepts a string or <code>pathlib.Path</code> and names the actual directory
+containing cached files, overriding the platform location selected by <code>subdir</code>.
+Relative roots remain relative to the current working directory. It is
+supported by <code>fetch_file</code>, <code>expected_path</code>, <code>file_exists</code>, <code>resolve_path</code>,
+<code>build_path</code>, and <code>Cache</code>. An exact <code>destination</code> is mutually exclusive with
+<code>cache_root</code>. Default cache locations and filename normalization remain the
+same. <code>build_path</code> still creates parents; use <code>resolve_path</code> for pure lookup.
+Creation and repair remain explicit operations: use <code>fetch_file</code> or
+<code>Cache.fetch</code>, supplying integrity metadata and <code>force=True</code> for replacement.
+<code>Cache.fetch</code> validates every reuse and respects different filenames for the
+same URL. Its database and deletion methods also use the selected cache root.
+Database paths preserve the filesystem meaning of symlinks followed by <code>..</code>.
+<code>Cache.delete_all()</code> clears the root's contents while preserving the directory
+and its permissions, including when the root is <code>.</code> or a symlink. Symlinks
+inside the cache are removed without clearing their external targets.</p>
+<h2 id="downstream-compatibility">Downstream compatibility<a class="headerlink" href="#downstream-compatibility" title="Permanent link">&para;</a></h2>
+<p>The private <code>_download_and_decompress_if_necessary</code> entry point, used by
+pyensembl, retains its pre-1.8 literal-URL format inference when transform flags
+are omitted. In particular, query/fragment-bearing archive URLs retain the
+same bytes under pyensembl's existing cache keys. Explicit transform flags and
+the public <code>fetch_file</code> API retain the parsed-URL behavior documented above.
+The IEDB download endpoints used by pepdata continue to decompress archives
+named at the end of the URL query into the requested CSV filenames.
+The <code>_decompress_to_file</code> helper remains available and uses failure-safe atomic
+publication. New integrations should use the public download and inspection
+APIs.</p>
+<h2 id="resumable-http-downloads">Resumable HTTP downloads<a class="headerlink" href="#resumable-http-downloads" title="Permanent link">&para;</a></h2>
+<p>Use <code>fetch_file(..., resume=True, expected_sha256=sha256, expected_size=size)</code>
+(or the same options on <code>Cache.fetch</code>) for large immutable raw HTTP/HTTPS files.
+<code>expected_size</code> is required. Prefer a trusted <code>expected_sha256</code> when available.
+For sources such as Ensembl that do not publish SHA-256 digests, omit the hash:</p>
+<div class="highlight"><pre><span></span><code><span class="n">path</span> <span class="o">=</span> <span class="n">fetch_file</span><span class="p">(</span>
+    <span class="n">ensembl_dna_url</span><span class="p">,</span>
+    <span class="n">destination</span><span class="o">=</span><span class="s2">"reference.download"</span><span class="p">,</span>
+    <span class="n">raw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">resume</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">expected_size</span><span class="o">=</span><span class="n">ensembl_dna_size</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<p>Without <code>expected_sha256</code>, every accepted response must supply a syntactically
+valid strong ETag. Missing or weak ETags (including a Last-Modified value alone)
+raise <code>FileValidationError</code> before response bytes are retained or published.
+Strong ETags prevent joining bytes from different server representations; they
+are not independently verified checksums. Callers can still apply their source's
+checksum to the completed archive. Size-only cache hits remain offline and check
+only the local byte count, not remote freshness or same-size corruption. Optional
+provenance records no verified SHA-256 unless the caller supplied one.</p>
+<p>Use <code>raw=True</code> for an arbitrary destination name, or keep the source archive's
+suffix. Resumable decompression and HTML conversion are not supported. Resume is
+off by default and requires a POSIX local filesystem.</p>
+<p>Each destination gets a private, owner-only working directory beside it, with
+one bounded partial file, metadata and a permanent advisory lock. Threads and
+processes serialize on that destination for the same user; other users retain
+separate private state. A valid destination remains intact throughout transfer,
+verification, and publication. With an expected SHA-256, complete partials are
+verified and reused without network; oversized or corrupt ones restart. Without
+one, a complete-size partial restarts to obtain a fresh validated response, and
+an incomplete partial without a saved strong ETag is discarded. Interruptions and exhausted transport
+retries keep safely written partial bytes for the next call.</p>
+<p>Range requests use <code>Accept-Encoding: identity</code>. DataCache checks the exact
+<code>Content-Range</code> offset and total, carries <code>If-Range</code> for a strong ETag, and only
+appends bytes from a matching representation. A 200 response replaces the
+partial; incompatible ranges, changed validators, or 416 responses restart it.
+When a trusted SHA-256 is supplied, downloads can also resume without strong
+ETags, with Last-Modified changes triggering restarts and the final digest
+authorizing publication. The final byte count is always checked. HTTP range behavior follows
+<a href="https://www.rfc-editor.org/rfc/rfc9110.html#name-range-requests">RFC 9110</a>.</p>
+<p>Progress reports bytes present in the current transfer, including the retained
+prefix, and the trusted total size. A resumed retry continues its byte count;
+a server-required restart resets it. Callback failures propagate without being
+retried. The existing bounded HTTP retry/backoff options apply.</p>
+<p>Call <code>discard_partial(destination)</code> to explicitly discard this user's partial
+bytes and metadata. It waits for any active transfer, preserves the installed
+file, and retains the small lock directory for coordination. Missing state is a
+no-op. <code>force=True</code> refreshes the installed file but can reuse an independently
+verified complete partial; call <code>discard_partial</code> first to require a new transfer.</p>
+<p>Allow space for the old destination, up to <code>expected_size</code> partial bytes, and a
+second file of that size during publication. Copying verified bytes into ordinary
+staging keeps persistent partials private even when publication fails after
+setting shared file permissions. No credentials or raw signed URLs are stored in
+the private metadata; a URL hash identifies the source. Changing the URL or
+integrity expectations starts a new transfer.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.indexes", "navigation.expand", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

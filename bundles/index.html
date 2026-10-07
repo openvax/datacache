@@ -1,0 +1,1246 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Download, verify and reuse datasets for Python applications">
+      
+      
+      
+        <link rel="canonical" href="https://openvax.github.io/datacache/bundles/">
+      
+      
+        <link rel="prev" href="../progress/">
+      
+      
+        <link rel="next" href="../archives/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Install bundles - datacache</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/docs.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="white" data-md-color-accent="blue">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#versioned-datasets-and-bundles" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="datacache" class="md-header__button md-logo" aria-label="datacache" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            datacache
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Install bundles
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/openvax/datacache" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    openvax/datacache
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="datacache" class="md-nav__button md-logo" aria-label="datacache" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    datacache
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/openvax/datacache" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    openvax/datacache
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common tasks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Common tasks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../downloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Download and inspect files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read tables and build SQLite caches
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shared-caches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Share a cache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../progress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Report progress
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versioned datasets
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Versioned datasets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install bundles
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install bundles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#status-and-trust" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status and trust
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#publication-and-path-lifetime" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Publication and path lifetime
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#large-raw-assets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Large raw assets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adopting-from-downstream-libraries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adopting from downstream libraries
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archives/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install archive trees
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../file_registry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use the legacy file registry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrate a consuming library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/choosing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Choose an interface
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/openvax/datacache/blob/master/CHANGELOG.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dev/documentation-style/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentation style
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#status-and-trust" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status and trust
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#publication-and-path-lifetime" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Publication and path lifetime
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#large-raw-assets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Large raw assets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adopting-from-downstream-libraries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adopting from downstream libraries
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="versioned-datasets-and-bundles">Versioned datasets and bundles<a class="headerlink" href="#versioned-datasets-and-bundles" title="Permanent link">&para;</a></h1>
+<p><code>VersionedDatasetRegistry</code> gives libraries a common way to resolve pinned data
+versions, install their files together, and inspect them offline. Dataset names,
+versions, URLs, and biological interpretation belong to the caller. DataCache
+owns the transfer, verification, and publication. Existing <code>Cache</code> and database
+APIs work independently; adopting a registry is optional.</p>
+<p>A dataset can contain one file, a records/manifest pair, or many source files:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">datacache</span><span class="w"> </span><span class="kn">import</span> <span class="n">VersionedDatasetRegistry</span><span class="p">,</span> <span class="n">get_cache_root</span>
+
+<span class="n">registry</span> <span class="o">=</span> <span class="n">VersionedDatasetRegistry</span><span class="p">(</span>
+    <span class="p">{</span>
+        <span class="s2">"reference"</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">"default_version"</span><span class="p">:</span> <span class="s2">"2026-09"</span><span class="p">,</span>
+            <span class="s2">"versions"</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">"2026-09"</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">"records.fa"</span><span class="p">:</span> <span class="p">{</span>
+                        <span class="s2">"url"</span><span class="p">:</span> <span class="s2">"https://data.example.org/2026-09/records.fa.gz"</span><span class="p">,</span>
+                        <span class="s2">"decompress"</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                        <span class="s2">"sha256"</span><span class="p">:</span> <span class="n">trusted_records_sha256</span><span class="p">,</span>
+                        <span class="s2">"size"</span><span class="p">:</span> <span class="n">trusted_records_size</span><span class="p">,</span>
+                    <span class="p">},</span>
+                    <span class="s2">"manifest.json"</span><span class="p">:</span> <span class="p">{</span>
+                        <span class="s2">"url"</span><span class="p">:</span> <span class="s2">"https://data.example.org/2026-09/manifest.json"</span><span class="p">,</span>
+                        <span class="s2">"sha256"</span><span class="p">:</span> <span class="n">trusted_manifest_sha256</span><span class="p">,</span>
+                        <span class="s2">"size"</span><span class="p">:</span> <span class="n">trusted_manifest_size</span><span class="p">,</span>
+                    <span class="p">},</span>
+                <span class="p">},</span>
+            <span class="p">},</span>
+        <span class="p">},</span>
+    <span class="p">},</span>
+    <span class="n">cache_root</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="n">get_cache_root</span><span class="p">(</span><span class="s2">"openvax"</span><span class="p">,</span> <span class="s2">"OPENVAX_DATA_CACHE"</span><span class="p">))</span> <span class="o">/</span> <span class="s2">"datasets"</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="c1"># No directory creation, locks, network requests, or repairs:</span>
+<span class="n">store</span> <span class="o">=</span> <span class="n">registry</span><span class="o">.</span><span class="n">bundle_path</span><span class="p">(</span><span class="s2">"reference"</span><span class="p">)</span>
+<span class="n">state</span> <span class="o">=</span> <span class="n">registry</span><span class="o">.</span><span class="n">inspect</span><span class="p">(</span><span class="s2">"reference"</span><span class="p">)</span>
+
+<span class="c1"># Download if missing; verify and reuse if already installed:</span>
+<span class="n">paths</span> <span class="o">=</span> <span class="n">registry</span><span class="o">.</span><span class="n">download</span><span class="p">(</span><span class="s2">"reference"</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span>
+<span class="n">records</span> <span class="o">=</span> <span class="n">paths</span><span class="p">[</span><span class="s2">"records.fa"</span><span class="p">]</span>
+
+<span class="c1"># Explicit repair or refresh; old returned paths remain usable:</span>
+<span class="n">paths</span> <span class="o">=</span> <span class="n">registry</span><span class="o">.</span><span class="n">download</span><span class="p">(</span><span class="s2">"reference"</span><span class="p">,</span> <span class="n">force</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span>
+</code></pre></div>
+<p><code>get_cache_root</code> returns a string; wrap it in <code>Path</code> when joining paths with <code>/</code>. SHA-256 and size describe the installed bytes,
+after decompression. Use opaque, concrete data-version labels independent of
+Python package versions. A default must name a version in the supplied mapping;
+DataCache never resolves a remote <code>latest</code> alias.</p>
+<p>For a caller that already resolves versions, the lower-level operations are:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">datacache</span><span class="w"> </span><span class="kn">import</span> <span class="n">install_bundle</span><span class="p">,</span> <span class="n">inspect_bundle</span>
+
+<span class="n">paths</span> <span class="o">=</span> <span class="n">install_bundle</span><span class="p">(</span><span class="n">source_directory</span><span class="p">,</span> <span class="n">assets</span><span class="p">,</span> <span class="n">download_options</span><span class="o">=</span><span class="p">{</span><span class="s2">"timeout"</span><span class="p">:</span> <span class="mi">60</span><span class="p">})</span>
+<span class="n">state</span> <span class="o">=</span> <span class="n">inspect_bundle</span><span class="p">(</span><span class="n">source_directory</span><span class="p">,</span> <span class="n">assets</span><span class="p">)</span>
+</code></pre></div>
+<p><code>assets</code> is the same mapping of relative names to metadata. Names cannot escape
+the bundle, collide as files/directories or by letter case, or occupy DataCache's
+reserved metadata names. A file or directory at another asset's automatic
+provenance sidecar path is also rejected before installation starts. Source
+directories are managed stores: an existing empty directory is reported as
+<code>missing</code> and can be initialized without <code>force=True</code>, preserving its access
+mode. Installation refuses to take over a nonempty directory without its
+ownership marker, even with <code>force=True</code>. Store generated indices and other derived
+outputs under a separate application-owned directory. Reinstalling sources does
+not visit those outputs.</p>
+<h2 id="status-and-trust">Status and trust<a class="headerlink" href="#status-and-trust" title="Permanent link">&para;</a></h2>
+<p><code>BundleInspection.status</code> is <code>available</code>, <code>missing</code>, <code>invalid</code>, <code>inaccessible</code>, or
+<code>recovery-required</code>. <code>files</code> maps asset names to <code>FileInspection</code> objects from one
+generation, and <code>generation</code> is that generation's directory. The <code>error</code> field
+retains the cause of a failed inspection.</p>
+<p>Inspection hashes every asset. With trusted registry metadata, <code>verified=True</code>
+means every file matched the supplied SHA-256 just now. Every completed generation
+also has its own manifest recording sizes, observed SHA-256 digests, source URLs,
+and fetch time. <code>inspect_bundle(directory)</code> can check those recorded hashes
+without a registry or network, but returns <code>verified=False</code>: a local receipt is
+not an independent authority. Display URLs omit credentials, queries and
+fragments; a separate SHA-256 fingerprint identifies the full source URL without
+storing that omitted text. Paths are retained, so do not use secret-bearing URL
+paths.</p>
+<p><code>verified=False</code> on installation or registry construction explicitly permits
+acquiring assets without trusted hashes/sizes. Their observed hashes are still
+recorded and checked on reuse, but cannot authenticate the original download.
+Use this mode only for upstream data without immutable integrity metadata.
+Without a trusted hash, reuse requires the same full URL fingerprint and
+decompression setting. Changing either reports an invalid installation; use
+<code>force=True</code> to acquire the newly requested data. Older receipts without source
+fingerprints still support offline consistency checks and trusted-hash reuse,
+but need an explicit refresh before reuse without trusted hashes.</p>
+<p>Trusted SHA-256 expectations identify the installed bytes. Libraries using the
+same root, dataset name, version and asset names can therefore share a verified
+generation even when they use different mirrors, signed URLs or compression
+settings. DataCache checks the supplied hashes and sizes without downloading or
+rewriting a matching generation.</p>
+<p>Cache reuse and inspection are read-only. Corrupt entries require <code>force=True</code>.
+If publication was interrupted after creating a complete generation, inspection
+can report <code>recovery-required</code>. Explicit installation validates and publishes a
+matching local generation before attempting downloads. No recovery happens
+merely by listing or inspecting a cache.</p>
+<h2 id="publication-and-path-lifetime">Publication and path lifetime<a class="headerlink" href="#publication-and-path-lifetime" title="Permanent link">&para;</a></h2>
+<p>The layout is <code>&lt;root&gt;/&lt;dataset&gt;/&lt;version&gt;/</code>, containing an ownership marker,
+<code>current.json</code>, and <code>generations/&lt;id&gt;/</code>. Each generation contains all assets and
+its own <code>.datacache-manifest.json</code>. Writers serialize per store. A writer stages
+and verifies every asset, then atomically replaces <code>current.json</code>. Readers read
+that pointer once and validate that immutable generation without locks. They
+never combine members from different refreshes or require write permission.</p>
+<p>Published generations are retained. Paths returned from one installation remain
+usable through later installations, until the caller explicitly removes the
+store or its generations. This avoids reader lock files and a missing-directory
+window. It also means forced refreshes consume additional disk space; DataCache
+does not implement garbage collection. Never modify files within a generation.
+Resolve once and use that result for a multi-file operation; separate resolution
+calls can legitimately select different generations.</p>
+<p>Installation is supported on POSIX local filesystems providing <code>flock</code> and atomic
+sibling <code>os.replace</code> (Linux and macOS). Shared caches use normal umask-derived
+permissions; readers need only read/search access. A private outer staging
+directory protects unfinished files while the inner generation already has its
+final sharing permissions. Renaming that generation makes it recoverable with
+the correct permissions immediately, including after an interruption. A failed
+rename leaves resumable work protected by the private outer directory.
+Atomic publication covers
+process interruption, not guaranteed durability after power loss. Distributed
+coordination and arbitrary network filesystem semantics are outside this API.
+An unhandled termination can leave staging directories; successful generations
+are the only paths returned to callers.</p>
+<h2 id="large-raw-assets">Large raw assets<a class="headerlink" href="#large-raw-assets" title="Permanent link">&para;</a></h2>
+<p>For integrity-pinned HTTP assets that need no decompression or conversion, use
+<code>registry.download(name, resume=True)</code> or
+<code>install_bundle(..., download_options={"resume": True})</code>. An interrupted bundle
+keeps a private working directory per user and asset mapping. A later call with
+the same mapping reuses completed assets and resumes partial ones; the installed
+generation remains intact. Persistent partials require both hash and size.
+Changing the mapping chooses a different working directory. The normal
+non-resumable mode cleans its staging directory on handled failures.</p>
+<p>See <a href="../downloads/#resumable-http-downloads">resumable downloads</a> for protocol,
+progress, disk-space and partial-discard details.</p>
+<h2 id="adopting-from-downstream-libraries">Adopting from downstream libraries<a class="headerlink" href="#adopting-from-downstream-libraries" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>MHCflurry:</strong> use <a href="../archives/"><code>install_archive</code></a> for released <code>.tar.bz2</code>
+  trees and ordered historical parts. Resolve member paths from the returned
+  generation; preserve <code>DOWNLOAD_INFO.csv</code> with <code>extra_files</code>. Do not enumerate
+  model files as bundle assets or treat the managed store's existence as a
+  completed download.</li>
+<li><strong>hitlist / tsarina:</strong> use <a href="../file_registry/">VersionedFileRegistry</a> to retain
+  fixed paths, single-Path returns and legacy root manifests without moving old
+  caches. For a deliberate migration to generation bundles, the existing
+  <code>{filename, urls, default_version}</code> mapping
+  is accepted with <code>verified=False</code>, as is the <code>cache_dir</code> root callable. This is
+  mapping compatibility, not a drop-in filesystem or return-value migration:
+  <code>download</code> returns asset paths, <code>local_path</code> requires an installed bundle, and
+  status rows contain a <code>BundleInspection</code>. A downstream adapter can preserve
+  its public return types and errors. Keep old paths readable during migration;
+  install into a new managed root instead of overwriting legacy directories.</li>
+<li><strong>mhcseqs:</strong> express each records/manifest pair or multi-file source bundle as
+  one version's assets. Keep schema checks and biological validation in mhcseqs.
+  Generated outputs stay outside the source store. The library no longer needs
+  to compose lock, backup, rename and rollback helpers.</li>
+<li><strong>Vaxrank / Isovar / Varcode / Topiary:</strong> share a root, dataset name and data
+  revision to share a complete installation. Existing digest-addressed individual
+  assets can remain under <code>&lt;root&gt;/objects/sha256/</code>; these APIs do not relocate
+  them or change prediction-cache identities.</li>
+<li><strong>pyensembl:</strong> single-file download and SQLite APIs remain supported. Bundles
+  are optional for references with trustworthy multi-file metadata.</li>
+</ul>
+<p>The <a href="https://github.com/openvax/datacache/blob/master/examples/versioned_datasets.py">runnable offline example</a> demonstrates
+single-file, paired-file and multi-file registries, generated SQLite indices,
+shared reuse, and inspection with all upstream sources removed.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.indexes", "navigation.expand", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

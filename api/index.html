@@ -1,0 +1,3561 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Download, verify and reuse datasets for Python applications">
+      
+      
+      
+        <link rel="canonical" href="https://openvax.github.io/datacache/api/">
+      
+      
+        <link rel="prev" href="../reference/choosing/">
+      
+      
+        <link rel="next" href="../dev/documentation-style/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>API reference - datacache</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/docs.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="white" data-md-color-accent="blue">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#public-api-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="datacache" class="md-header__button md-logo" aria-label="datacache" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            datacache
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              API reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/openvax/datacache" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    openvax/datacache
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="datacache" class="md-nav__button md-logo" aria-label="datacache" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    datacache
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/openvax/datacache" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    openvax/datacache
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common tasks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Common tasks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../downloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Download and inspect files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read tables and build SQLite caches
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shared-caches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Share a cache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../progress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Report progress
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versioned datasets
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Versioned datasets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bundles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install bundles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archives/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install archive trees
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../file_registry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use the legacy file registry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrate a consuming library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/choosing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Choose an interface
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Index
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#downloading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downloading
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Downloading">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fetch_file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fetch_file
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fetch_bytes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fetch_bytes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fetch_csv_dataframe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fetch_csv_dataframe
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fetch_and_transform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fetch_and_transform
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paths-and-presence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paths and presence
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Paths and presence">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#expected_path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        expected_path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#file_exists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        file_exists
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#build_local_filename" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        build_local_filename
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get_data_dir" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_data_dir
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get_cache_root" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_cache_root
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resolve_path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        resolve_path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#build_path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        build_path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ensure_dir" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ensure_dir
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#clear_cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        clear_cache
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#integrity-inspection-and-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integrity, inspection, and permissions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Integrity, inspection, and permissions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#validate_file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        validate_file
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#inspect_file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        inspect_file
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#inspect_files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        inspect_files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fileinspection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FileInspection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cacheinspection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CacheInspection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filevalidationerror" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FileValidationError
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#make_file_readable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        make_file_readable
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sqlite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SQLite
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SQLite">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#shared-database-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shared database behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#db_from_dataframe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        db_from_dataframe
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#db_from_dataframes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        db_from_dataframes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#db_from_dataframes_with_absolute_path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        db_from_dataframes_with_absolute_path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fetch_csv_db" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fetch_csv_db
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#connect_if_correct_version" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        connect_if_correct_version
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cache-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache object
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Cache object">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cachefetch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache.fetch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cachelocal_filename" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache.local_filename
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cachelocal_path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache.local_path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cacheexists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache.exists
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cacheinspect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache.inspect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cachemake_readable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache.make_readable
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cachedb_from_dataframe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache.db_from_dataframe
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cachedelete_url" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache.delete_url
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cachedelete_all" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache.delete_all
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#package-version" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Package version
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Package version">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#__version__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __version__
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#discard_partial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        discard_partial
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install_archive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        install_archive
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inspect_archive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        inspect_archive
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#archiveinspection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ArchiveInspection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#versionedarchiveregistry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VersionedArchiveRegistry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install_bundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        install_bundle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inspect_bundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        inspect_bundle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bundleinspection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BundleInspection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#versioneddatasetregistry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VersionedDatasetRegistry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#versionedfileregistry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VersionedFileRegistry
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/openvax/datacache/blob/master/CHANGELOG.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dev/documentation-style/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentation style
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Index
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#downloading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Downloading
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Downloading">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#fetch_file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fetch_file
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fetch_bytes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fetch_bytes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fetch_csv_dataframe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fetch_csv_dataframe
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fetch_and_transform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fetch_and_transform
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#paths-and-presence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Paths and presence
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Paths and presence">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#expected_path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        expected_path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#file_exists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        file_exists
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#build_local_filename" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        build_local_filename
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get_data_dir" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_data_dir
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#get_cache_root" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        get_cache_root
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resolve_path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        resolve_path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#build_path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        build_path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ensure_dir" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ensure_dir
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#clear_cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        clear_cache
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#integrity-inspection-and-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Integrity, inspection, and permissions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Integrity, inspection, and permissions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#validate_file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        validate_file
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#inspect_file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        inspect_file
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#inspect_files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        inspect_files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fileinspection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FileInspection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cacheinspection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CacheInspection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#filevalidationerror" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FileValidationError
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#make_file_readable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        make_file_readable
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sqlite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SQLite
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SQLite">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#shared-database-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shared database behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#db_from_dataframe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        db_from_dataframe
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#db_from_dataframes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        db_from_dataframes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#db_from_dataframes_with_absolute_path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        db_from_dataframes_with_absolute_path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fetch_csv_db" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        fetch_csv_db
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#connect_if_correct_version" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        connect_if_correct_version
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cache-object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache object
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Cache object">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cache" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cachefetch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache.fetch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cachelocal_filename" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache.local_filename
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cachelocal_path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache.local_path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cacheexists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache.exists
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cacheinspect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache.inspect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cachemake_readable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache.make_readable
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cachedb_from_dataframe" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache.db_from_dataframe
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cachedelete_url" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache.delete_url
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cachedelete_all" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache.delete_all
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#package-version" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Package version
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Package version">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#__version__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __version__
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#discard_partial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        discard_partial
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install_archive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        install_archive
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inspect_archive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        inspect_archive
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#archiveinspection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ArchiveInspection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#versionedarchiveregistry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VersionedArchiveRegistry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install_bundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        install_bundle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inspect_bundle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        inspect_bundle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bundleinspection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BundleInspection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#versioneddatasetregistry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VersionedDatasetRegistry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#versionedfileregistry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VersionedFileRegistry
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="public-api-reference">Public API reference<a class="headerlink" href="#public-api-reference" title="Permanent link">&para;</a></h1>
+<p>This reference covers every name exported in <code>datacache.__all__</code> and every
+public <code>Cache</code> method in DataCache 1.18.1. Import these names from <code>datacache</code>.
+Signatures below show all defaults; arguments after <code>*</code> are keyword-only.
+Method signatures omit <code>self</code> and are called on a <code>Cache</code> instance.</p>
+<p>Start with the <a href="../#cache-and-verify-a-file">quickstart</a> for a first download.
+The <a href="../downloads/">download guide</a>, <a href="../archives/">archive guide</a>, <a href="../data/">data guide</a>,
+<a href="../progress/">progress guide</a>, and <a href="../shared-caches/">shared-cache guide</a>
+explain the longer workflows and compatibility guarantees.</p>
+<h2 id="index">Index<a class="headerlink" href="#index" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>APIs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Downloading</td>
+<td><a href="#fetch_file">fetch_file</a>, <a href="#fetch_bytes">fetch_bytes</a>, <a href="#fetch_csv_dataframe">fetch_csv_dataframe</a>, <a href="#fetch_and_transform">fetch_and_transform</a></td>
+</tr>
+<tr>
+<td>Complete archive trees</td>
+<td><a href="#install_archive">install_archive</a>, <a href="#inspect_archive">inspect_archive</a>, <a href="#archiveinspection">ArchiveInspection</a>, <a href="#versionedarchiveregistry">VersionedArchiveRegistry</a></td>
+</tr>
+<tr>
+<td>Versioned file bundles</td>
+<td><a href="#install_bundle">install_bundle</a>, <a href="#inspect_bundle">inspect_bundle</a>, <a href="#bundleinspection">BundleInspection</a>, <a href="#versioneddatasetregistry">VersionedDatasetRegistry</a>, <a href="#versionedfileregistry">VersionedFileRegistry</a></td>
+</tr>
+<tr>
+<td>Paths and presence</td>
+<td><a href="#expected_path">expected_path</a>, <a href="#file_exists">file_exists</a>, <a href="#build_local_filename">build_local_filename</a>, <a href="#get_data_dir">get_data_dir</a>, <a href="#get_cache_root">get_cache_root</a>, <a href="#resolve_path">resolve_path</a>, <a href="#build_path">build_path</a>, <a href="#ensure_dir">ensure_dir</a>, <a href="#clear_cache">clear_cache</a></td>
+</tr>
+<tr>
+<td>Integrity and permissions</td>
+<td><a href="#validate_file">validate_file</a>, <a href="#inspect_file">inspect_file</a>, <a href="#inspect_files">inspect_files</a>, <a href="#make_file_readable">make_file_readable</a></td>
+</tr>
+<tr>
+<td>Results and exceptions</td>
+<td><a href="#fileinspection">FileInspection</a>, <a href="#cacheinspection">CacheInspection</a>, <a href="#filevalidationerror">FileValidationError</a></td>
+</tr>
+<tr>
+<td>SQLite</td>
+<td><a href="#db_from_dataframe">db_from_dataframe</a>, <a href="#db_from_dataframes">db_from_dataframes</a>, <a href="#db_from_dataframes_with_absolute_path">db_from_dataframes_with_absolute_path</a>, <a href="#fetch_csv_db">fetch_csv_db</a>, <a href="#connect_if_correct_version">connect_if_correct_version</a></td>
+</tr>
+<tr>
+<td>Cache object</td>
+<td><a href="#cache">Cache</a>, <a href="#cachefetch">fetch</a>, <a href="#cachelocal_filename">local_filename</a>, <a href="#cachelocal_path">local_path</a>, <a href="#cacheexists">exists</a>, <a href="#cacheinspect">inspect</a>, <a href="#cachemake_readable">make_readable</a>, <a href="#cachedb_from_dataframe">db_from_dataframe</a>, <a href="#cachedelete_url">delete_url</a>, <a href="#cachedelete_all">delete_all</a></td>
+</tr>
+<tr>
+<td>Package version</td>
+<td><a href="#__version__"><strong>version</strong></a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="example-setup">Example setup<a class="headerlink" href="#example-setup" title="Permanent link">&para;</a></h2>
+<p>The examples in this page use this shared setup. Run it once, then run the
+examples in order in the same Python session. All downloads use a local file;
+no external dataset server is needed. Explicit roots keep example writes in a
+temporary directory. Cleanup is shown at the end of the page.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">closing</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tempfile</span><span class="w"> </span><span class="kn">import</span> <span class="n">TemporaryDirectory</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">hashlib</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">io</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">tarfile</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">datacache</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">dc</span>
+
+<span class="n">temporary</span> <span class="o">=</span> <span class="n">TemporaryDirectory</span><span class="p">()</span>
+<span class="n">root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">temporary</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+<span class="n">cache_root</span> <span class="o">=</span> <span class="n">root</span> <span class="o">/</span> <span class="s2">"cache"</span>
+<span class="n">source</span> <span class="o">=</span> <span class="n">root</span> <span class="o">/</span> <span class="s2">"source.csv"</span>
+<span class="n">contents</span> <span class="o">=</span> <span class="sa">b</span><span class="s2">"id,value</span><span class="se">\n</span><span class="s2">1,10</span><span class="se">\n</span><span class="s2">2,20</span><span class="se">\n</span><span class="s2">"</span>
+<span class="n">source</span><span class="o">.</span><span class="n">write_bytes</span><span class="p">(</span><span class="n">contents</span><span class="p">)</span>
+<span class="n">url</span> <span class="o">=</span> <span class="n">source</span><span class="o">.</span><span class="n">as_uri</span><span class="p">()</span>
+<span class="n">sha256</span> <span class="o">=</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">contents</span><span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>
+<span class="n">frame</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"id"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="s2">"value"</span><span class="p">:</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">]})</span>
+
+<span class="n">archive_source</span> <span class="o">=</span> <span class="n">root</span> <span class="o">/</span> <span class="s2">"models.tar.bz2"</span>
+<span class="k">with</span> <span class="n">tarfile</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="n">archive_source</span><span class="p">,</span> <span class="s2">"w:bz2"</span><span class="p">)</span> <span class="k">as</span> <span class="n">archive</span><span class="p">:</span>
+    <span class="n">member_contents</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">'{"model": "example"}</span><span class="se">\n</span><span class="s1">'</span>
+    <span class="n">member</span> <span class="o">=</span> <span class="n">tarfile</span><span class="o">.</span><span class="n">TarInfo</span><span class="p">(</span><span class="s2">"models/model.json"</span><span class="p">)</span>
+    <span class="n">member</span><span class="o">.</span><span class="n">size</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">member_contents</span><span class="p">)</span>
+    <span class="n">archive</span><span class="o">.</span><span class="n">addfile</span><span class="p">(</span><span class="n">member</span><span class="p">,</span> <span class="n">io</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">(</span><span class="n">member_contents</span><span class="p">))</span>
+<span class="n">archive_contents</span> <span class="o">=</span> <span class="n">archive_source</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">()</span>
+<span class="n">archive_sha256</span> <span class="o">=</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">archive_contents</span><span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>
+</code></pre></div>
+<h2 id="downloading">Downloading<a class="headerlink" href="#downloading" title="Permanent link">&para;</a></h2>
+<h3 id="fetch_file"><code>fetch_file</code><a class="headerlink" href="#fetch_file" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>fetch_file(
+    download_url, filename=None, decompress=False, subdir=None, force=False,
+    timeout=None, use_wget_if_available=None, chunk_size=1048576,
+    progress_callback=None, *, destination=None, cache_root=None, expected_sha256=None,
+    expected_size=None, max_retries=2, retry_backoff=1.0, retry_max_delay=30.0,
+    show_progress=False, record_provenance=False, allow_empty=False, resume=False,
+    raw=False, expire_after=None, return_stale_on_error=False, validator=None
+)
+</code></pre></div>
+<p>Download a missing file or reuse a readable regular file at its cache path.
+On reuse, supplied integrity expectations are checked without a request. An
+invalid hit raises an error; <code>force=True</code> explicitly downloads a replacement.
+Successful new downloads are validated and published atomically. A failed
+replacement leaves the previous file intact.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>download_url</code></td>
+<td>Source URL string: HTTP, HTTPS, FTP, or <code>file://</code>.</td>
+</tr>
+<tr>
+<td><code>filename</code></td>
+<td>Optional string cache key. Omitted names are inferred from the full URL. Names are normalized by <a href="#build_local_filename">build_local_filename</a>, not treated as exact paths.</td>
+</tr>
+<tr>
+<td><code>decompress</code></td>
+<td>Request gzip/ZIP contents. With inferred filenames, <code>False</code> retains the archive and <code>True</code> selects a separate decompressed key. An explicit output lacking the source's compression suffix also implies decompression.</td>
+</tr>
+<tr>
+<td><code>raw</code></td>
+<td>Boolean disabling archive decompression and HTML conversion regardless of the output name. Default <code>False</code> preserves legacy inference; cannot be combined with <code>decompress=True</code>. Expectations describe the unchanged payload after HTTP transfer decoding.</td>
+</tr>
+<tr>
+<td><code>subdir</code></td>
+<td>Application name selecting a platform cache directory; <code>None</code> selects <code>datacache</code>. See <a href="#get_data_dir">get_data_dir</a>.</td>
+</tr>
+<tr>
+<td><code>force</code></td>
+<td>Download even when a cached file exists. Does not automatically broaden its permissions.</td>
+</tr>
+<tr>
+<td><code>timeout</code></td>
+<td>Per-attempt timeout in seconds; <code>None</code> supplies no timeout. HTTP also accepts a Requests <code>(connect, read)</code> tuple. Timeouts limit connection/read inactivity, not overall elapsed time.</td>
+</tr>
+<tr>
+<td><code>use_wget_if_available</code></td>
+<td>Deprecated and ignored. Passing a value other than <code>None</code> emits <code>DeprecationWarning</code>.</td>
+</tr>
+<tr>
+<td><code>chunk_size</code></td>
+<td>Positive integer transfer chunk size in bytes; the default is 1 MiB.</td>
+</tr>
+<tr>
+<td><code>progress_callback</code></td>
+<td>Optional callable receiving <code>(completed_bytes, total_bytes)</code> after each transfer chunk. The total can be <code>None</code>; retries restart counts. Callback exceptions propagate without retrying.</td>
+</tr>
+<tr>
+<td><code>destination</code></td>
+<td>Exact output path, as a string or <code>Path</code>. Mutually exclusive with <code>filename</code>, <code>subdir</code>, and <code>cache_root</code>. Its spelling is kept even when decompressing.</td>
+</tr>
+<tr>
+<td><code>cache_root</code></td>
+<td>Exact directory containing cached files, as a string or <code>Path</code>. Overrides <code>subdir</code>; relative roots stay relative to the working directory.</td>
+</tr>
+<tr>
+<td><code>expected_sha256</code></td>
+<td>Optional trusted 64-character hexadecimal SHA-256 digest of the <strong>installed bytes</strong>, after decompression or conversion. Case-insensitive.</td>
+</tr>
+<tr>
+<td><code>expected_size</code></td>
+<td>Optional non-negative integer size of those installed bytes; booleans are rejected.</td>
+</tr>
+<tr>
+<td><code>max_retries</code></td>
+<td>Non-negative integer number of additional attempts after transient HTTP failures. Default <code>2</code> allows three total attempts; <code>0</code> disables retries. File and FTP downloads are not retried.</td>
+</tr>
+<tr>
+<td><code>retry_backoff</code></td>
+<td>Initial retry delay in seconds, doubled for subsequent retries. Must be finite and non-negative.</td>
+</tr>
+<tr>
+<td><code>retry_max_delay</code></td>
+<td>Maximum retry delay in seconds, finite and non-negative. A server <code>Retry-After</code> exceeding this limit stops retries.</td>
+</tr>
+<tr>
+<td><code>show_progress</code></td>
+<td>Boolean enabling tqdm download, decompression, and hash bars. tqdm is installed with datacache; no extra is needed. Displays are opt-in and cache hits are quiet.</td>
+</tr>
+<tr>
+<td><code>resume</code></td>
+<td>Boolean retaining private partials for raw HTTP transfers. Requires size and a POSIX local filesystem. Without an expected SHA-256, every accepted response must supply a strong ETag. Size-only cache hits check only byte count. See <a href="../downloads/#resumable-http-downloads">resumable downloads</a>.</td>
+</tr>
+<tr>
+<td><code>record_provenance</code></td>
+<td>Boolean; after publishing a download, also write a hidden <code>.&lt;name&gt;.datacache.json</code> record of the source URL (without user name, password, query string, or fragment; the path is kept as is, so avoid recording URLs with secrets in their path), the fetch time, the size, and the SHA-256 when <code>expected_sha256</code> verified it. <a href="#inspect_file">inspect_file</a> reports these offline. The record has the file's permissions. Default <code>False</code>: a caller that downloads to a temporary name and then moves the file would leave the record behind. Cache hits never write one, any new download removes a previous record first, and a failure to write one never fails the download.</td>
+</tr>
+<tr>
+<td><code>allow_empty</code></td>
+<td>Boolean accepting an empty installed file; default <code>False</code>. A complete but empty response, such as a withdrawn upstream record, is otherwise never published: HTTP retries it as transient, then raises <code>FileValidationError</code>. An empty cached file is likewise an invalid hit. <code>expected_size=0</code> also allows an empty file.</td>
+</tr>
+<tr>
+<td><code>expire_after</code></td>
+<td>How long a cached file stays fresh: non-negative seconds or a <code>datetime.timedelta</code>, as in requests-cache. An older cached file is downloaded again, as is one that no longer validates; <code>0</code> refreshes every time. Age comes from the provenance record's fetch time when one describes the file, otherwise from its modification time; a future time counts as new. Default <code>None</code> reuses a valid file however old and raises for an invalid one.</td>
+</tr>
+<tr>
+<td><code>return_stale_on_error</code></td>
+<td>Boolean; when a refresh (<code>force=True</code> or an expired <code>expire_after</code>) raises and a valid cached file exists, log a warning (without URL secrets) and return the cached path, like HTTP <code>stale-if-error</code>. Without a valid cached file the error propagates, as does an exception from <code>progress_callback</code>, which cancels the fetch. The cached file is checked only after a failed refresh. Default <code>False</code>.</td>
+</tr>
+<tr>
+<td><code>validator</code></td>
+<td>Optional callable <code>validator(path)</code> for content a successful transfer can still get wrong, such as an HTTP 200 error page. It rejects the file by raising (normally <code>ValueError</code>) or returning <code>False</code>. It checks the installed bytes before publication, so a rejected download never replaces the cached file, and checks cache hits. Rejection raises <code>FileValidationError</code>, chained to any exception. Not supported with <code>resume=True</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>ZIP downloads install the member stored at the output name; otherwise a member
+with that name, ignoring letter case, in any folder: the one nearest the archive
+root, then an exact-case match, then the largest. If none matches, the largest
+non-directory member is installed, with a logged warning when the output was
+named explicitly and the archive has several. HTML-to-CSV conversion is enabled
+by an explicit <code>.csv</code> output for an HTML source and requires <code>datacache[html]</code>.
+See <a href="../downloads/#verified-downloads">format selection</a> and
+<a href="../downloads/#transient-http-failures">HTTP retry behavior</a>.</p>
+<p><strong>Returns:</strong> local path string. It is not necessarily absolute when given a
+relative <code>destination</code> or <code>cache_root</code>.</p>
+<p><strong>Raises:</strong> <code>ValueError</code> for conflicting paths or invalid expectations,
+chunk size, retry options, callback, or progress flag;
+<a href="#filevalidationerror"><code>FileValidationError</code></a> for non-regular files or integrity
+mismatches; <code>OSError</code> subclasses for filesystem failures; Requests exceptions
+for HTTP failures; <code>urllib.error.URLError</code> for URL-handler failures; archive
+errors such as <code>zipfile.BadZipFile</code>, <code>gzip.BadGzipFile</code>, or <code>EOFError</code> for damaged
+input. Empty ZIPs raise <code>ValueError</code>. Missing optional dependencies raise
+<code>ImportError</code>. Parser and callback exceptions propagate. Transport exceptions
+are preserved after retry exhaustion.</p>
+<div class="highlight"><pre><span></span><code><span class="n">path</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">fetch_file</span><span class="p">(</span>
+    <span class="n">url</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="s2">"records.csv"</span><span class="p">,</span> <span class="n">cache_root</span><span class="o">=</span><span class="n">cache_root</span><span class="p">,</span>
+    <span class="n">expected_sha256</span><span class="o">=</span><span class="n">sha256</span><span class="p">,</span> <span class="n">expected_size</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">contents</span><span class="p">),</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="k">assert</span> <span class="n">dc</span><span class="o">.</span><span class="n">fetch_file</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="s2">"records.csv"</span><span class="p">,</span> <span class="n">cache_root</span><span class="o">=</span><span class="n">cache_root</span><span class="p">)</span> <span class="o">==</span> <span class="n">path</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">has_header</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">()</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="sa">b</span><span class="s2">"id,value"</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"not the records table"</span><span class="p">)</span>
+
+
+<span class="c1"># Refresh copies older than a day, keep the cached copy if the source is</span>
+<span class="c1"># unreachable, and never cache content without the expected header.</span>
+<span class="n">fresh</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">fetch_file</span><span class="p">(</span>
+    <span class="n">url</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="s2">"records.csv"</span><span class="p">,</span> <span class="n">cache_root</span><span class="o">=</span><span class="n">cache_root</span><span class="p">,</span> <span class="n">expire_after</span><span class="o">=</span><span class="mi">86400</span><span class="p">,</span>
+    <span class="n">return_stale_on_error</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">validator</span><span class="o">=</span><span class="n">has_header</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="k">assert</span> <span class="n">fresh</span> <span class="o">==</span> <span class="n">path</span>
+</code></pre></div>
+<h3 id="fetch_bytes"><code>fetch_bytes</code><a class="headerlink" href="#fetch_bytes" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>fetch_bytes(
+    download_url, *, timeout=None, max_retries=2, retry_backoff=1.0,
+    retry_max_delay=30.0, allow_empty=False
+)
+</code></pre></div>
+<p>Return a resource's bytes in memory, transferred and retried exactly as
+<a href="#fetch_file">fetch_file</a> downloads are, without writing anything to disk. Use
+it for small resources such as directory listings and metadata, or where the
+cache is read-only.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>download_url</code></td>
+<td>Source URL string: HTTP, HTTPS, FTP, or <code>file://</code>.</td>
+</tr>
+<tr>
+<td><code>timeout</code>, <code>max_retries</code>, <code>retry_backoff</code>, <code>retry_max_delay</code></td>
+<td>As for <a href="#fetch_file">fetch_file</a>. Only HTTP(S) transfers are retried.</td>
+</tr>
+<tr>
+<td><code>allow_empty</code></td>
+<td>Boolean accepting an empty body; default <code>False</code>. An empty HTTP response is otherwise retried as transient, then rejected.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Returns:</strong> <code>bytes</code>. <strong>Raises:</strong> <code>ValueError</code> for invalid options or an empty
+body; Requests exceptions for HTTP failures, preserved after retry exhaustion;
+<code>urllib.error.URLError</code> for file and FTP failures.</p>
+<div class="highlight"><pre><span></span><code><span class="k">assert</span> <span class="n">dc</span><span class="o">.</span><span class="n">fetch_bytes</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">30</span><span class="p">)</span> <span class="o">==</span> <span class="n">contents</span>
+</code></pre></div>
+<h3 id="fetch_csv_dataframe"><code>fetch_csv_dataframe</code><a class="headerlink" href="#fetch_csv_dataframe" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>fetch_csv_dataframe(
+    download_url, filename=None, subdir=None, *, download_options=None,
+    show_progress=False, **pandas_kwargs
+)
+</code></pre></div>
+<p>Fetch and decompress the source, then call <code>pandas.read_csv</code> on its local path.
+<code>download_url</code>, <code>filename</code>, and <code>subdir</code> have the meanings above. Pass parser
+arguments such as <code>sep</code>, <code>dtype</code>, and <code>usecols</code> through <code>**pandas_kwargs</code>.
+<code>download_options</code> is an optional dictionary of other <code>fetch_file</code> arguments
+(for example <code>cache_root</code>, <code>timeout</code>, <code>force</code>, retry settings, and expectations).
+It is copied, not mutated. Keep <code>download_url</code>, <code>filename</code>, <code>subdir</code>, and
+<code>decompress</code> out of this dictionary: the helper supplies them itself, with
+<code>decompress=True</code>. Exact destinations still obey <code>fetch_file</code>'s exclusions.
+An inner <code>show_progress</code> overrides the outer setting for the download.</p>
+<p><strong>Returns:</strong> a pandas <code>DataFrame</code> normally; a pandas <code>TextFileReader</code> when
+<code>chunksize</code> or <code>iterator=True</code> is supplied. Close a reader when finished.</p>
+<p><strong>Raises:</strong> <a href="#fetch_file">fetch_file errors</a>, pandas parser errors such as
+<code>pandas.errors.ParserError</code> and <code>pandas.errors.EmptyDataError</code>, decoding errors,
+and <code>TypeError</code> for duplicated or unsupported keyword arguments.</p>
+<div class="highlight"><pre><span></span><code><span class="n">loaded</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">fetch_csv_dataframe</span><span class="p">(</span>
+    <span class="n">url</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="s2">"records.csv"</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="p">{</span><span class="s2">"id"</span><span class="p">:</span> <span class="s2">"int64"</span><span class="p">},</span>
+    <span class="n">download_options</span><span class="o">=</span><span class="p">{</span><span class="s2">"cache_root"</span><span class="p">:</span> <span class="n">cache_root</span><span class="p">,</span> <span class="s2">"expected_sha256"</span><span class="p">:</span> <span class="n">sha256</span><span class="p">},</span>
+<span class="p">)</span>
+<span class="k">assert</span> <span class="n">loaded</span><span class="p">[</span><span class="s2">"id"</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span> <span class="o">==</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+</code></pre></div>
+<h3 id="fetch_and_transform"><code>fetch_and_transform</code><a class="headerlink" href="#fetch_and_transform" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>fetch_and_transform(
+    transformed_filename, transformer, loader, source_filename, source_url, subdir=None,
+    *, force=False, cache_root=None, download_options=None, show_progress=False
+)
+</code></pre></div>
+<p>Cache one transformed file. <code>transformed_filename</code> is resolved with
+<a href="#resolve_path"><code>resolve_path</code></a>; <code>source_filename</code> is a download cache key and
+<code>source_url</code> is the source URL. <code>subdir</code> and <code>cache_root</code> select the output root
+and the default source root.</p>
+<p><code>transformer(source_path, output_path)</code> must write and close one regular file
+at the supplied, initially absent path. Its basename and extension match the
+final output, but it lives in a private staging directory. The result is
+published only after successful validation. <code>loader(final_path)</code> loads an
+existing readable output. A hit calls only the loader, ignoring source options.</p>
+<p><code>force=True</code> rebuilds the output while reusing the source; also pass
+<code>download_options={"force": True}</code> to refresh the source. The optional options
+dictionary is copied and passed to <code>fetch_file</code>; do not duplicate its supplied
+<code>download_url</code>, <code>filename</code>, or <code>subdir</code> arguments. Integrity expectations in
+this dictionary validate the downloaded source, not the transformed output.
+<code>show_progress</code> sets the source-download default; arbitrary transformer work
+has no automatic bar. Inner options can override source <code>cache_root</code>,
+<code>show_progress</code>, and <code>decompress</code>.</p>
+<p>For compatibility, a nonempty <code>subdir</code> defaults source decompression to <code>True</code>;
+otherwise it defaults to <code>False</code>. An explicit <code>download_options["decompress"]</code>
+overrides this. Without an explicit root, sources misplaced in the default
+cache by older releases can be reused without moving or changing them. See
+the <a href="../data/#custom-single-file-transformations">transformation guide</a>.</p>
+<p><strong>Returns:</strong> the transformer's result after a build, or the loader's result
+on reuse. A transformer returning its output path directly as a string or
+<code>Path</code> receives the final path back. Paths nested inside other objects are not
+rewritten; prefer in-memory results and close files before returning.</p>
+<p><strong>Raises:</strong> <a href="#fetch_file">fetch_file errors</a>, <code>RuntimeError</code> if the transformer
+does not create its output, <code>FileValidationError</code> for invalid output, and any
+transformer/loader exception. Failures preserve the previous transformed file.</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">double_values</span><span class="p">(</span><span class="n">source_path</span><span class="p">,</span> <span class="n">output_path</span><span class="p">):</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">source_path</span><span class="p">)</span>
+    <span class="n">result</span><span class="p">[</span><span class="s2">"value"</span><span class="p">]</span> <span class="o">*=</span> <span class="mi">2</span>
+    <span class="n">result</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">result</span>
+
+<span class="n">doubled</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">fetch_and_transform</span><span class="p">(</span>
+    <span class="s2">"doubled.csv"</span><span class="p">,</span> <span class="n">double_values</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">,</span> <span class="s2">"records.csv"</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span>
+    <span class="n">cache_root</span><span class="o">=</span><span class="n">cache_root</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="k">assert</span> <span class="n">doubled</span><span class="p">[</span><span class="s2">"value"</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span> <span class="o">==</span> <span class="p">[</span><span class="mi">20</span><span class="p">,</span> <span class="mi">40</span><span class="p">]</span>
+</code></pre></div>
+<h2 id="paths-and-presence">Paths and presence<a class="headerlink" href="#paths-and-presence" title="Permanent link">&para;</a></h2>
+<h3 id="expected_path"><code>expected_path</code><a class="headerlink" href="#expected_path" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>expected_path(
+    download_url=None, filename=None, decompress=False, subdir=None, *,
+    destination=None, cache_root=None
+)
+</code></pre></div>
+<p>Compute the path that <code>fetch_file</code> would use, without filesystem access or
+directory creation. The parameters follow <a href="#fetch_file">fetch_file</a>; either
+<code>download_url</code>, <code>filename</code>, or <code>destination</code> must identify the output. A
+<code>destination</code> is used exactly and cannot be combined with <code>filename</code>, <code>subdir</code>,
+or <code>cache_root</code>. Otherwise, the name is normalized by <code>build_local_filename</code>.</p>
+<p><strong>Returns:</strong> path string, possibly relative. <strong>Raises:</strong> <code>ValueError</code> for no
+URL/filename, an empty destination, or mutually exclusive path arguments.</p>
+<div class="highlight"><pre><span></span><code><span class="k">assert</span> <span class="n">dc</span><span class="o">.</span><span class="n">expected_path</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s2">"records.csv"</span><span class="p">,</span> <span class="n">cache_root</span><span class="o">=</span><span class="n">cache_root</span><span class="p">)</span> <span class="o">==</span> <span class="n">path</span>
+</code></pre></div>
+<h3 id="file_exists"><code>file_exists</code><a class="headerlink" href="#file_exists" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>file_exists(
+    download_url=None, filename=None, decompress=False, subdir=None, *,
+    destination=None, cache_root=None
+)
+</code></pre></div>
+<p>Check the presence of the path selected by <a href="#expected_path">expected_path</a>,
+with the same parameters. Follows symlinks. Directories count as present and
+dangling symlinks as absent. Does not validate readability or integrity.</p>
+<p><strong>Returns:</strong> <code>bool</code>. <strong>Raises:</strong> <code>expected_path</code> argument errors and filesystem
+errors other than <code>FileNotFoundError</code>, such as <code>PermissionError</code>. No directories
+are created, even when the cache root is absent.</p>
+<div class="highlight"><pre><span></span><code><span class="k">assert</span> <span class="n">dc</span><span class="o">.</span><span class="n">file_exists</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s2">"records.csv"</span><span class="p">,</span> <span class="n">cache_root</span><span class="o">=</span><span class="n">cache_root</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="build_local_filename"><code>build_local_filename</code><a class="headerlink" href="#build_local_filename" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>build_local_filename(download_url=None, filename=None, decompress=False)
+</code></pre></div>
+<p>Choose a string cache key from a URL string or an explicit filename string.
+At least one must be nonempty. An explicit name takes precedence. URL-derived
+names include an MD5 digest of the full URL for naming, not integrity checking.
+Special characters <code>/</code>, <code>\</code>, <code>;</code>, <code>:</code>, <code>?</code>, and <code>=</code> are replaced with underscores;
+long names are shortened with a digest, as is any name over 255 UTF-8 bytes,
+which keeps as much of its end (including the extension) as fits. This is a
+cache key, not an exact path.</p>
+<p><code>decompress=True</code> strips a final <code>.gz</code> or <code>.zip</code> suffix. Inferred archive
+endpoints without a removable suffix instead get <code>.decompressed</code>, so archive
+and decompressed keys differ. No filesystem or network access occurs.</p>
+<p><strong>Returns:</strong> filename string. <strong>Raises:</strong> <code>ValueError</code> if neither a URL nor
+a filename is supplied.</p>
+<div class="highlight"><pre><span></span><code><span class="k">assert</span> <span class="n">dc</span><span class="o">.</span><span class="n">build_local_filename</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s2">"records.csv.gz"</span><span class="p">,</span> <span class="n">decompress</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="o">==</span> <span class="s2">"records.csv"</span>
+</code></pre></div>
+<h3 id="get_data_dir"><code>get_data_dir</code><a class="headerlink" href="#get_data_dir" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>get_data_dir(subdir=None, envkey=None)
+</code></pre></div>
+<p>Select a platform cache directory without creating it. <code>subdir</code> is an
+application name, defaulting to <code>datacache</code> when omitted or empty. It is not a
+directory nested under the default datacache cache.</p>
+<table>
+<thead>
+<tr>
+<th>Platform</th>
+<th>Path for an application named <code>my-project</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Linux / Unix</td>
+<td><code>$XDG_CACHE_HOME/my-project</code>, or <code>~/.cache/my-project</code> when unset</td>
+</tr>
+<tr>
+<td>macOS</td>
+<td><code>~/Library/Caches/my-project</code></td>
+</tr>
+<tr>
+<td>Windows</td>
+<td><code>%LOCALAPPDATA%\my-project\my-project\Cache</code></td>
+</tr>
+</tbody>
+</table>
+<p>Paths follow <code>appdirs.user_cache_dir</code>, including Windows' repeated application
+name. The function's return value is authoritative for the current platform.
+If <code>envkey</code> names a nonempty environment variable, use that variable's value as
+the root and append <code>subdir</code> if supplied. <code>envkey</code> is opt-in for this helper;
+there is no implicit <code>DATACACHE_*</code> environment override for all APIs. Pass the
+returned path as <code>cache_root</code> to use that selection elsewhere.</p>
+<p><strong>Returns:</strong> directory path string. <strong>Raises:</strong> platform directory lookup
+errors from appdirs if it cannot determine the location; invalid argument
+types can raise <code>TypeError</code>. Does not require the directory to exist.</p>
+<div class="highlight"><pre><span></span><code><span class="nb">print</span><span class="p">(</span><span class="n">dc</span><span class="o">.</span><span class="n">get_data_dir</span><span class="p">())</span>  <span class="c1"># Platform cache directory for datacache.</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">dc</span><span class="o">.</span><span class="n">get_data_dir</span><span class="p">(</span><span class="s2">"my-project"</span><span class="p">))</span>
+<span class="c1"># For an application-specific override:</span>
+<span class="n">selected_root</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">get_data_dir</span><span class="p">(</span><span class="s2">"my-project"</span><span class="p">,</span> <span class="n">envkey</span><span class="o">=</span><span class="s2">"MY_PROJECT_CACHE_ROOT"</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="get_cache_root"><code>get_cache_root</code><a class="headerlink" href="#get_cache_root" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>get_cache_root(name, *envkeys)
+</code></pre></div>
+<p>Select a cache root that several packages can share, without creating it. The
+first environment variable in <code>envkeys</code> that is set to a non-blank value is the
+root itself, trimmed and with <code>~</code> expanded. Otherwise the result is the platform
+cache directory for <code>name</code>, the same directory <code>get_data_dir(name)</code> selects.
+Unlike <code>get_data_dir(subdir, envkey)</code>, nothing is appended to an environment
+value, so every package that reads the same variable agrees on one location.
+List a package-specific variable first to let it override a shared one. Pass
+the result as <code>cache_root</code>. A relative value stays relative to the working
+directory.</p>
+<p><strong>Returns:</strong> directory path string. <strong>Raises:</strong> <code>ValueError</code> for an empty
+<code>name</code> or a non-string or empty variable name, and platform directory lookup
+errors from appdirs.</p>
+<div class="highlight"><pre><span></span><code><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">"EXAMPLE_SHARED"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"shared"</span><span class="p">)</span>
+<span class="n">shared_root</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">get_cache_root</span><span class="p">(</span><span class="s2">"example"</span><span class="p">,</span> <span class="s2">"EXAMPLE_OWN"</span><span class="p">,</span> <span class="s2">"EXAMPLE_SHARED"</span><span class="p">)</span>
+<span class="k">assert</span> <span class="n">shared_root</span> <span class="o">==</span> <span class="nb">str</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"shared"</span><span class="p">)</span>
+<span class="k">del</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">"EXAMPLE_SHARED"</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">dc</span><span class="o">.</span><span class="n">get_cache_root</span><span class="p">(</span><span class="s2">"example"</span><span class="p">))</span>  <span class="c1"># Platform cache directory for example.</span>
+</code></pre></div>
+<h3 id="resolve_path"><code>resolve_path</code><a class="headerlink" href="#resolve_path" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>resolve_path(filename, subdir=None, *, cache_root=None)
+</code></pre></div>
+<p>Join a filename/path with <code>cache_root</code>, or with <code>get_data_dir(subdir)</code> if no
+root is supplied. Accepts string or <code>Path</code> values for <code>filename</code> and
+<code>cache_root</code>. Relative roots remain relative. Unlike <code>expected_path</code>, does not
+normalize filenames; nested components and absolute filenames are supported.
+An absolute filename overrides the root. This is ordinary path joining, not
+confinement to a cache directory. Performs no filesystem access.</p>
+<p><strong>Returns:</strong> path string. <strong>Raises:</strong> path argument <code>TypeError</code> for unsupported
+types, or platform lookup errors from <code>get_data_dir</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="n">nested_path</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">resolve_path</span><span class="p">(</span><span class="s2">"nested/records.csv"</span><span class="p">,</span> <span class="n">cache_root</span><span class="o">=</span><span class="n">cache_root</span><span class="p">)</span>
+<span class="k">assert</span> <span class="n">nested_path</span> <span class="o">==</span> <span class="nb">str</span><span class="p">(</span><span class="n">cache_root</span> <span class="o">/</span> <span class="s2">"nested"</span> <span class="o">/</span> <span class="s2">"records.csv"</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="build_path"><code>build_path</code><a class="headerlink" href="#build_path" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>build_path(filename, subdir=None, *, cache_root=None)
+</code></pre></div>
+<p>Resolve a path with the same parameters as <a href="#resolve_path">resolve_path</a>, and
+create its parent directories if needed. Does not create or validate the file.
+Use <code>resolve_path</code> for lookup without writes.</p>
+<p><strong>Returns:</strong> path string. <strong>Raises:</strong> <code>resolve_path</code> errors and <code>OSError</code>
+subclasses from directory creation, including permission or path-type errors.</p>
+<div class="highlight"><pre><span></span><code><span class="n">writable_path</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">build_path</span><span class="p">(</span><span class="s2">"nested/output.txt"</span><span class="p">,</span> <span class="n">cache_root</span><span class="o">=</span><span class="n">cache_root</span><span class="p">)</span>
+<span class="k">assert</span> <span class="n">Path</span><span class="p">(</span><span class="n">writable_path</span><span class="p">)</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">is_dir</span><span class="p">()</span>
+</code></pre></div>
+<h3 id="ensure_dir"><code>ensure_dir</code><a class="headerlink" href="#ensure_dir" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>ensure_dir(path)
+</code></pre></div>
+<p>Create <code>path</code> and its parents unless something already exists there. Accepts a
+string or <code>Path</code>. An existing path is left alone; this helper does not verify
+that an existing path is a directory. A directory another process creates at the
+same moment is accepted.</p>
+<p><strong>Returns:</strong> <code>None</code>. <strong>Raises:</strong> <code>OSError</code> subclasses for directory creation
+failures, including <code>PermissionError</code>, and <code>FileExistsError</code> for a broken
+symlink or a file created at <code>path</code> concurrently.</p>
+<div class="highlight"><pre><span></span><code><span class="n">dc</span><span class="o">.</span><span class="n">ensure_dir</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"extra"</span> <span class="o">/</span> <span class="s2">"nested"</span><span class="p">)</span>
+<span class="k">assert</span> <span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"extra"</span> <span class="o">/</span> <span class="s2">"nested"</span><span class="p">)</span><span class="o">.</span><span class="n">is_dir</span><span class="p">()</span>
+</code></pre></div>
+<h3 id="clear_cache"><code>clear_cache</code><a class="headerlink" href="#clear_cache" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>clear_cache(subdir=None)
+</code></pre></div>
+<p>Recursively delete the <strong>entire directory</strong> selected by <code>get_data_dir(subdir)</code>,
+including its root. <code>subdir=None</code> selects the default <code>datacache</code> cache. This
+function has no <code>cache_root</code> argument. For an explicit root, use
+<a href="#cachedelete_all"><code>Cache.delete_all</code></a>, which preserves the root directory.
+Deletion is explicit, is not transactional, and may partially complete on error.</p>
+<p><strong>Returns:</strong> <code>None</code>. <strong>Raises:</strong> <code>OSError</code> subclasses such as
+<code>FileNotFoundError</code> when the root is missing, <code>PermissionError</code> on denied access,
+or a path-type error if the root is not a directory. A root symlink is rejected
+by <code>shutil.rmtree</code>; it is not followed.</p>
+<p>This example is commented out so running this page does not delete a real cache:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># dc.clear_cache("my-project")  # Delete this application's platform cache and root.</span>
+</code></pre></div>
+<h2 id="integrity-inspection-and-permissions">Integrity, inspection, and permissions<a class="headerlink" href="#integrity-inspection-and-permissions" title="Permanent link">&para;</a></h2>
+<h3 id="validate_file"><code>validate_file</code><a class="headerlink" href="#validate_file" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>validate_file(path, expected_sha256=None, expected_size=None, *, show_progress=False)
+</code></pre></div>
+<p>Read-only validation of a string or <code>Path</code> pointing to a readable regular file;
+symlinks are followed. <code>expected_sha256</code> and <code>expected_size</code> have the same
+types and installed-byte meanings as in <a href="#fetch_file">fetch_file</a>. Without
+expectations, checks only readability and file type. <code>show_progress=True</code>
+enables a tqdm bar during SHA-256 hashing, including for an existing file.
+No download, directory creation, lock, permission change, or repair occurs.</p>
+<p><strong>Returns:</strong> the supplied path as a string. <strong>Raises:</strong> <code>ValueError</code> for invalid
+expectations, <code>FileValidationError</code> for non-regular files or mismatched size/hash,
+<code>FileNotFoundError</code> for a missing file, other <code>OSError</code> subclasses for access
+failures, and <code>ImportError</code> if a requested hash bar requires missing tqdm.</p>
+<div class="highlight"><pre><span></span><code><span class="k">assert</span> <span class="n">dc</span><span class="o">.</span><span class="n">validate_file</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">expected_sha256</span><span class="o">=</span><span class="n">sha256</span><span class="p">,</span> <span class="n">expected_size</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">contents</span><span class="p">))</span> <span class="o">==</span> <span class="n">path</span>
+</code></pre></div>
+<h3 id="inspect_file"><code>inspect_file</code><a class="headerlink" href="#inspect_file" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>inspect_file(path, expected_sha256=None, expected_size=None)
+</code></pre></div>
+<p>Inspect a string or <code>Path</code> using the same optional expectations as
+<code>validate_file</code>, entirely offline and without writes. Filesystem and validation
+failures become result statuses instead of being raised. An available file's
+size and modification time are reported, taken from the same open file that was
+validated. If <code>fetch_file(..., record_provenance=True)</code> recorded where it came
+from, and the file's size and modification time are unchanged since, its source
+URL, fetch time, and recorded SHA-256 are reported too. The recorded digest
+never sets <code>verified</code>, which still means a supplied SHA-256 matched the bytes
+now; pass it as <code>expected_sha256</code> to check them. A missing, unreadable, or
+malformed record is ignored, and a record is never opened in a way that could
+block.</p>
+<p><strong>Returns:</strong> <a href="#fileinspection"><code>FileInspection</code></a>. <strong>Raises:</strong> <code>ValueError</code> for
+invalid expectation arguments. Unsupported path types can raise <code>TypeError</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="n">inspection</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">inspect_file</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">expected_sha256</span><span class="o">=</span><span class="n">sha256</span><span class="p">)</span>
+<span class="k">assert</span> <span class="n">inspection</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="s2">"available"</span> <span class="ow">and</span> <span class="n">inspection</span><span class="o">.</span><span class="n">verified</span>
+<span class="k">assert</span> <span class="n">dc</span><span class="o">.</span><span class="n">inspect_file</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"absent.csv"</span><span class="p">)</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="s2">"missing"</span>
+<span class="k">assert</span> <span class="n">inspection</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">contents</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="inspect_files"><code>inspect_files</code><a class="headerlink" href="#inspect_files" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>inspect_files(cache_root, files)
+</code></pre></div>
+<p>Inspect a required-file inventory under <code>cache_root</code> (string or <code>Path</code>), with no
+writes or network access. <code>files</code> must be a nonempty mapping of normalized
+relative names to dictionaries containing <code>expected_sha256</code> and/or
+<code>expected_size</code>. Use <code>{}</code> or <code>None</code> when expectations are unavailable. Nested
+names use <code>/</code>; absolute paths, <code>..</code>, redundant separators, backslashes, and
+colons (including drive-qualified names) are rejected. Symlinks are followed
+during inspection.
+This checks a caller-supplied inventory; it does not parse a manifest or take
+a snapshot across concurrent changes.</p>
+<p><strong>Returns:</strong> <a href="#cacheinspection"><code>CacheInspection</code></a>, including individual file
+results when the root is an accessible directory. A missing root is <code>missing</code>;
+an existing root missing a required file is <code>corrupt</code>. Inaccessibility takes
+precedence over corrupt or missing files. <code>verified=True</code> requires a matching
+SHA-256 for every required file.</p>
+<p><strong>Raises:</strong> <code>ValueError</code> for an empty mapping, invalid names, unexpected metadata
+keys, or invalid expectations. Malformed mapping/metadata types can raise
+<code>TypeError</code> or <code>AttributeError</code>. Filesystem failures are returned in the result.</p>
+<div class="highlight"><pre><span></span><code><span class="n">inventory</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">inspect_files</span><span class="p">(</span><span class="n">cache_root</span><span class="p">,</span> <span class="p">{</span>
+    <span class="s2">"records.csv"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"expected_sha256"</span><span class="p">:</span> <span class="n">sha256</span><span class="p">,</span> <span class="s2">"expected_size"</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">contents</span><span class="p">)},</span>
+<span class="p">})</span>
+<span class="k">assert</span> <span class="n">inventory</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="s2">"available"</span> <span class="ow">and</span> <span class="n">inventory</span><span class="o">.</span><span class="n">verified</span>
+<span class="k">assert</span> <span class="n">inventory</span><span class="o">.</span><span class="n">files</span><span class="p">[</span><span class="s2">"records.csv"</span><span class="p">]</span><span class="o">.</span><span class="n">path</span> <span class="o">==</span> <span class="n">path</span>
+</code></pre></div>
+<h3 id="fileinspection"><code>FileInspection</code><a class="headerlink" href="#fileinspection" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>FileInspection(
+    path: str, status: str, verified: bool = False,
+    error: Optional[Exception] = None, size: Optional[int] = None,
+    mtime: Optional[float] = None, source_url: Optional[str] = None,
+    fetched_at: Optional[str] = None, recorded_sha256: Optional[str] = None
+)
+</code></pre></div>
+<p>Frozen dataclass returned by <code>inspect_file</code> and <code>Cache.inspect</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>path</code></td>
+<td>Inspected path string.</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td><code>available</code> (readable regular file matching supplied expectations), <code>missing</code> (absent), <code>corrupt</code> (wrong type or failed expectations), or <code>inaccessible</code> (other filesystem error).</td>
+</tr>
+<tr>
+<td><code>verified</code></td>
+<td><code>True</code> only when a supplied SHA-256 matched. Readability or matching size alone leaves it <code>False</code>, and so does a recorded digest.</td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td>Original exception for an unavailable file, or <code>None</code> on success.</td>
+</tr>
+<tr>
+<td><code>size</code></td>
+<td>Size in bytes of an available file; otherwise <code>None</code>.</td>
+</tr>
+<tr>
+<td><code>mtime</code></td>
+<td>Modification time of an available file, in seconds since the epoch; otherwise <code>None</code>.</td>
+</tr>
+<tr>
+<td><code>source_url</code></td>
+<td>Source URL recorded by <code>fetch_file(..., record_provenance=True)</code>, without user name, password, query string, or fragment, while the file's size and modification time are unchanged since it was recorded; otherwise <code>None</code>.</td>
+</tr>
+<tr>
+<td><code>fetched_at</code></td>
+<td>Recorded fetch time, UTC in ISO 8601, under the same condition; otherwise <code>None</code>.</td>
+</tr>
+<tr>
+<td><code>recorded_sha256</code></td>
+<td>SHA-256 that <code>expected_sha256</code> verified when the file was downloaded, under the same condition; otherwise <code>None</code>. It is a record, not a check of the current bytes: a file edited in place without changing its size or modification time, or a record forged in a shared cache, still reports it. To check the bytes now, pass it back as <code>expected_sha256</code>.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Construction:</strong> returns a <code>FileInspection</code> instance; fields are assigned as
+given, with no validation of manually supplied status/type combinations.
+Incorrect constructor arguments raise <code>TypeError</code>. Assigning a field afterward
+raises <code>dataclasses.FrozenInstanceError</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">inspection</span><span class="p">,</span> <span class="n">dc</span><span class="o">.</span><span class="n">FileInspection</span><span class="p">)</span>
+<span class="n">manual_result</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">FileInspection</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">path</span><span class="p">,</span> <span class="n">status</span><span class="o">=</span><span class="s2">"available"</span><span class="p">)</span>
+<span class="k">assert</span> <span class="ow">not</span> <span class="n">manual_result</span><span class="o">.</span><span class="n">verified</span>
+</code></pre></div>
+<h3 id="cacheinspection"><code>CacheInspection</code><a class="headerlink" href="#cacheinspection" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>CacheInspection(
+    path: str, status: str, files: Dict[str, FileInspection], verified: bool = False,
+    error: Optional[Exception] = None
+)
+</code></pre></div>
+<p>Frozen dataclass returned by <code>inspect_files</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>path</code></td>
+<td>Inspected root path string.</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td><code>available</code> (all required files available), <code>missing</code> (root absent), <code>corrupt</code> (wrong root type or incomplete/corrupt files), or <code>inaccessible</code> (root or required file access error).</td>
+</tr>
+<tr>
+<td><code>files</code></td>
+<td>Dictionary from required relative names to <code>FileInspection</code> results. Empty if the root could not be inspected as a directory.</td>
+</tr>
+<tr>
+<td><code>verified</code></td>
+<td><code>True</code> only when every required file has a matching SHA-256.</td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td>Root failure or a representative failing file's exception; <code>None</code> on success. Inspect <code>files</code> for all individual failures.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Construction:</strong> returns a <code>CacheInspection</code> instance; manually supplied fields
+are not validated. Incorrect constructor arguments raise <code>TypeError</code>. Field
+assignment raises <code>dataclasses.FrozenInstanceError</code>; the contained <code>files</code>
+dictionary itself is not frozen.</p>
+<div class="highlight"><pre><span></span><code><span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">inventory</span><span class="p">,</span> <span class="n">dc</span><span class="o">.</span><span class="n">CacheInspection</span><span class="p">)</span>
+<span class="n">manual_inventory</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">CacheInspection</span><span class="p">(</span>
+    <span class="n">path</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">cache_root</span><span class="p">),</span> <span class="n">status</span><span class="o">=</span><span class="s2">"available"</span><span class="p">,</span> <span class="n">files</span><span class="o">=</span><span class="p">{</span><span class="s2">"records.csv"</span><span class="p">:</span> <span class="n">manual_result</span><span class="p">},</span>
+<span class="p">)</span>
+<span class="k">assert</span> <span class="ow">not</span> <span class="n">manual_inventory</span><span class="o">.</span><span class="n">verified</span>
+</code></pre></div>
+<h3 id="filevalidationerror"><code>FileValidationError</code><a class="headerlink" href="#filevalidationerror" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>FileValidationError(path, reason)
+</code></pre></div>
+<p><code>ValueError</code> subclass for a non-regular file, an integrity mismatch, or another
+file validation failure. <code>path</code> accepts a string or <code>Path</code>; <code>reason</code> describes
+the failure. Attributes are <code>path</code> (converted with <code>os.fspath</code>) and <code>reason</code>.
+The message is <code>"&lt;path&gt;: &lt;reason&gt;"</code>. No filesystem access occurs in construction.</p>
+<p><strong>Construction:</strong> returns an exception instance; an invalid path type raises
+<code>TypeError</code>. It is raised by validation/download helpers and retained in
+inspection results when applicable.</p>
+<div class="highlight"><pre><span></span><code><span class="k">try</span><span class="p">:</span>
+    <span class="n">dc</span><span class="o">.</span><span class="n">validate_file</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">expected_size</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="k">except</span> <span class="n">dc</span><span class="o">.</span><span class="n">FileValidationError</span> <span class="k">as</span> <span class="n">error</span><span class="p">:</span>
+    <span class="k">assert</span> <span class="n">error</span><span class="o">.</span><span class="n">path</span> <span class="o">==</span> <span class="n">path</span>
+    <span class="k">assert</span> <span class="s2">"size mismatch"</span> <span class="ow">in</span> <span class="n">error</span><span class="o">.</span><span class="n">reason</span>
+</code></pre></div>
+<h3 id="make_file_readable"><code>make_file_readable</code><a class="headerlink" href="#make_file_readable" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>make_file_readable(path, *, group=True, others=False)
+</code></pre></div>
+<p>Explicitly add group read permission (<code>group=True</code>) and/or other-user read
+permission (<code>others=True</code>) to one existing regular file, identified by a string
+or <code>Path</code>. Both flags must be booleans. Adds no write/execute bits, removes no
+permissions, and changes no contents. A <code>False</code> flag leaves that class's
+existing access unchanged. The file's provenance record, if any, gets the same
+access, best effort. Requires POSIX file-descriptor support. The caller must be
+able to open the file and change its mode; parent directories and group
+ownership must already allow the intended readers to reach it.</p>
+<p><strong>Returns:</strong> path string. <strong>Raises:</strong> <code>ValueError</code> for non-boolean flags,
+<code>NotImplementedError</code> on unsupported platforms, <code>FileValidationError</code> for a
+symlink or non-regular file, and <code>OSError</code> subclasses for missing files or
+open/chmod failures. This is never called automatically on cache reuse.</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">os</span><span class="p">,</span> <span class="s2">"fchmod"</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">os</span><span class="p">,</span> <span class="s2">"O_NOFOLLOW"</span><span class="p">):</span>
+    <span class="n">dc</span><span class="o">.</span><span class="n">make_file_readable</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">others</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="sqlite">SQLite<a class="headerlink" href="#sqlite" title="Permanent link">&para;</a></h2>
+<h3 id="shared-database-behavior">Shared database behavior<a class="headerlink" href="#shared-database-behavior" title="Permanent link">&para;</a></h3>
+<p>All database builders return an open <code>sqlite3.Connection</code> owned by the caller.
+Use <code>contextlib.closing</code> or call <code>.close()</code> explicitly: <code>with connection:</code>
+commits/rolls back transactions but does not close the connection. Connections
+are opened with <code>check_same_thread=False</code>, so Python does not reject cross-thread
+use: applications must serialize simultaneous use of one connection and should
+give independent concurrent workers their own.</p>
+<p>A matching version and all requested tables permit reuse without parsing or
+validating new DataFrames, changing old constraints, or rewriting the file.
+Table names match as SQLite compares them, ignoring the case of ASCII letters.
+Data changes are not detected automatically. Change <code>version</code> (an integer) or
+use <code>overwrite=True</code> where available to rebuild. A rebuild replaces the
+database's tables, not just the named table, and rolls back on failure. Explicit
+overwrites also remove views; version-only rebuilds retain views. New databases
+are staged before publication. A rebuild writes SQLite's <code>&lt;name&gt;-journal</code> file
+beside the database; where the filesystem has no room for that name, rebuilding
+raises a <code>ValueError</code> that says so, while creating and reusing the database
+still work. See <a href="../data/#reuse-and-replacement">reuse and replacement</a> for
+locking, symlink, and filesystem requirements.</p>
+<p>Table names must be nonempty strings, distinct ignoring the case of ASCII
+letters (as SQLite compares names), and must not be the reserved metadata name
+<code>_datacache_metadata</code> or start with <code>sqlite_</code>, in any case. They are checked
+before any reuse. DataFrame column names must be nonempty strings; spaces become
+underscores and names must remain distinct ignoring the case of ASCII letters.
+Primary keys name one column; index specifications are sequences of nonempty
+column-name sequences, such as <code>[("id",), ("id", "value")]</code>, not bare strings.
+Original and normalized column spellings are accepted. The pandas row index is
+not stored.</p>
+<p><code>show_progress=True</code> enables optional tqdm row-insertion bars; reuse is quiet.
+Signed integers preserve precision, missing values become SQL <code>NULL</code>, and
+dates/datetimes become ISO text. See <a href="../data/">types and constraints</a> for details.</p>
+<p><strong>Shared errors:</strong> <code>ValueError</code> for invalid names, constraints, versions, or
+unsupported dtypes; <code>TypeError</code> for unsupported argument types;
+<code>sqlite3.IntegrityError</code> for duplicate or null primary keys; <code>OverflowError</code> for
+integers outside SQLite's signed 64-bit range; other <code>sqlite3.Error</code> subclasses
+for binding, database, schema, or locking failures; <code>OSError</code> subclasses for
+filesystem/publication failures; and <code>ImportError</code> for missing tqdm when a
+progress bar is needed. Existing malformed databases are not silently repaired.</p>
+<h3 id="db_from_dataframe"><code>db_from_dataframe</code><a class="headerlink" href="#db_from_dataframe" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>db_from_dataframe(
+    db_filename, table_name, df, primary_key=None, subdir=None, overwrite=False,
+    indices=(), version=1, *, cache_root=None, show_progress=False
+)
+</code></pre></div>
+<p>Build or reuse one table named <code>table_name</code> from pandas DataFrame <code>df</code>.
+<code>db_filename</code>, <code>subdir</code>, and <code>cache_root</code> are resolved with <code>resolve_path</code>;
+parents are created if a build is needed. <code>primary_key=None</code> means no primary
+key; <code>indices=()</code> means no extra indexes. <code>overwrite</code>, <code>version</code>, column naming,
+and progress follow <a href="#shared-database-behavior">shared database behavior</a>.</p>
+<p><strong>Returns:</strong> open <code>sqlite3.Connection</code>. <strong>Raises:</strong> the shared database errors.</p>
+<div class="highlight"><pre><span></span><code><span class="k">with</span> <span class="n">closing</span><span class="p">(</span><span class="n">dc</span><span class="o">.</span><span class="n">db_from_dataframe</span><span class="p">(</span>
+    <span class="s2">"records.db"</span><span class="p">,</span> <span class="s2">"records"</span><span class="p">,</span> <span class="n">frame</span><span class="p">,</span> <span class="n">primary_key</span><span class="o">=</span><span class="s2">"id"</span><span class="p">,</span> <span class="n">indices</span><span class="o">=</span><span class="p">[(</span><span class="s2">"value"</span><span class="p">,)],</span>
+    <span class="n">cache_root</span><span class="o">=</span><span class="n">cache_root</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<span class="p">))</span> <span class="k">as</span> <span class="n">connection</span><span class="p">:</span>
+    <span class="k">assert</span> <span class="n">connection</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">"SELECT value FROM records ORDER BY id"</span><span class="p">)</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span> <span class="o">==</span> <span class="p">[(</span><span class="mi">10</span><span class="p">,),</span> <span class="p">(</span><span class="mi">20</span><span class="p">,)]</span>
+</code></pre></div>
+<h3 id="db_from_dataframes"><code>db_from_dataframes</code><a class="headerlink" href="#db_from_dataframes" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>db_from_dataframes(
+    db_filename, dataframes, primary_keys=None, indices=None, subdir=None,
+    overwrite=False, version=1, *, cache_root=None, show_progress=False
+)
+</code></pre></div>
+<p>Build or reuse a database containing the tables in the nonempty mapping
+<code>dataframes</code>, from table names to pandas DataFrames. <code>primary_keys</code> optionally
+maps table names to a primary-key column; omitted entries have no primary key.
+<code>indices</code> optionally maps table names to index specifications; omitted entries
+have no extra indexes. <code>db_filename</code>, <code>subdir</code>, and <code>cache_root</code> select the path
+as in <code>db_from_dataframe</code>, creating parents when needed. <code>overwrite</code>, <code>version</code>,
+and <code>show_progress</code> follow the shared behavior above.</p>
+<p><strong>Returns:</strong> open <code>sqlite3.Connection</code>. <strong>Raises:</strong> the shared database errors.</p>
+<div class="highlight"><pre><span></span><code><span class="k">with</span> <span class="n">closing</span><span class="p">(</span><span class="n">dc</span><span class="o">.</span><span class="n">db_from_dataframes</span><span class="p">(</span>
+    <span class="s2">"multiple.db"</span><span class="p">,</span> <span class="p">{</span><span class="s2">"records"</span><span class="p">:</span> <span class="n">frame</span><span class="p">,</span> <span class="s2">"other_records"</span><span class="p">:</span> <span class="n">frame</span><span class="p">},</span>
+    <span class="n">primary_keys</span><span class="o">=</span><span class="p">{</span><span class="s2">"records"</span><span class="p">:</span> <span class="s2">"id"</span><span class="p">},</span> <span class="n">indices</span><span class="o">=</span><span class="p">{</span><span class="s2">"records"</span><span class="p">:</span> <span class="p">[(</span><span class="s2">"value"</span><span class="p">,)]},</span>
+    <span class="n">cache_root</span><span class="o">=</span><span class="n">cache_root</span><span class="p">,</span>
+<span class="p">))</span> <span class="k">as</span> <span class="n">connection</span><span class="p">:</span>
+    <span class="k">assert</span> <span class="n">connection</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">"SELECT COUNT(*) FROM other_records"</span><span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span> <span class="o">==</span> <span class="p">(</span><span class="mi">2</span><span class="p">,)</span>
+</code></pre></div>
+<h3 id="db_from_dataframes_with_absolute_path"><code>db_from_dataframes_with_absolute_path</code><a class="headerlink" href="#db_from_dataframes_with_absolute_path" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>db_from_dataframes_with_absolute_path(
+    db_path, table_names_to_dataframes, table_names_to_primary_keys=None,
+    table_names_to_indices=None, overwrite=False, version=1, *, show_progress=False
+)
+</code></pre></div>
+<p>Use <code>db_path</code> directly (string or <code>Path</code>), without selecting a platform cache
+directory. Despite the name, relative paths also work relative to the current
+directory. The parent directory must already exist. For dangling symlinks,
+the target's parent must exist; publication preserves the symlink.</p>
+<p><code>table_names_to_dataframes</code>, <code>table_names_to_primary_keys</code>, and
+<code>table_names_to_indices</code> have the same mapping meanings as <code>dataframes</code>,
+<code>primary_keys</code>, and <code>indices</code> in <code>db_from_dataframes</code>. <code>overwrite</code>, <code>version</code>,
+and <code>show_progress</code> follow the shared database behavior.</p>
+<p><strong>Returns:</strong> open <code>sqlite3.Connection</code>. <strong>Raises:</strong> the shared database errors,
+including filesystem errors if the parent is absent.</p>
+<div class="highlight"><pre><span></span><code><span class="k">with</span> <span class="n">closing</span><span class="p">(</span><span class="n">dc</span><span class="o">.</span><span class="n">db_from_dataframes_with_absolute_path</span><span class="p">(</span>
+    <span class="n">root</span> <span class="o">/</span> <span class="s2">"direct.db"</span><span class="p">,</span> <span class="p">{</span><span class="s2">"records"</span><span class="p">:</span> <span class="n">frame</span><span class="p">},</span>
+    <span class="n">table_names_to_primary_keys</span><span class="o">=</span><span class="p">{</span><span class="s2">"records"</span><span class="p">:</span> <span class="s2">"id"</span><span class="p">},</span>
+<span class="p">))</span> <span class="k">as</span> <span class="n">connection</span><span class="p">:</span>
+    <span class="k">assert</span> <span class="n">connection</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">"SELECT COUNT(*) FROM records"</span><span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span> <span class="o">==</span> <span class="p">(</span><span class="mi">2</span><span class="p">,)</span>
+</code></pre></div>
+<h3 id="fetch_csv_db"><code>fetch_csv_db</code><a class="headerlink" href="#fetch_csv_db" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>fetch_csv_db(
+    table_name, download_url, csv_filename=None, db_filename=None, subdir=None,
+    version=1, *, download_options=None, show_progress=False, **pandas_kwargs
+)
+</code></pre></div>
+<p>Download/parse a CSV and build or reuse <code>table_name</code> in SQLite. <code>download_url</code>,
+<code>csv_filename</code>, <code>subdir</code>, <code>download_options</code>, and <code>**pandas_kwargs</code> follow
+<code>fetch_csv_dataframe</code>. <code>csv_filename=None</code> infers a download key from the URL;
+<code>db_filename=None</code> infers a database name from the CSV name, row count, column
+names, and dtypes. That name is spelled out only when every character is allowed
+in file names on all supported platforms (no <code>/</code>, <code>\</code>, <code>:</code>, <code>*</code>, <code>?</code>, <code>"</code>, <code>&lt;</code>,
+<code>&gt;</code>, <code>|</code>, or control characters) and the name leaves room for SQLite's
+<code>-journal</code> file within 255 UTF-8 bytes, measured the same way on every platform.
+Otherwise the schema is named by a digest, forbidden characters from the CSV
+filename become <code>_</code>, and a very long CSV filename is shortened, so column names
+never add directories or leave the cache directory; directories in an explicit
+<code>csv_filename</code> are kept. A matching database an older release stored under the
+historical name is still reused in place. A new <code>version</code> rebuilds it under the
+new name and leaves the older copy alone, since another process may still have
+it open, logging a warning that names it. An explicit <code>db_filename</code> works
+independently of <code>csv_filename</code>. A <code>cache_root</code> inside <code>download_options</code>
+applies to both files. Parser options must produce a DataFrame with non-empty
+string column names: do not pass <code>chunksize</code> or <code>iterator</code>, and pair
+<code>header=None</code> with <code>names=</code>.</p>
+<p>With an explicit database filename, matching tables/version can be reused
+without downloading or parsing the source. Supplying <code>force</code>, <code>expected_sha256</code>,
+or <code>expected_size</code> in <code>download_options</code> requests source work even on such a
+hit. Refreshing a source alone does not replace a matching database: increment
+<code>version</code> when its data or schema changes. There is no <code>overwrite</code> parameter.
+<code>show_progress</code> enables both download and insertion displays; an inner setting
+overrides only the download display.</p>
+<p><strong>Returns:</strong> open <code>sqlite3.Connection</code>. <strong>Raises:</strong> <code>fetch_csv_dataframe</code> errors
+and the shared database errors. Incompatible parser return types can raise
+<code>AttributeError</code> or <code>TypeError</code> during database construction.</p>
+<div class="highlight"><pre><span></span><code><span class="k">with</span> <span class="n">closing</span><span class="p">(</span><span class="n">dc</span><span class="o">.</span><span class="n">fetch_csv_db</span><span class="p">(</span>
+    <span class="s2">"records"</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">csv_filename</span><span class="o">=</span><span class="s2">"records.csv"</span><span class="p">,</span> <span class="n">db_filename</span><span class="o">=</span><span class="s2">"from-csv.db"</span><span class="p">,</span>
+    <span class="n">download_options</span><span class="o">=</span><span class="p">{</span><span class="s2">"cache_root"</span><span class="p">:</span> <span class="n">cache_root</span><span class="p">},</span> <span class="n">version</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<span class="p">))</span> <span class="k">as</span> <span class="n">connection</span><span class="p">:</span>
+    <span class="k">assert</span> <span class="n">connection</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">"SELECT SUM(value) FROM records"</span><span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span> <span class="o">==</span> <span class="p">(</span><span class="mi">30</span><span class="p">,)</span>
+</code></pre></div>
+<h3 id="connect_if_correct_version"><code>connect_if_correct_version</code><a class="headerlink" href="#connect_if_correct_version" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>connect_if_correct_version(db_path, version, *, read_only=False)
+</code></pre></div>
+<p>Open an existing <code>db_path</code> (string or <code>Path</code>) when its DataCache metadata matches
+the requested integer <code>version</code>. <code>read_only=True</code> uses SQLite's read-only open
+mode. Never creates a missing database; closes connections it rejects. This
+checks metadata only, not application tables, data correctness, or a checksum.</p>
+<p><strong>Returns:</strong> an open caller-owned <code>sqlite3.Connection</code> on a match, or <code>None</code>
+when the path is missing, metadata is absent, or the version differs.</p>
+<p><strong>Raises:</strong> <code>OSError</code> subclasses for filesystem access failures,
+<code>sqlite3.Error</code> subclasses for invalid/unreadable databases or malformed
+metadata tables, and conversion errors such as <code>ValueError</code> for malformed
+stored versions.</p>
+<div class="highlight"><pre><span></span><code><span class="n">connection</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">connect_if_correct_version</span><span class="p">(</span><span class="n">cache_root</span> <span class="o">/</span> <span class="s2">"records.db"</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">read_only</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">assert</span> <span class="n">connection</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+<span class="k">with</span> <span class="n">closing</span><span class="p">(</span><span class="n">connection</span><span class="p">):</span>
+    <span class="k">assert</span> <span class="n">connection</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">"SELECT COUNT(*) FROM records"</span><span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span> <span class="o">==</span> <span class="p">(</span><span class="mi">2</span><span class="p">,)</span>
+<span class="k">assert</span> <span class="n">dc</span><span class="o">.</span><span class="n">connect_if_correct_version</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"absent.db"</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span>
+</code></pre></div>
+<h2 id="cache-object">Cache object<a class="headerlink" href="#cache-object" title="Permanent link">&para;</a></h2>
+<h3 id="cache"><code>Cache</code><a class="headerlink" href="#cache" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>Cache(subdir='datacache', *, cache_root=None)
+</code></pre></div>
+<p>Select a root once for file, inspection, database, and deletion operations.
+<code>subdir</code> must be a nonempty application name; <code>cache_root</code> optionally supplies
+the exact string/<code>Path</code> root, overriding the platform location selected by
+<code>subdir</code>. Construction performs no directory creation or download.</p>
+<p><strong>Returns:</strong> a <code>Cache</code> instance. Public attributes are <code>subdir</code> (the supplied
+name) and <code>cache_directory_path</code> (the selected root as a string). Relative roots
+remain relative to the working directory; use an absolute root if that directory
+may change. <strong>Raises:</strong> <code>ValueError</code> for an empty <code>subdir</code>, invalid path-type
+errors, or platform directory lookup errors from <code>get_data_dir</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="n">cache</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">Cache</span><span class="p">(</span><span class="s2">"reference-example"</span><span class="p">,</span> <span class="n">cache_root</span><span class="o">=</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"object-cache"</span><span class="p">)</span>
+<span class="k">assert</span> <span class="n">cache</span><span class="o">.</span><span class="n">cache_directory_path</span> <span class="o">==</span> <span class="nb">str</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"object-cache"</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="cachefetch"><code>Cache.fetch</code><a class="headerlink" href="#cachefetch" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>Cache.fetch(
+    url, filename=None, decompress=False, force=False, timeout=None,
+    use_wget_if_available=None, *, chunk_size=1048576, progress_callback=None,
+    expected_sha256=None, expected_size=None, max_retries=2, retry_backoff=1.0,
+    retry_max_delay=30.0, show_progress=False, record_provenance=False,
+    allow_empty=False, resume=False, raw=False, expire_after=None, return_stale_on_error=False,
+    validator=None
+)
+</code></pre></div>
+<p>Instance form of <a href="#fetch_file">fetch_file</a>, with <code>url</code> as the source URL and
+the instance's root as <code>cache_root</code>. Every other parameter has the same meaning
+and default as its <code>fetch_file</code> counterpart. Explicit names are remembered for
+this instance's <code>delete_url</code> calls; this association is not written to disk.</p>
+<p><strong>Returns:</strong> local path string. <strong>Raises:</strong> the errors documented for <code>fetch_file</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="n">cached_path</span> <span class="o">=</span> <span class="n">cache</span><span class="o">.</span><span class="n">fetch</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="s2">"records.csv"</span><span class="p">,</span> <span class="n">expected_sha256</span><span class="o">=</span><span class="n">sha256</span><span class="p">)</span>
+<span class="k">assert</span> <span class="n">Path</span><span class="p">(</span><span class="n">cached_path</span><span class="p">)</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">()</span> <span class="o">==</span> <span class="n">contents</span>
+</code></pre></div>
+<h3 id="cachelocal_filename"><code>Cache.local_filename</code><a class="headerlink" href="#cachelocal_filename" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>Cache.local_filename(url=None, filename=None, decompress=False)
+</code></pre></div>
+<p>Instance form of <a href="#build_local_filename">build_local_filename</a>. <code>url</code> is its
+<code>download_url</code>; <code>filename</code> and <code>decompress</code> have identical meanings. Does not
+access the filesystem or include the root directory in the result.</p>
+<p><strong>Returns:</strong> filename string. <strong>Raises:</strong> <code>ValueError</code> if neither a URL nor
+a filename is supplied.</p>
+<div class="highlight"><pre><span></span><code><span class="k">assert</span> <span class="n">cache</span><span class="o">.</span><span class="n">local_filename</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s2">"records.csv.gz"</span><span class="p">,</span> <span class="n">decompress</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="o">==</span> <span class="s2">"records.csv"</span>
+</code></pre></div>
+<h3 id="cachelocal_path"><code>Cache.local_path</code><a class="headerlink" href="#cachelocal_path" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>Cache.local_path(url=None, filename=None, decompress=False, download=False)
+</code></pre></div>
+<p>Instance form of <a href="#expected_path">expected_path</a>. <code>url</code>, <code>filename</code>, and
+<code>decompress</code> select a cache key under this instance's root. With the default
+<code>download=False</code>, only computes the path. With <code>download=True</code>, delegates to
+<code>Cache.fetch</code> with its defaults; use <code>Cache.fetch</code> directly for timeouts,
+integrity expectations, or other download options.</p>
+<p><strong>Returns:</strong> path string. <strong>Raises:</strong> naming/path argument errors, plus
+<code>Cache.fetch</code> errors when <code>download=True</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="k">assert</span> <span class="n">cache</span><span class="o">.</span><span class="n">local_path</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s2">"records.csv"</span><span class="p">)</span> <span class="o">==</span> <span class="n">cached_path</span>
+</code></pre></div>
+<h3 id="cacheexists"><code>Cache.exists</code><a class="headerlink" href="#cacheexists" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>Cache.exists(url=None, filename=None, decompress=False)
+</code></pre></div>
+<p>Check presence at <code>Cache.local_path(url, filename, decompress)</code>, using the
+<a href="#file_exists">file_exists</a> contract: no download, repair, or directory creation;
+directories count as present and dangling symlinks as absent.</p>
+<p><strong>Returns:</strong> <code>bool</code>. <strong>Raises:</strong> naming/path argument errors and filesystem
+errors other than missing files, such as <code>PermissionError</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="k">assert</span> <span class="n">cache</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s2">"records.csv"</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="cacheinspect"><code>Cache.inspect</code><a class="headerlink" href="#cacheinspect" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>Cache.inspect(
+    url=None, filename=None, decompress=False, *, expected_sha256=None,
+    expected_size=None
+)
+</code></pre></div>
+<p>Call <a href="#inspect_file">inspect_file</a> on the path selected by <code>url</code>, <code>filename</code>,
+and <code>decompress</code>. Both expectations have the same meanings as in <code>inspect_file</code>.
+No network access or writes occur.</p>
+<p><strong>Returns:</strong> <code>FileInspection</code>. <strong>Raises:</strong> naming/path argument errors and
+<code>ValueError</code> for invalid expectations; filesystem failures are in the result.</p>
+<div class="highlight"><pre><span></span><code><span class="k">assert</span> <span class="n">cache</span><span class="o">.</span><span class="n">inspect</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s2">"records.csv"</span><span class="p">,</span> <span class="n">expected_sha256</span><span class="o">=</span><span class="n">sha256</span><span class="p">)</span><span class="o">.</span><span class="n">verified</span>
+</code></pre></div>
+<h3 id="cachemake_readable"><code>Cache.make_readable</code><a class="headerlink" href="#cachemake_readable" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>Cache.make_readable(
+    url=None, filename=None, decompress=False, *, group=True, others=False
+)
+</code></pre></div>
+<p>Call <a href="#make_file_readable">make_file_readable</a> on the path selected by <code>url</code>,
+<code>filename</code>, and <code>decompress</code>. <code>group</code> and <code>others</code> have that function's meanings.
+Explicit POSIX maintenance only: does not download or recurse into directories.</p>
+<p><strong>Returns:</strong> path string. <strong>Raises:</strong> naming/path argument errors and the
+errors documented for <code>make_file_readable</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">os</span><span class="p">,</span> <span class="s2">"fchmod"</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">os</span><span class="p">,</span> <span class="s2">"O_NOFOLLOW"</span><span class="p">):</span>
+    <span class="n">cache</span><span class="o">.</span><span class="n">make_readable</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s2">"records.csv"</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="cachedb_from_dataframe"><code>Cache.db_from_dataframe</code><a class="headerlink" href="#cachedb_from_dataframe" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>Cache.db_from_dataframe(
+    db_filename, table_name, df, key_column_name=None, *, overwrite=False, version=1,
+    show_progress=False
+)
+</code></pre></div>
+<p>Build or reuse <code>table_name</code> from <code>df</code> at <code>db_filename</code> under this cache's root.
+An absolute filename overrides the root. <code>key_column_name</code> is the primary-key
+column, equivalent to <code>primary_key</code> in the top-level builder. <code>overwrite</code>,
+<code>version</code>, and <code>show_progress</code> follow <a href="#db_from_dataframe">db_from_dataframe</a>.
+This method has no index specification argument; use the top-level function
+with <code>cache_root=cache.cache_directory_path</code> to request indexes.</p>
+<p><strong>Returns:</strong> open caller-owned <code>sqlite3.Connection</code>. <strong>Raises:</strong> the
+<a href="#shared-database-behavior">shared database errors</a>.</p>
+<div class="highlight"><pre><span></span><code><span class="k">with</span> <span class="n">closing</span><span class="p">(</span><span class="n">cache</span><span class="o">.</span><span class="n">db_from_dataframe</span><span class="p">(</span>
+    <span class="s2">"records.db"</span><span class="p">,</span> <span class="s2">"records"</span><span class="p">,</span> <span class="n">frame</span><span class="p">,</span> <span class="n">key_column_name</span><span class="o">=</span><span class="s2">"id"</span><span class="p">,</span>
+<span class="p">))</span> <span class="k">as</span> <span class="n">connection</span><span class="p">:</span>
+    <span class="k">assert</span> <span class="n">connection</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">"SELECT COUNT(*) FROM records"</span><span class="p">)</span><span class="o">.</span><span class="n">fetchone</span><span class="p">()</span> <span class="o">==</span> <span class="p">(</span><span class="mi">2</span><span class="p">,)</span>
+</code></pre></div>
+<h3 id="cachedelete_url"><code>Cache.delete_url</code><a class="headerlink" href="#cachedelete_url" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>Cache.delete_url(url)
+</code></pre></div>
+<p>Remove local files for a URL string. Includes paths successfully fetched by this
+<code>Cache</code> instance (including explicit filenames), plus the URL-derived
+raw/decompressed paths that may have been created by other instances, along with
+their provenance records. Missing files are ignored. Explicit filenames used by
+earlier instances are not recorded persistently and cannot be rediscovered by
+URL alone. Files unrelated to those paths are left alone. A symlink at a
+selected file path is unlinked without deleting its target.</p>
+<p><strong>Returns:</strong> <code>None</code>. <strong>Raises:</strong> naming errors and <code>OSError</code> subclasses such as
+<code>PermissionError</code> or a directory-removal error. Deletion is not transactional:
+some files may already have been removed when another removal fails.</p>
+<div class="highlight"><pre><span></span><code><span class="n">cache</span><span class="o">.</span><span class="n">delete_url</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+<span class="k">assert</span> <span class="ow">not</span> <span class="n">cache</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s2">"records.csv"</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="cachedelete_all"><code>Cache.delete_all</code><a class="headerlink" href="#cachedelete_all" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>Cache.delete_all()
+</code></pre></div>
+<p>Remove <strong>all contents</strong> of this cache root recursively, including files not
+created by DataCache. Use only a dedicated directory. Preserves the root and
+its permissions. A root symlink is followed to the selected directory, while
+symlinks inside the cache are unlinked without clearing their external targets.
+The instance's remembered download paths are cleared after success.</p>
+<p><strong>Returns:</strong> <code>None</code>. <strong>Raises:</strong> <code>FileNotFoundError</code> if the root is absent,
+<code>NotADirectoryError</code> for a non-directory root, and other <code>OSError</code> subclasses
+on access/removal failure. Deletion is not transactional and may partially
+complete on error. Unlike <code>clear_cache</code>, this method preserves the root and
+works with an explicit <code>cache_root</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="n">cache</span><span class="o">.</span><span class="n">delete_all</span><span class="p">()</span>  <span class="c1"># Safe here: object-cache is inside our temporary example directory.</span>
+<span class="k">assert</span> <span class="n">Path</span><span class="p">(</span><span class="n">cache</span><span class="o">.</span><span class="n">cache_directory_path</span><span class="p">)</span><span class="o">.</span><span class="n">is_dir</span><span class="p">()</span>
+<span class="k">assert</span> <span class="ow">not</span> <span class="nb">list</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">cache</span><span class="o">.</span><span class="n">cache_directory_path</span><span class="p">)</span><span class="o">.</span><span class="n">iterdir</span><span class="p">())</span>
+</code></pre></div>
+<h2 id="package-version">Package version<a class="headerlink" href="#package-version" title="Permanent link">&para;</a></h2>
+<h3 id="__version__"><code>__version__</code><a class="headerlink" href="#__version__" title="Permanent link">&para;</a></h3>
+<p>String containing the installed DataCache package version. This is a constant,
+not a callable; it has no parameters, defaults, or API-specific exceptions.
+It is independent of the integer <code>version</code> used to identify a SQLite cache.</p>
+<div class="highlight"><pre><span></span><code><span class="nb">print</span><span class="p">(</span><span class="n">dc</span><span class="o">.</span><span class="n">__version__</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="discard_partial">discard_partial<a class="headerlink" href="#discard_partial" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>discard_partial(destination)
+</code></pre></div>
+<p>Explicitly discard this user's private resumable bytes for an exact destination,
+under its writer lock. The installed file is unchanged; absent state is a no-op.
+See <a href="../downloads/#resumable-http-downloads">resumable downloads</a>.</p>
+<h2 id="install_archive">install_archive<a class="headerlink" href="#install_archive" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>install_archive(
+    destination, sources, *, expected_sha256=None, expected_size=None,
+    extra_files=None, force=False, verified=True, download_options=None,
+    max_members=None, max_extracted_size=None
+)
+</code></pre></div>
+<p>Safely extract a complete tar archive into a private directory and publish the
+tree as one immutable generation. <code>sources</code> is one URL, one <code>Path</code>, or an
+explicitly ordered sequence. A mapping may contain <code>url</code>, <code>path</code>, <code>sha256</code>, and
+<code>size</code>; supplying both <code>url</code> and <code>path</code> reads local bytes while retaining the URL
+as the logical source identity. Multiple sources are concatenated byte-for-byte,
+which supports historical split archives.</p>
+<p>By default the assembled archive needs trusted <code>expected_sha256</code> and
+<code>expected_size</code>, or every part needs <code>sha256</code> and <code>size</code>. Set <code>verified=False</code>
+explicitly for historical sources without published integrity metadata. Observed
+hashes are still recorded and checked, but do not authenticate the source.</p>
+<p><code>extra_files</code> maps safe relative names to text or bytes written after extraction
+and before publication. It is intended for consumer receipts such as
+<code>DOWNLOAD_INFO.csv</code>; collisions with archive content fail the installation.
+The complete metadata inventory participates in generation identity: additions,
+removals, and content changes require an explicit refresh.
+<code>download_options</code> accepts timeout, chunk size, progress, retry, and resume
+settings from <code>fetch_file</code>. Resumable URL parts each require a trusted hash and
+size. Optional <code>max_members</code> and <code>max_extracted_size</code> limits are checked before
+files are extracted, as headers arrive; scanning stops when a limit is exceeded.
+Benign leading <code>./</code> paths are normalized and root <code>.</code> directory entries ignored.
+Local special files such as FIFOs are rejected without blocking.</p>
+<p><strong>Returns:</strong> the immutable extracted-generation <code>Path</code>, not the managed store
+path. Existing returned paths remain usable across forced refreshes.</p>
+<p><strong>Raises:</strong> <code>ValueError</code> for invalid definitions or options;
+<code>FileValidationError</code> for integrity failures, unsafe members, malformed tar
+archives, or invalid installations; transport and filesystem errors otherwise.
+An invalid current installation requires <code>force=True</code>. A legacy or otherwise
+foreign destination is never claimed, even with force.</p>
+<div class="highlight"><pre><span></span><code><span class="n">archive_store</span> <span class="o">=</span> <span class="n">root</span> <span class="o">/</span> <span class="s2">"archive-store"</span>
+<span class="n">archive_generation</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">install_archive</span><span class="p">(</span>
+    <span class="n">archive_store</span><span class="p">,</span>
+    <span class="n">archive_source</span><span class="p">,</span>
+    <span class="n">expected_sha256</span><span class="o">=</span><span class="n">archive_sha256</span><span class="p">,</span>
+    <span class="n">expected_size</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">archive_contents</span><span class="p">),</span>
+    <span class="n">extra_files</span><span class="o">=</span><span class="p">{</span><span class="s2">"DOWNLOAD_INFO.csv"</span><span class="p">:</span> <span class="s2">"url</span><span class="se">\n</span><span class="s2">"</span> <span class="o">+</span> <span class="n">archive_source</span><span class="o">.</span><span class="n">as_uri</span><span class="p">()</span> <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">},</span>
+<span class="p">)</span>
+<span class="k">assert</span> <span class="p">(</span><span class="n">archive_generation</span> <span class="o">/</span> <span class="s2">"models/model.json"</span><span class="p">)</span><span class="o">.</span><span class="n">is_file</span><span class="p">()</span>
+</code></pre></div>
+<p>See the <a href="../archives/">archive installation guide</a> for split sources, safe-member
+rules, publication semantics, and an MHCflurry adapter.</p>
+<h2 id="inspect_archive">inspect_archive<a class="headerlink" href="#inspect_archive" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>inspect_archive(
+    destination, sources=None, *, expected_sha256=None, expected_size=None,
+    extra_files=None, verify_files=True
+)
+</code></pre></div>
+<p>Inspect one installed archive generation without writes, locks, repair, or
+network access. Omit <code>sources</code> for receipt-only consistency checking, which
+returns <code>verified=False</code>. Supply the same source definition, expectations, and
+consumer metadata used for installation to validate the requested identity.
+Set <code>verify_files=False</code> for a fast published-generation/source-identity check
+that does not hash the extracted tree. Fast results have an empty <code>files</code>
+mapping and <code>verified=False</code>; use the default before asserting content integrity.</p>
+<h2 id="archiveinspection">ArchiveInspection<a class="headerlink" href="#archiveinspection" title="Permanent link">&para;</a></h2>
+<p>A frozen record with <code>path</code>, <code>status</code>, <code>verified</code>, <code>generation</code>, <code>files</code>,
+<code>error</code>, <code>source_urls</code>, <code>fetched_at</code>, <code>archive_size</code>, and <code>recorded_sha256</code>.
+Status is <code>available</code>, <code>missing</code>, <code>invalid</code>, <code>inaccessible</code>, or
+<code>recovery-required</code>. <code>generation</code> is the extracted tree applications should use;
+<code>files</code> maps every installed relative file name to a <code>FileInspection</code>, or is
+empty for a fast <code>verify_files=False</code> inspection. Source URLs are redacted for
+display. The recorded digest is observed receipt data, not trusted verification.</p>
+<h2 id="versionedarchiveregistry">VersionedArchiveRegistry<a class="headerlink" href="#versionedarchiveregistry" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>VersionedArchiveRegistry(
+    archives, *, cache_root=None, store_path=None, verified=True
+)
+</code></pre></div>
+<p>Reusable version catalogue for archive-tree consumers. Each named archive has a
+<code>default_version</code>, optional description, and <code>versions</code> mapping. A concrete
+version may be one source, an ordered source sequence, or a mapping containing
+<code>sources</code>, <code>expected_sha256</code>, <code>expected_size</code>, <code>extra_files</code>, <code>max_members</code>, and
+<code>max_extracted_size</code>. Definitions are validated without filesystem access.</p>
+<p>Select exactly one destination strategy. <code>cache_root</code> stores versions at
+<code>&lt;root&gt;/&lt;name&gt;/&lt;version&gt;</code>. A two-argument <code>store_path(name, version)</code> callback
+lets an adapter retain an established layout such as
+<code>&lt;MHCFLURRY_DATA&gt;/&lt;release&gt;/&lt;download&gt;</code> without putting layout policy in
+DataCache. <code>verified=False</code> explicitly enables historical unpinned catalogues.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>resolve_version(name, version=None)</code></td>
+<td>Concrete version, applying the pinned default.</td>
+</tr>
+<tr>
+<td><code>store_path(name, version=None)</code></td>
+<td>Managed store <code>Path</code>, without creating or inspecting it.</td>
+</tr>
+<tr>
+<td><code>inspect(name, version=None, *, verify_files=True)</code></td>
+<td>Offline <code>ArchiveInspection</code>.</td>
+</tr>
+<tr>
+<td><code>download(name, version=None, *, force=False, source_paths=None, **download_options)</code></td>
+<td>Install/reuse and return the generation <code>Path</code>; <code>source_paths</code> overlays ordered local files while retaining catalogue identities.</td>
+</tr>
+<tr>
+<td><code>local_path(name, version=None, *, verify_files=False)</code></td>
+<td>Resolve a published generation without network, writes, or repair.</td>
+</tr>
+<tr>
+<td><code>ensure(name, version=None, **download_options)</code></td>
+<td>Install if needed and return the generation.</td>
+</tr>
+<tr>
+<td><code>is_cached(name, version=None, *, verify_files=False)</code></td>
+<td>Whether a published generation is available; full verification is optional.</td>
+</tr>
+<tr>
+<td><code>status(name=None)</code></td>
+<td>One read-only row per concrete version, including catalogue and downloaded source URLs, store/generation paths, default flag, status, fetch time, observed archive size/hash and inspection.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="install_bundle">install_bundle<a class="headerlink" href="#install_bundle" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>install_bundle(destination, assets, *, force=False, verified=True, download_options=None)
+</code></pre></div>
+<p>Atomically install a mapping of relative asset names to <code>{url, sha256, size,
+decompress?}</code> metadata. Returns a dict of asset names to immutable generation
+paths. Invalid caches require <code>force=True</code>. <code>verified=False</code> explicitly permits
+unpinned sources; their observed hashes are recorded without authenticating them.
+<code>download_options</code> accepts timeout, chunk size, progress, retry settings and resume.
+Publication requires a POSIX local filesystem. <a href="../bundles/">Complete guide</a>.</p>
+<h2 id="inspect_bundle">inspect_bundle<a class="headerlink" href="#inspect_bundle" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>inspect_bundle(destination, assets=None)
+</code></pre></div>
+<p>Return a <code>BundleInspection</code> without writes, network, locks or recovery. Supply
+trusted assets to verify against the registry; omit them to check consistency
+against the installed generation's own recorded hashes (<code>verified=False</code>).</p>
+<h2 id="bundleinspection">BundleInspection<a class="headerlink" href="#bundleinspection" title="Permanent link">&para;</a></h2>
+<p>A frozen record with <code>path</code>, <code>status</code>, <code>verified</code>, <code>generation</code>, <code>files</code>, and
+<code>error</code>. Status is <code>available</code>, <code>missing</code>, <code>invalid</code>, <code>inaccessible</code>, or
+<code>recovery-required</code>. <code>files</code> maps asset names to <code>FileInspection</code> values from one
+generation. Paths remain usable across refreshes until explicitly removed.</p>
+<h2 id="versioneddatasetregistry">VersionedDatasetRegistry<a class="headerlink" href="#versioneddatasetregistry" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>VersionedDatasetRegistry(datasets, *, cache_root=None, cache_dir=None, verified=True)
+</code></pre></div>
+<p>Select exactly one root path or a zero-argument <code>cache_dir</code> callable. Each dataset
+specifies a <code>default_version</code> and <code>versions</code>, mapping concrete versions to asset
+mappings. Construction validates metadata and performs no writes or networking.
+The <a href="../bundles/">bundle guide</a> includes an example and downstream migration notes.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>resolve_version(name, version=None)</code></td>
+<td>Concrete version label, applying the pinned default. Unknown names/versions raise <code>ValueError</code>.</td>
+</tr>
+<tr>
+<td><code>bundle_path(name, version=None)</code></td>
+<td>Expected managed store <code>Path</code>, without creating it.</td>
+</tr>
+<tr>
+<td><code>inspect(name, version=None)</code></td>
+<td>Read-only <code>BundleInspection</code>.</td>
+</tr>
+<tr>
+<td><code>download(name, version=None, *, force=False, **download_options)</code></td>
+<td>Install/reuse and return a dict of asset snapshot paths.</td>
+</tr>
+<tr>
+<td><code>local_path(name, version=None, *, asset=None)</code></td>
+<td>Installed single asset's <code>Path</code>, or a multi-file generation directory; select one asset by name. Missing raises <code>FileNotFoundError</code>; invalid/recovery-required raises <code>FileValidationError</code>.</td>
+</tr>
+<tr>
+<td><code>ensure(name, version=None, **download_options)</code></td>
+<td>Download/reuse, then return <code>local_path</code>.</td>
+</tr>
+<tr>
+<td><code>is_cached(name, version=None)</code></td>
+<td>Whether verified inspection reports <code>available</code>.</td>
+</tr>
+<tr>
+<td><code>status()</code></td>
+<td>One row per dataset's pinned default: name, version, description, available_versions and inspection.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="versionedfileregistry">VersionedFileRegistry<a class="headerlink" href="#versionedfileregistry" title="Permanent link">&para;</a></h2>
+<p><code>VersionedFileRegistry(datasets, *, cache_dir, error_cls=RuntimeError)</code></p>
+<p>Fixed-path single-file compatibility registry. Definitions contain <code>filename</code>,
+<code>urls</code> (version to URL), <code>default_version</code>, and optional <code>description</code>. The
+zero-argument root callable may return a string or Path. Construction creates
+nothing. See the <a href="../file_registry/">fixed-path guide</a> for legacy receipt semantics,
+trust boundaries, and the distinction from transactional generation bundles.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>resolve_version(name, version=None)</code></td>
+<td>Concrete version; unknown names/versions raise the caller's error_cls.</td>
+</tr>
+<tr>
+<td><code>local_path(name, version=None)</code></td>
+<td>Expected fixed Path, even when absent, without writes.</td>
+</tr>
+<tr>
+<td><code>is_cached(name, version=None)</code></td>
+<td>Presence only, not verified integrity.</td>
+</tr>
+<tr>
+<td><code>download(name, version=None, *, force=False, **download_options)</code></td>
+<td>One fixed Path; fetch_file options control acquisition. Ordinary cache hits do not hash or write; explicit size/hash expectations are checked.</td>
+</tr>
+<tr>
+<td><code>ensure(name, version=None, **download_options)</code></td>
+<td>Same download/reuse behavior and Path result.</td>
+</tr>
+<tr>
+<td><code>status()</code></td>
+<td>Legacy status dicts with name, description, default_version, available_versions, cached, cached_version, URL, bytes, observed SHA-256, downloaded_at and path.</td>
+</tr>
+</tbody>
+</table>
+<p>After finishing the examples, remove their temporary files:</p>
+<div class="highlight"><pre><span></span><code><span class="n">temporary</span><span class="o">.</span><span class="n">cleanup</span><span class="p">()</span>
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.indexes", "navigation.expand", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
