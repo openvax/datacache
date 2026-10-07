@@ -445,6 +445,8 @@
       
         
       
+        
+      
     
     
     
@@ -552,6 +554,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#consumer-selected-store-paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consumer-selected store paths
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#status-and-trust" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -619,6 +632,34 @@
     
   
     Install archive trees
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../materialization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build derived files
   
 
     
@@ -958,6 +999,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#consumer-selected-store-paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consumer-selected store paths
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#status-and-trust" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1086,6 +1138,35 @@ mode. Installation refuses to take over a nonempty directory without its
 ownership marker, even with <code>force=True</code>. Store generated indices and other derived
 outputs under a separate application-owned directory. Reinstalling sources does
 not visit those outputs.</p>
+<h2 id="consumer-selected-store-paths">Consumer-selected store paths<a class="headerlink" href="#consumer-selected-store-paths" title="Permanent link">&para;</a></h2>
+<p>Select exactly one of <code>cache_root</code>, a zero-argument <code>cache_dir</code> root callable,
+or an exact <code>store_path(name, version)</code> callback. Root strategies retain
+<code>&lt;root&gt;/&lt;name&gt;/&lt;version&gt;</code>; the callback can keep an application's own layout,
+for example a version directory per release:</p>
+<div class="highlight"><pre><span></span><code><span class="n">registry</span> <span class="o">=</span> <span class="n">VersionedDatasetRegistry</span><span class="p">(</span>
+    <span class="n">datasets</span><span class="p">,</span>
+    <span class="n">store_path</span><span class="o">=</span><span class="k">lambda</span> <span class="n">name</span><span class="p">,</span> <span class="n">version</span><span class="p">:</span> <span class="n">application_root</span> <span class="o">/</span> <span class="n">version</span> <span class="o">/</span> <span class="s2">"sources"</span> <span class="o">/</span> <span class="n">name</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">store</span> <span class="o">=</span> <span class="n">registry</span><span class="o">.</span><span class="n">bundle_path</span><span class="p">(</span><span class="s2">"reference"</span><span class="p">)</span>
+</code></pre></div>
+<p>The callback receives a validated concrete version, including when the caller
+omits it and selects the pinned default. Construction never calls it. The first
+lookup calls it once for every dataset version, without filesystem inspection
+or mutation, and the paths are reused afterwards, so callbacks should only
+compute paths. Each version needs its own store: a callback that gives two
+versions the same path raises <code>ValueError</code>, as does one that returns something
+other than a path. Inspection, installation, recovery and refresh all use the
+chosen store, while DataCache still owns its immutable generations.</p>
+<p>The store's parent belongs to the application and may be a link, for example to
+another disk; the store itself is never a link. Installation creates missing
+parent directories and keeps its lock file and temporary staging directories
+in the parent, so give the stores a parent of their own rather than a
+directory the application lists or cleans.</p>
+<p>Do not point this callback at a populated legacy data/index directory: even
+<code>force=True</code> cannot adopt a foreign directory, and installation raises
+<code>FileValidationError</code> saying so. Keep those old caches readable
+and deliberately install into a new managed source subdirectory instead. Model,
+biological naming and migration policy remain the application's responsibility.</p>
 <h2 id="status-and-trust">Status and trust<a class="headerlink" href="#status-and-trust" title="Permanent link">&para;</a></h2>
 <p><code>BundleInspection.status</code> is <code>available</code>, <code>missing</code>, <code>invalid</code>, <code>inaccessible</code>, or
 <code>recovery-required</code>. <code>files</code> maps asset names to <code>FileInspection</code> objects from one

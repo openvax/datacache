@@ -10,31 +10,27 @@
       
       
       
-        <link rel="canonical" href="https://openvax.github.io/datacache/shared-caches/">
+        <link rel="canonical" href="https://openvax.github.io/datacache/design/materialization/">
       
       
-        <link rel="prev" href="../data/">
-      
-      
-        <link rel="next" href="../progress/">
       
       
         
       
       
-      <link rel="icon" href="../assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
-        <title>Share a cache - datacache</title>
+        <title>Derived-artifact transaction (#90) - datacache</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -47,9 +43,9 @@
       
     
     
-      <link rel="stylesheet" href="../stylesheets/docs.css">
+      <link rel="stylesheet" href="../../stylesheets/docs.css">
     
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -72,7 +68,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#shared-caches" class="md-skip">
+        <a href="#derived-artifact-transaction-90" class="md-skip">
           Skip to content
         </a>
       
@@ -88,7 +84,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href=".." title="datacache" class="md-header__button md-logo" aria-label="datacache" data-md-component="logo">
+    <a href="../.." title="datacache" class="md-header__button md-logo" aria-label="datacache" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -108,7 +104,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Share a cache
+              Derived-artifact transaction (#90)
             
           </span>
         </div>
@@ -198,7 +194,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="datacache" class="md-nav__button md-logo" aria-label="datacache" data-md-component="logo">
+    <a href="../.." title="datacache" class="md-nav__button md-logo" aria-label="datacache" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -228,7 +224,7 @@
   
   
     <li class="md-nav__item">
-      <a href=".." class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -252,10 +248,8 @@
       
   
   
-    
   
   
-  
     
     
       
@@ -271,11 +265,13 @@
     
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
         
           
           <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
@@ -296,7 +292,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -314,7 +310,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../downloads/" class="md-nav__link">
+      <a href="../../downloads/" class="md-nav__link">
         
   
   
@@ -342,7 +338,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../data/" class="md-nav__link">
+      <a href="../../data/" class="md-nav__link">
         
   
   
@@ -367,37 +363,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Share a cache
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../shared-caches/" class="md-nav__link">
         
   
   
@@ -413,59 +382,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#new-downloads" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        New downloads
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#files-already-downloaded-as-0600" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Files already downloaded as 0600
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Troubleshooting
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -478,7 +394,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../progress/" class="md-nav__link">
+      <a href="../../progress/" class="md-nav__link">
         
   
   
@@ -574,7 +490,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../bundles/" class="md-nav__link">
+      <a href="../../bundles/" class="md-nav__link">
         
   
   
@@ -602,7 +518,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../archives/" class="md-nav__link">
+      <a href="../../archives/" class="md-nav__link">
         
   
   
@@ -630,7 +546,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../materialization/" class="md-nav__link">
+      <a href="../../materialization/" class="md-nav__link">
         
   
   
@@ -658,7 +574,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../file_registry/" class="md-nav__link">
+      <a href="../../file_registry/" class="md-nav__link">
         
   
   
@@ -686,7 +602,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../integration/" class="md-nav__link">
+      <a href="../../integration/" class="md-nav__link">
         
   
   
@@ -778,7 +694,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../reference/choosing/" class="md-nav__link">
+      <a href="../../reference/choosing/" class="md-nav__link">
         
   
   
@@ -806,7 +722,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../api/" class="md-nav__link">
+      <a href="../../api/" class="md-nav__link">
         
   
   
@@ -922,7 +838,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../dev/documentation-style/" class="md-nav__link">
+      <a href="../../dev/documentation-style/" class="md-nav__link">
         
   
   
@@ -970,47 +886,6 @@
     
   
   
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#new-downloads" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        New downloads
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#files-already-downloaded-as-0600" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Files already downloaded as 0600
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Troubleshooting
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
 </nav>
                   </div>
                 </div>
@@ -1029,127 +904,37 @@
   
 
 
-<h1 id="shared-caches">Shared caches<a class="headerlink" href="#shared-caches" title="Permanent link">&para;</a></h1>
-<p>See the <a href="../api/">API reference</a> for signatures, defaults, return values, and errors.</p>
-<p>Select a common root explicitly:</p>
-<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">datacache</span><span class="w"> </span><span class="kn">import</span> <span class="n">Cache</span>
-
-<span class="n">cache</span> <span class="o">=</span> <span class="n">Cache</span><span class="p">(</span><span class="s2">"references"</span><span class="p">,</span> <span class="n">cache_root</span><span class="o">=</span><span class="s2">"/srv/references/v1"</span><span class="p">)</span>
-<span class="n">status</span> <span class="o">=</span> <span class="n">cache</span><span class="o">.</span><span class="n">inspect</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s2">"annotations.gtf"</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="n">status</span><span class="o">.</span><span class="n">status</span><span class="p">)</span>
-<span class="k">if</span> <span class="n">status</span><span class="o">.</span><span class="n">error</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-    <span class="nb">print</span><span class="p">(</span><span class="n">status</span><span class="o">.</span><span class="n">error</span><span class="p">)</span>
-</code></pre></div>
-<p>Inspection never downloads, creates directories, or repairs files. The root is
-the actual directory containing files, not a parent to which <code>subdir</code> is added.
-For pyensembl, configure its own <code>PYENSEMBL_CACHE_DIR</code>; that environment setting
-is interpreted by pyensembl, not globally by DataCache.</p>
-<h2 id="new-downloads">New downloads<a class="headerlink" href="#new-downloads" title="Permanent link">&para;</a></h2>
-<p>Files remain private while downloading and validating. New final files use
-normal creation permissions measured in the destination directory, without
-temporarily changing the process-wide umask:</p>
-<table>
-<thead>
-<tr>
-<th>Umask</th>
-<th>Typical new file mode</th>
-<th>Access</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>022</code></td>
-<td><code>0644</code></td>
-<td>Owner writes; others read</td>
-</tr>
-<tr>
-<td><code>002</code></td>
-<td><code>0664</code></td>
-<td>Owner/group write; others read</td>
-</tr>
-<tr>
-<td><code>007</code></td>
-<td><code>0660</code></td>
-<td>Owner/group read and write</td>
-</tr>
-<tr>
-<td><code>077</code></td>
-<td><code>0600</code></td>
-<td>Owner only</td>
-</tr>
-</tbody>
-</table>
-<p>These modes assume no default ACL modifies creation. Choose the umask in the
-shell or application launcher, before starting worker threads. Shared group
-directories can use setgid so new files inherit the directory's group; have
-the cache administrator configure the intended group and directory access.</p>
-<p>Replacing a downloaded file preserves its existing read/write/execute bits.
-It creates a new inode, so existing ownership, ACLs, and extended attributes
-are not copied. Existing SQLite databases rebuild transactionally in place
-and retain their inode and permissions.</p>
-<h2 id="files-already-downloaded-as-0600">Files already downloaded as <code>0600</code><a class="headerlink" href="#files-already-downloaded-as-0600" title="Permanent link">&para;</a></h2>
-<p>The fix for <a href="https://github.com/openvax/datacache/issues/68">#68</a> affects new
-files. Reusing or force-refreshing an existing file does not broaden its
-permissions. Its owner or an administrator must explicitly grant access to
-the files intended for sharing. For example, to grant the owning group read
-access to two selected files:</p>
-<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">datacache</span><span class="w"> </span><span class="kn">import</span> <span class="n">Cache</span><span class="p">,</span> <span class="n">make_file_readable</span>
-
-<span class="n">make_file_readable</span><span class="p">(</span><span class="s2">"/srv/references/v1/annotations.gtf"</span><span class="p">)</span>  <span class="c1"># Add group read.</span>
-<span class="n">cache</span> <span class="o">=</span> <span class="n">Cache</span><span class="p">(</span><span class="n">cache_root</span><span class="o">=</span><span class="s2">"/srv/references/v1"</span><span class="p">)</span>
-<span class="n">cache</span><span class="o">.</span><span class="n">make_readable</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s2">"transcripts.fa"</span><span class="p">)</span>
-<span class="c1"># Add others=True only if everyone should be able to read this file.</span>
-</code></pre></div>
-<p>These POSIX helpers add only the requested read bits, preserve contents and
-the inode, and reject symlinks, directories, and other non-regular files.
-They do not recurse, change ownership, grant write access, or run implicitly
-during normal cache use. Calling them again is harmless. Permission errors
-propagate if the caller cannot open or chmod the file.</p>
-<p>The equivalent shell command is:</p>
-<div class="highlight"><pre><span></span><code>chmod<span class="w"> </span>g+r<span class="w"> </span>/srv/references/v1/annotations.gtf<span class="w"> </span>/srv/references/v1/transcripts.fa
-</code></pre></div>
-<p>Group membership and directory traversal permissions must also permit access.
-Use <code>ls -ld</code> on the cache and parent directories, and <code>ls -l</code> on the affected
-files. A readable file inside an inaccessible parent is still inaccessible.</p>
-<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Symptom</th>
-<th>What to check</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>inaccessible</code> / <code>PermissionError</code></td>
-<td>File mode, owning group, ACLs, and traversal permissions on every parent</td>
-</tr>
-<tr>
-<td>File is present but <code>corrupt</code></td>
-<td>Expected hash/size, file type, and whether a previous tool wrote incomplete data</td>
-</tr>
-<tr>
-<td>Cache root is <code>available</code> but not <code>verified</code></td>
-<td>Every required file needs a trusted SHA-256 expectation to mark the inventory verified</td>
-</tr>
-<tr>
-<td>Read-only cache can be read but cannot refresh</td>
-<td>Refresh requires write access to the destination directory; database rebuilds also need SQLite journal access</td>
-</tr>
-<tr>
-<td>Old private files stay private after refresh</td>
-<td>Existing file modes are preserved; adjust the selected files explicitly</td>
-</tr>
-<tr>
-<td>Previously generated SQLite numbers are wrong</td>
-<td>Rebuild from source with a new version or <code>overwrite=True</code></td>
-</tr>
-</tbody>
-</table>
-<p>An intact downloaded file can be reused from a read-only installation.
-For SQLite, use <code>connect_if_correct_version(path, version, read_only=True)</code>.
-Keep published releases in distinct versioned directories when readers must
-continue using a stable release while another one is being prepared.</p>
+<h1 id="derived-artifact-transaction-90">Derived-artifact transaction (#90)<a class="headerlink" href="#derived-artifact-transaction-90" title="Permanent link">&para;</a></h1>
+<p>Add <code>materialize</code> and <code>inspect_materialization</code>, leaving <code>fetch_and_transform</code>
+unchanged. A caller chooses the exact store, raw source definitions, a JSON
+transform identity (<code>version</code> plus opaque <code>options</code>), required output inventory,
+and <code>builder(source_paths, output_paths)</code>. Biological parsing stays in the
+builder. DataCache validates regular files, hashes bytes in bounded memory,
+records dependency receipts and publishes one immutable generation atomically.</p>
+<p>Use existing filesystem, transport, resume, progress and generation-store
+primitives. Materialization stores have a distinct ownership marker: neither
+bundles nor arbitrary legacy directories can be overwritten even with force.
+Source and transform identity mismatches raise until explicit <code>force=True</code>.
+Input expectations describe raw (including compressed) bytes; output
+expectations describe builder-produced bytes. Observed digests are not trust.</p>
+<p>Writers serialize per artifact. Inputs live in owner-only, source-keyed working
+directories, survive download/build/publication interruptions, and can be
+reused after a transform-only change. Builders receive only private staged
+paths and must close all handles, leave inputs unchanged, and create exactly
+the declared regular outputs. Outputs and the receipt publish together through
+one generation rename and one current-pointer replacement. Failed refreshes
+never modify the previous pointer or old generation. Missing pointers can be
+recovered explicitly from fully verified matching local generations.</p>
+<p>Default successful publication removes only the transaction's private owned
+inputs; retention is opt-in. Cache hits stay read-only and never clean up.
+Local inputs are copied and never modified/deleted. Old output generations are
+retained. Installation initially has the same POSIX-local-filesystem constraint
+as resumable bundle installation; cross-platform bundle support is separate.</p>
+<p>Test tiny gzip and two-output builds, actual HTTP range resumption, killed
+builders, completed-input retry without network, identity mismatch, source and
+output corruption, unsafe paths/files, failure at both publication boundaries,
+read-only offline reuse, per-artifact serialization and unrelated writer
+independence. Document disk use including transport's temporary resume copy.</p>
 
 
 
@@ -1199,10 +984,10 @@ continue using a stable release while another one is being prepared.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.indexes", "navigation.expand", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.indexes", "navigation.expand", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>

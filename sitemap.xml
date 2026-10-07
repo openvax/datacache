@@ -33,11 +33,19 @@
          <lastmod>2026-10-07</lastmod>
     </url>
     <url>
+         <loc>https://openvax.github.io/datacache/materialization/</loc>
+         <lastmod>2026-10-07</lastmod>
+    </url>
+    <url>
          <loc>https://openvax.github.io/datacache/progress/</loc>
          <lastmod>2026-10-07</lastmod>
     </url>
     <url>
          <loc>https://openvax.github.io/datacache/shared-caches/</loc>
+         <lastmod>2026-10-07</lastmod>
+    </url>
+    <url>
+         <loc>https://openvax.github.io/datacache/design/materialization/</loc>
          <lastmod>2026-10-07</lastmod>
     </url>
     <url>
