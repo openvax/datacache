@@ -37,8 +37,9 @@ def test_custom_path_resolution_is_pure_and_uses_concrete_versions(tmp_path, dat
     monkeypatch.setattr(bundles, 'path_present', forbidden)
     monkeypatch.setattr(Path, 'mkdir', forbidden)
     assert registry.bundle_path('reference') == tmp_path / 'GRCh38/ensembl-110/sources/reference'
+    # Every version's store is resolved once, on first use, and then reused.
+    assert sorted(calls) == [('reference', '109'), ('reference', '110')]
     assert registry.bundle_path('reference', '109') == tmp_path / 'GRCh38/ensembl-109/sources/reference'
-    assert calls == [('reference', '110'), ('reference', '109')]
     with pytest.raises(ValueError):
         registry.bundle_path('reference', 'latest')
     assert len(calls) == 2
@@ -117,8 +118,9 @@ def test_custom_paths_never_take_over_foreign_directories(tmp_path, datasets, fo
     foreign.mkdir()
     precious = foreign / 'index.sqlite'
     precious.write_bytes(b'keep me')
-    registry = VersionedDatasetRegistry(datasets, store_path=lambda name, version: foreign)
-    with pytest.raises((FileValidationError, FileNotFoundError)):
+    registry = VersionedDatasetRegistry(
+        datasets, store_path=lambda name, version: foreign if version == '110' else tmp_path / version)
+    with pytest.raises(FileValidationError, match='never taken over'):
         registry.download('reference', force=force)
     assert list(foreign.iterdir()) == [precious]
     assert precious.read_bytes() == b'keep me'
@@ -129,7 +131,8 @@ def test_custom_paths_reject_symlinked_stores(tmp_path, datasets):
     foreign.mkdir()
     store = tmp_path / 'link'
     store.symlink_to(foreign, target_is_directory=True)
-    registry = VersionedDatasetRegistry(datasets, store_path=lambda name, version: store)
+    registry = VersionedDatasetRegistry(
+        datasets, store_path=lambda name, version: store if version == '110' else tmp_path / version)
     assert registry.inspect('reference').status == 'invalid'
     with pytest.raises(FileValidationError):
         registry.download('reference', force=True)
@@ -159,3 +162,27 @@ def test_existing_root_strategies_remain_compatible(tmp_path, datasets):
     selected[0] = tmp_path / 'different-root'
     assert dynamic.bundle_path('reference') == tmp_path / 'different-root/reference/110'
     assert not selected[0].exists()
+
+
+def test_versions_sharing_a_custom_store_are_rejected(tmp_path, datasets):
+    registry = VersionedDatasetRegistry(datasets, store_path=lambda name, version: tmp_path / name)
+    with pytest.raises(ValueError, match='each version needs its own store'):
+        registry.bundle_path('reference')
+    assert not (tmp_path / 'reference').exists()
+
+
+@pytest.mark.parametrize('result', [None, '', 7, b'/bytes'])
+def test_custom_store_paths_must_be_paths(datasets, result):
+    registry = VersionedDatasetRegistry(datasets, store_path=lambda name, version: result)
+    with pytest.raises(ValueError, match='not a path'):
+        registry.bundle_path('reference')
+
+
+def test_custom_store_parent_may_be_a_link(tmp_path, datasets):
+    disk = tmp_path / 'disk'
+    disk.mkdir()
+    (tmp_path / 'data').symlink_to(disk, target_is_directory=True)
+    registry = VersionedDatasetRegistry(
+        datasets, store_path=lambda name, version: tmp_path / 'data' / version / name)
+    paths = registry.download('reference')
+    assert Path(paths['records.fa']).resolve().is_relative_to(disk)

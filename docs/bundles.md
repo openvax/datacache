@@ -77,26 +77,35 @@ not visit those outputs.
 
 Select exactly one of `cache_root`, a zero-argument `cache_dir` root callable,
 or an exact `store_path(name, version)` callback. Root strategies retain
-`<root>/<name>/<version>`; the callback can keep an application's semantic
-layout while placing new managed sources beside its existing derived indexes:
+`<root>/<name>/<version>`; the callback can keep an application's own layout,
+for example a version directory per release:
 
 ```python
 registry = VersionedDatasetRegistry(
     datasets,
-    store_path=lambda name, version: (
-        application_root / "GRCh38" / ("ensembl-" + version) / "sources" / name),
+    store_path=lambda name, version: application_root / version / "sources" / name,
 )
 store = registry.bundle_path("reference")
 ```
 
 The callback receives a validated concrete version, including when the caller
-omits it and selects the pinned default. Construction never calls it;
-`bundle_path` calls it without filesystem inspection or mutation. Callbacks
-should only compute paths. Inspection, installation, recovery and refresh all
-use the chosen store, while DataCache still owns its immutable generations.
+omits it and selects the pinned default. Construction never calls it. The first
+lookup calls it once for every dataset version, without filesystem inspection
+or mutation, and the paths are reused afterwards, so callbacks should only
+compute paths. Each version needs its own store: a callback that gives two
+versions the same path raises `ValueError`, as does one that returns something
+other than a path. Inspection, installation, recovery and refresh all use the
+chosen store, while DataCache still owns its immutable generations.
+
+The store's parent belongs to the application and may be a link, for example to
+another disk; the store itself is never a link. Installation creates missing
+parent directories and keeps its lock file and temporary staging directories
+in the parent, so give the stores a parent of their own rather than a
+directory the application lists or cleans.
 
 Do not point this callback at a populated legacy data/index directory: even
-`force=True` cannot adopt a foreign directory. Keep those old caches readable
+`force=True` cannot adopt a foreign directory, and installation raises
+`FileValidationError` saying so. Keep those old caches readable
 and deliberately install into a new managed source subdirectory instead. Model,
 biological naming and migration policy remain the application's responsibility.
 
@@ -124,12 +133,15 @@ required inventory, regular file types, readability and recorded sizes without
 reading payloads. Both bundle and per-file results have `verified=False`.
 Same-size corruption requires full verification to detect.
 
-`local_path`, `is_cached` and `status` use metadata-only checks by default;
-pass `verify_files=True` for full checks. Explicit inspection and download
-cache-hit checks retain their full-verification defaults. An opt-in
-`verify_files=False` on `install_bundle`, `registry.download` or `ensure`
-avoids payload reads on reuse only: new acquisitions and recovery always
-validate bytes before publishing. All these checks remain offline and read-only.
+Every registry method hashes by default, so `inspect`, `local_path`,
+`is_cached`, `status`, `download` and `ensure` agree about a corrupted bundle.
+Pass `verify_files=False` to any of them for metadata-only checks where speed
+matters more than detecting same-size corruption. On `install_bundle`,
+`registry.download` or `ensure` it skips payload reads on reuse only: new
+acquisitions and recovery always validate bytes before publishing. All these
+checks remain offline and read-only. Archive registries differ: their
+`local_path`, `is_cached` and `status` have been metadata-only by default since
+they were added, and take `verify_files=True` for full checks.
 
 `verified=False` on installation or registry construction explicitly permits
 acquiring assets without trusted hashes/sizes. Their observed hashes are still
@@ -225,6 +237,6 @@ progress, disk-space and partial-discard details.
 - **pyensembl:** single-file download and SQLite APIs remain supported. Bundles
   are optional for references with trustworthy multi-file metadata.
 
-The [runnable offline example](../examples/versioned_datasets.py) demonstrates
+The [runnable offline example](https://github.com/openvax/datacache/blob/master/examples/versioned_datasets.py) demonstrates
 single-file, paired-file and multi-file registries, generated SQLite indices,
 shared reuse, and inspection with all upstream sources removed.
