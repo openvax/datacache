@@ -39,6 +39,7 @@ nav:
 - Versioned datasets:
   - Install bundles: bundles.md
   - Install archive trees: archives.md
+  - Build derived files: materialization.md
   - Use the legacy file registry: file_registry.md
   - Integrate a consuming library: integration.md
 - Reference:

@@ -88,10 +88,10 @@ def _directory(path):
         raise FileValidationError(path, 'expected a directory, not a link')
 
 
-def _store(path):
+def _store(path, *, marker=STORE):
     _directory(path)
-    if read_json(path / STORE) != {'format': FORMAT}:
-        raise FileValidationError(path, 'unrecognized bundle store')
+    if read_json(path / marker) != {'format': FORMAT}:
+        raise FileValidationError(path, 'unrecognized generation store')
     _directory(path / 'generations')
 
 
@@ -215,29 +215,29 @@ def _paths(inspection):
     return {name: value.path for name, value in inspection.files.items()}
 
 
-def _refuse_foreign(path):
-    """Raise if path is a populated directory that isn't a bundle store, which
-    neither installation nor force=True ever takes over."""
+def _refuse_foreign(path, *, marker=STORE):
+    """Raise if path is a populated directory that isn't a generation store,
+    which neither installation nor force=True ever takes over."""
     if (path_present(path) and stat.S_ISDIR(path.lstat().st_mode)
-            and not path_present(path / STORE) and any(path.iterdir())):
+            and not path_present(path / marker) and any(path.iterdir())):
         raise FileValidationError(
-            path, 'not a datacache bundle store; a populated directory is never taken over')
+            path, 'not a datacache generation store; a populated directory is never taken over')
 
 
-def _initialize(path):
+def _initialize(path, *, marker=STORE):
     existing_mode = None
     if path_present(path):
         _directory(path)
         if any(path.iterdir()):
-            _refuse_foreign(path)
-            _store(path)  # Never take over an arbitrary nonempty directory.
+            _refuse_foreign(path, marker=marker)
+            _store(path, marker=marker)  # Never adopt a foreign directory.
             return
         existing_mode = stat.S_IMODE(path.lstat().st_mode)
     # Publish a complete store skeleton at once: concurrent first-time readers
     # see absence or a recognized store, never a half-written ownership marker.
     staging = Path(tempfile.mkdtemp(prefix='.datacache-store-', dir=path.parent))
     try:
-        write_json(staging / STORE, {'format': FORMAT}, mode=_file_mode(path.parent))
+        write_json(staging / marker, {'format': FORMAT}, mode=_file_mode(path.parent))
         (staging / 'generations').mkdir()
         os.chmod(staging, existing_mode if existing_mode is not None else
                  stat.S_IMODE((staging / 'generations').stat().st_mode))
@@ -252,9 +252,28 @@ def _file_mode(path):
     return _normal_creation_mode(path)
 
 
+def _newest_generations_first(store, manifest, time_key):
+    """Generation names, newest first by the UTC time their receipt records
+    under time_key, else by directory modification time. Names are random
+    UUIDs, so their own order says nothing about age."""
+    def created(entry):
+        try:
+            recorded = datetime.fromisoformat(read_json(entry / manifest, limit=None)[time_key])
+            if recorded.tzinfo is None:
+                recorded = recorded.replace(tzinfo=timezone.utc)
+            return recorded.timestamp()
+        except (OSError, ValueError, KeyError, TypeError, RecursionError, OverflowError):
+            try:
+                return entry.lstat().st_mtime
+            except OSError:
+                return float('-inf')
+    entries = list((store / 'generations').iterdir())
+    return [entry.name for entry in sorted(entries, key=lambda e: (created(e), e.name), reverse=True)]
+
+
 def _recover(path, assets):
-    generations = path / 'generations'
-    for entry in sorted(generations.iterdir(), reverse=True):
+    for name in _newest_generations_first(path, MANIFEST, 'fetched_at'):
+        entry = path / 'generations' / name
         try:
             candidate = _inspect_generation(path, entry.name, assets)
         except (OSError, ValueError, KeyError, TypeError, RecursionError):

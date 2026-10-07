@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import threading
+import time
 
 import pytest
 
@@ -519,3 +520,25 @@ def test_concurrent_initialization_of_precreated_directory_reuses_winner(tmp_pat
             resume_inspection.set()
         assert future.result() == winner
     assert len(list((dest / 'generations').iterdir())) == 1
+
+
+def test_recovery_picks_the_newest_generation_not_the_highest_name(tmp_path, assets):
+    dest = tmp_path / 'bundle'
+    older = Path(next(iter(install_bundle(dest, assets).values()))).parent
+    newer = Path(next(iter(install_bundle(dest, assets, force=True).values()))).parent
+    # Generation names are random: make the older one's name sort highest.
+    older.rename(dest / 'generations' / ('f' * 32))
+    newer.rename(dest / 'generations' / ('0' * 32))
+    (dest / bundles.CURRENT).unlink()
+    recovered = install_bundle(dest, assets)
+    generations = {Path(path).relative_to(dest / 'generations').parts[0] for path in recovered.values()}
+    assert generations == {'0' * 32}
+
+
+def test_generation_age_falls_back_to_modification_time(tmp_path):
+    store = tmp_path / 'store'
+    for name, age in [('a' * 32, 100), ('b' * 32, 10)]:
+        directory = store / 'generations' / name
+        directory.mkdir(parents=True)
+        os.utime(directory, (time.time() - age, time.time() - age))
+    assert bundles._newest_generations_first(store, bundles.MANIFEST, 'fetched_at') == ['b' * 32, 'a' * 32]

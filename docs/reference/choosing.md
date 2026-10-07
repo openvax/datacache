@@ -8,6 +8,7 @@ lists every public signature, default, return value, exception, and example.
 | Task | API | Result |
 | --- | --- | --- |
 | Install or reuse a versioned dataset | `VersionedDatasetRegistry`, `install_bundle(...)` | Mapping of asset names to snapshot paths |
+| Build derived files from versioned dependencies | `materialize(...)` | Mapping of output names to snapshot paths |
 | Install versioned archive trees | `VersionedArchiveRegistry`, `install_archive(...)` | Immutable extracted-generation `Path` |
 | Reuse an established fixed-path versioned file cache | `VersionedFileRegistry` | One Path and a legacy-compatible root receipt |
 | Inspect a complete dataset generation | `inspect_bundle(...)` | `BundleInspection` |

@@ -19,8 +19,9 @@ python -m pip install datacache
 python -m pip install "datacache[html]"
 ```
 
-tqdm is installed by default; progress displays are opt-in with
-`show_progress=True`. Normal use does not import tqdm or configure your
+tqdm is installed by default; existing download APIs enable displays with
+`show_progress=True`, while `materialize` enables them by default. Quiet use
+does not import tqdm or configure your
 application's logging. The old `datacache[progress]` install syntax remains
 supported as a compatibility alias.
 
@@ -61,6 +62,8 @@ guides; their old links land on the guide that replaced them.
 - [Progress and logging](https://github.com/openvax/datacache/blob/master/docs/progress.md)
 - <a id="versioned-datasets-and-large-downloads"></a>[Pinned bundles](https://github.com/openvax/datacache/blob/master/docs/bundles.md), [archive trees](https://github.com/openvax/datacache/blob/master/docs/archives.md) and the [legacy file registry](https://github.com/openvax/datacache/blob/master/docs/file_registry.md)
 - <a id="choose-the-right-api"></a><a id="guarantees-and-limits"></a>[Interface selection and guarantees](https://github.com/openvax/datacache/blob/master/docs/reference/choosing.md)
+- [Derived-artifact materialization](https://github.com/openvax/datacache/blob/master/docs/materialization.md): caller-owned
+  builders, atomic output generations, dependency receipts and resumable inputs.
 - [Complete API reference](https://github.com/openvax/datacache/blob/master/docs/api.md)
 - [Downstream integration](https://github.com/openvax/datacache/blob/master/docs/integration.md): contracts for consuming libraries.
 - [Release notes](https://github.com/openvax/datacache/blob/master/CHANGELOG.md) and [release procedure](https://github.com/openvax/datacache/blob/master/RELEASING.md).
