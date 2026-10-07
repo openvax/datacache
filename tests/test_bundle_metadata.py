@@ -3,6 +3,7 @@
 import builtins
 from concurrent.futures import ThreadPoolExecutor
 from hashlib import sha256
+import io
 import json
 import os
 from pathlib import Path
@@ -41,17 +42,34 @@ def test_fast_resolution_and_cache_hits_read_no_payloads_or_write(installed, mon
             {'reference': dict(default_version='v1', versions={'v1': assets})},
             cache_root=registry.bundle_path('reference').parents[1], verified=False)
     payloads = set(map(Path, paths.values()))
-    original_open = builtins.open
+    original_open, original_os_open, original_read = builtins.open, os.open, os.read
+    payload_fds = set()
 
     def guarded_open(path, *args, **kwargs):
         if isinstance(path, (str, os.PathLike)) and Path(path) in payloads:
             raise AssertionError('fast lookup opened a payload for content reading')
         return original_open(path, *args, **kwargs)
 
+    def tracked_os_open(path, *args, **kwargs):
+        # Opening a payload to check its type and readability is allowed;
+        # reading from it is not.
+        fd = original_os_open(path, *args, **kwargs)
+        if isinstance(path, (str, os.PathLike)) and Path(path) in payloads:
+            payload_fds.add(fd)
+        return fd
+
+    def guarded_read(fd, *args, **kwargs):
+        if fd in payload_fds:
+            raise AssertionError('fast lookup read payload bytes')
+        return original_read(fd, *args, **kwargs)
+
     def forbidden(*args, **kwargs):
         raise AssertionError('fast lookup tried full inspection, mutation or acquisition')
 
     monkeypatch.setattr(builtins, 'open', guarded_open)
+    monkeypatch.setattr(io, 'open', guarded_open)
+    monkeypatch.setattr(os, 'open', tracked_os_open)
+    monkeypatch.setattr(os, 'read', guarded_read)
     monkeypatch.setattr(bundles, 'inspect_file', forbidden)
     monkeypatch.setattr(bundles, 'file_lock', forbidden)
     monkeypatch.setattr(bundles, 'write_json', forbidden)
@@ -61,10 +79,11 @@ def test_fast_resolution_and_cache_hits_read_no_payloads_or_write(installed, mon
     assert state.status == 'available' and not state.verified
     assert {name: item.path for name, item in state.files.items()} == paths
     assert all(not item.verified and item.size is not None for item in state.files.values())
-    assert registry.local_path('reference') == Path(state.generation)
-    assert registry.local_path('reference', asset='records.txt') == Path(paths['records.txt'])
-    assert registry.is_cached('reference')
-    assert not registry.status()[0]['inspection'].verified
+    assert registry.local_path('reference', verify_files=False) == Path(state.generation)
+    assert registry.local_path(
+        'reference', asset='records.txt', verify_files=False) == Path(paths['records.txt'])
+    assert registry.is_cached('reference', verify_files=False)
+    assert not registry.status(verify_files=False)[0]['inspection'].verified
     assert registry.download('reference', verify_files=False) == paths
     assert registry.ensure('reference', verify_files=False) == Path(state.generation)
     assert inspect_bundle(registry.bundle_path('reference'), verify_files=False).status == 'available'
@@ -72,20 +91,25 @@ def test_fast_resolution_and_cache_hits_read_no_payloads_or_write(installed, mon
         registry.inspect('reference')
 
 
-def test_fast_lookup_accepts_same_size_corruption_but_full_checks_reject(installed):
+def test_defaults_agree_on_same_size_corruption_that_only_fast_checks_miss(installed):
     registry, assets, paths = installed
     path = Path(paths['records.txt'])
     path.write_bytes(b'changed')
     assert len(b'changed') == assets['records.txt']['size']
-    assert registry.is_cached('reference')
-    assert not registry.is_cached('reference', verify_files=True)
-    assert registry.inspect('reference', verify_files=False).status == 'available'
+    # Every lookup verifies by default, so they agree the bundle is invalid.
     assert registry.inspect('reference').status == 'invalid'
-    assert registry.download('reference', verify_files=False) == paths
+    assert not registry.is_cached('reference')
+    assert registry.status()[0]['inspection'].status == 'invalid'
+    with pytest.raises(FileValidationError):
+        registry.local_path('reference')
     with pytest.raises(FileValidationError, match='force=True'):
         registry.download('reference')
-    with pytest.raises(FileValidationError):
-        registry.local_path('reference', verify_files=True)
+    with pytest.raises(FileValidationError, match='force=True'):
+        registry.ensure('reference')
+    # Opting into metadata-only checks trades that detection for speed.
+    assert registry.inspect('reference', verify_files=False).status == 'available'
+    assert registry.is_cached('reference', verify_files=False)
+    assert registry.download('reference', verify_files=False) == paths
 
 
 def test_fast_resolution_on_a_read_only_store(installed):
@@ -98,9 +122,9 @@ def test_fast_resolution_on_a_read_only_store(installed):
             path.chmod(0o555 if path.is_dir() else 0o444)
         state = registry.inspect('reference', verify_files=False)
         assert state.status == 'available' and not state.verified
-        assert registry.local_path('reference') == Path(state.generation)
-        assert registry.is_cached('reference')
-        assert registry.status()[0]['inspection'].status == 'available'
+        assert registry.local_path('reference', verify_files=False) == Path(state.generation)
+        assert registry.is_cached('reference', verify_files=False)
+        assert registry.status(verify_files=False)[0]['inspection'].status == 'available'
         assert registry.download('reference', verify_files=False) == paths
     finally:
         for path, mode in modes.items():
@@ -234,3 +258,14 @@ def test_nonboolean_verification_modes_fail_without_creating_paths(tmp_path, fla
         install_bundle(dest, {'file': {'url': 'https://example.invalid/data'}},
                        verified=False, verify_files=flag)
     assert not dest.exists()
+
+
+def test_ensure_returns_the_downloaded_snapshot_without_inspecting_again(installed, monkeypatch):
+    registry, assets, paths = installed
+    generation = Path(paths['records.txt']).parent
+    monkeypatch.setattr(registry, 'inspect', lambda *args, **kwargs: pytest.fail('inspected again'))
+    monkeypatch.setattr(bundles, 'install_bundle', lambda *args, **kwargs: paths)
+    assert registry.ensure('reference') == generation
+    single = {'records.txt': paths['records.txt']}
+    monkeypatch.setattr(bundles, 'install_bundle', lambda *args, **kwargs: single)
+    assert registry.ensure('reference') == Path(paths['records.txt'])

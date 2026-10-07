@@ -1247,7 +1247,7 @@ DataCache. `verified=False` explicitly enables historical unpinned catalogues.
 | `local_path(name, version=None, *, verify_files=False)` | Resolve a published generation without network, writes, or repair. |
 | `ensure(name, version=None, **download_options)` | Install if needed and return the generation. |
 | `is_cached(name, version=None, *, verify_files=False)` | Whether a published generation is available; full verification is optional. |
-| `status(name=None)` | One read-only row per concrete version, including catalogue and downloaded source URLs, store/generation paths, default flag, status, fetch time, observed archive size/hash and inspection. |
+| `status(name=None, *, verify_files=False)` | One read-only row per concrete version, including catalogue and downloaded source URLs, store/generation paths, default flag, status, fetch time, observed archive size/hash and inspection. Metadata-only by default; `verify_files=True` hashes every file. |
 
 ## install_bundle
 
@@ -1303,10 +1303,10 @@ The [bundle guide](bundles.md) includes an example and downstream migration note
 | `bundle_path(name, version=None)` | Expected managed store `Path`, without creating it. |
 | `inspect(name, version=None, *, verify_files=True)` | Read-only `BundleInspection`; full payload verification by default. |
 | `download(name, version=None, *, force=False, verify_files=True, **download_options)` | Install/reuse and return a dict of asset snapshot paths; the flag selects cache-hit cost only. |
-| `local_path(name, version=None, *, asset=None, verify_files=False)` | Installed single asset's `Path`, or a multi-file generation directory; select one asset by name. Metadata-only by default. Missing raises `FileNotFoundError`; invalid/recovery-required raises `FileValidationError`. |
-| `ensure(name, version=None, **download_options)` | Download/reuse, then return `local_path`. |
-| `is_cached(name, version=None, *, verify_files=False)` | Whether inspection reports `available`; payload verification is opt-in. |
-| `status(*, verify_files=False)` | One metadata-only row per pinned default: name, version, description, available_versions and inspection. Pass `verify_files=True` for full checks. |
+| `local_path(name, version=None, *, asset=None, verify_files=True)` | Installed single asset's `Path`, or a multi-file generation directory; select one asset by name. Assets are hashed by default; `verify_files=False` checks metadata and sizes only. Missing raises `FileNotFoundError`; invalid/recovery-required raises `FileValidationError`. |
+| `ensure(name, version=None, **download_options)` | Download/reuse, then return what `local_path` would, from the paths the download validated. `verify_files=False` among the options skips hashing on reuse. |
+| `is_cached(name, version=None, *, verify_files=True)` | Whether inspection reports `available`; `verify_files=False` skips hashing. |
+| `status(*, verify_files=True)` | One row per pinned default: name, version, description, available_versions and inspection. `verify_files=False` skips hashing. |
 
 ## VersionedFileRegistry
 
