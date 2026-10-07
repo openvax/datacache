@@ -1,30 +1,32 @@
-"""Execute documentation examples and compare the printed output."""
+"""Run documentation examples that show their output, and compare it.
+
+A python block followed by a text block, with only blank lines between them,
+is an example with output; other text blocks, such as signatures, are not.
+Each page's examples share one namespace, in order.
+"""
 
 import contextlib
 import io
 import re
-import sys
-import types
 from pathlib import Path
 
 
 def main():
     count = 0
-    for path in [Path("docs/index.md")]:
-        module = types.ModuleType("docs_example_" + path.stem.replace("-", "_"))
-        sys.modules[module.__name__] = module
-        blocks = list(re.finditer(r"```(python|text)\n(.*?)\n```", path.read_text(), re.S))
-        for index, match in enumerate(blocks):
-            if match[1] != "python" or index + 1 == len(blocks) or blocks[index + 1][1] != "text":
+    for path in sorted(Path("docs").rglob("*.md")):
+        namespace = {"__name__": "docs_example"}
+        text = path.read_text()
+        blocks = list(re.finditer(r"```(python|text)\n(.*?)\n```", text, re.S))
+        for block, following in zip(blocks, blocks[1:]):
+            adjacent = not text[block.end():following.start()].strip()
+            if block[1] != "python" or following[1] != "text" or not adjacent:
                 continue
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
-                exec(compile(match[2], str(path), "exec"), module.__dict__)
-            if index + 1 < len(blocks) and blocks[index + 1][1] == "text":
-                expected = blocks[index + 1][2].rstrip()
-                actual = output.getvalue().rstrip()
-                if actual != expected:
-                    raise AssertionError(f"{path}: {actual!r} != {expected!r}")
+                exec(compile(block[2], str(path), "exec"), namespace)
+            if output.getvalue().rstrip() != following[2].rstrip():
+                raise AssertionError(
+                    f"{path}: {output.getvalue().rstrip()!r} != {following[2].rstrip()!r}")
             count += 1
     print(f"Executed {count} documentation examples.")
 

@@ -2,7 +2,7 @@
 
 ## Choose the right API
 
-The [complete API reference](https://github.com/openvax/datacache/blob/master/docs/api.md)
+The [complete API reference](../api.md)
 lists every public signature, default, return value, exception, and example.
 
 | Task | API | Result |
@@ -14,6 +14,8 @@ lists every public signature, default, return value, exception, and example.
 | Inspect an installed archive tree | `inspect_archive(...)` | `ArchiveInspection` |
 | Discard retained partial download bytes | `discard_partial(destination)` | Installed file unchanged |
 | Download or reuse one file | `fetch_file(...)`, `Cache.fetch(...)` | Local path string |
+| Refresh a cached file periodically, keeping it when the source is unreachable | `fetch_file(..., expire_after=..., return_stale_on_error=True, validator=...)` | Local path string |
+| Read a small resource into memory | `fetch_bytes(...)` | `bytes` |
 | Compute a path without filesystem access | `expected_path(...)`, `Cache.local_path(...)` | Path string |
 | Choose a root shared by several packages | `get_cache_root(name, *envkeys)` | Path string |
 | Check presence | `file_exists(...)`, `Cache.exists(...)` | Boolean; does not establish integrity |
@@ -40,13 +42,15 @@ permissions. This includes pyensembl's private download helpers.
 Custom single-file transformations publish only successful output. Existing
 SQLite caches rebuild in a transaction: failure rolls back both schema and
 rows. New databases are built privately before publication. Cached data is
-reused by path or database version; DataCache does not automatically discover
-remote changes or repair previously corrupted caches.
+reused by path or database version. DataCache doesn't ask servers whether files
+changed; `expire_after` refreshes files after a set time and also replaces
+cached files that no longer validate. Otherwise invalid caches are reported,
+not repaired.
 
 Upgrades keep existing cache names and database metadata compatible. Valid
 cache hits do not rewrite files, change permissions, or apply new schema
-constraints. See [upgrading existing caches](https://github.com/openvax/datacache/blob/master/docs/data.md#upgrading-existing-caches)
-and [sharing old private files](https://github.com/openvax/datacache/blob/master/docs/shared-caches.md#files-already-downloaded-as-0600).
+constraints. See [upgrading existing caches](../data.md#upgrading-existing-caches)
+and [sharing old private files](../shared-caches.md#files-already-downloaded-as-0600).
 
 File publication requires local filesystem support for atomic replacement;
 new SQLite database publication also requires hard links. SQLite locking and

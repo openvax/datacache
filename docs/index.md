@@ -74,10 +74,11 @@ path = cache.fetch(
 )
 ```
 
-Existing files are reused until you explicitly request `force=True`. DataCache
-does not check whether a remote file has changed. Supply trusted integrity
-expectations when you need to validate a cached hit; invalid hits raise an
-error rather than silently downloading replacements.
+Existing files are reused until you request `force=True`, or once they are
+older than `expire_after`. DataCache doesn't ask the server whether a file has
+changed. Supply trusted integrity expectations or a `validator` when you need
+to validate a cached hit; invalid hits raise an error rather than silently
+downloading replacements, unless `expire_after` asks for periodic refreshes.
 
 Read [download and inspection options](downloads.md) for exact destinations,
 decompression, retries and resumable transfers. Use [pinned bundles](bundles.md)
@@ -88,11 +89,13 @@ when a dataset contains several assets that must be installed together.
 | Task | Start here |
 | --- | --- |
 | Download and reuse one file | `Cache.fetch()` or `fetch_file()` |
+| Refresh changing metadata periodically | `fetch_file(expire_after=..., return_stale_on_error=True)` |
+| Read a small resource into memory | `fetch_bytes()` |
 | Check installed files without network access or repair | `Cache.inspect()` or `inspect_file()` |
 | Read tables or build SQLite caches | [Tables and transformations](data.md) |
 | Install a pinned set of assets | `VersionedDatasetRegistry` |
 | Install a versioned archive directory | `VersionedArchiveRegistry` |
 
-The [interface selection reference](reference/choosing.md) covers every public
-entry point and the publication guarantees. The [API reference](api.md) gives
-signatures, defaults, results and errors.
+The [interface selection reference](reference/choosing.md) covers the main
+entry points and the publication guarantees. The [API reference](api.md) gives
+every signature, default, result and error.

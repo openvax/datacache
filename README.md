@@ -45,27 +45,25 @@ assert cache.fetch(url, filename="LICENSE") == path
 ```
 
 Replace the URL and filename with your dataset. Existing files are reused until
-you explicitly refresh them with `force=True`; DataCache does not check whether
-the remote file has changed. Add `show_progress=True` to display a download bar;
-no extra installation is needed.
-
-
-<a id="find-inspect-or-clear-your-cache"></a>
-<a id="offline-example-with-integrity-checking"></a>
-<a id="versioned-datasets-and-large-downloads"></a>
-<a id="choose-the-right-api"></a>
-<a id="guarantees-and-limits"></a>
+you refresh them with `force=True`, or periodically with `expire_after`;
+DataCache doesn't ask the server whether a file has changed. Add
+`show_progress=True` to display a download bar; no extra installation is needed.
 
 ## Guides
 
-- [Working offline example, verification and interface choices](docs/index.md)
-- [Downloads, inspection, integrity, retries and resumption](docs/downloads.md)
-- [Tables, SQLite and transformations](docs/data.md)
-- [Shared caches](docs/shared-caches.md)
-- [Progress and logging](docs/progress.md)
-- [Pinned bundles](docs/bundles.md) and [archive trees](docs/archives.md)
-- [Interface selection and guarantees](docs/reference/choosing.md)
-- [Complete API reference](docs/api.md)
+Sections that earlier versions of this README contained now live in these
+guides; their old links land on the guide that replaced them.
+
+- <a id="offline-example-with-integrity-checking"></a>[Working offline example, verification and interface choices](https://github.com/openvax/datacache/blob/master/docs/index.md)
+- <a id="find-inspect-or-clear-your-cache"></a>[Downloads, inspection, integrity, freshness, retries and resumption](https://github.com/openvax/datacache/blob/master/docs/downloads.md)
+- [Tables, SQLite and transformations](https://github.com/openvax/datacache/blob/master/docs/data.md)
+- [Shared caches](https://github.com/openvax/datacache/blob/master/docs/shared-caches.md)
+- [Progress and logging](https://github.com/openvax/datacache/blob/master/docs/progress.md)
+- <a id="versioned-datasets-and-large-downloads"></a>[Pinned bundles](https://github.com/openvax/datacache/blob/master/docs/bundles.md), [archive trees](https://github.com/openvax/datacache/blob/master/docs/archives.md) and the [legacy file registry](https://github.com/openvax/datacache/blob/master/docs/file_registry.md)
+- <a id="choose-the-right-api"></a><a id="guarantees-and-limits"></a>[Interface selection and guarantees](https://github.com/openvax/datacache/blob/master/docs/reference/choosing.md)
+- [Complete API reference](https://github.com/openvax/datacache/blob/master/docs/api.md)
+- [Downstream integration](https://github.com/openvax/datacache/blob/master/docs/integration.md): contracts for consuming libraries.
+- [Release notes](https://github.com/openvax/datacache/blob/master/CHANGELOG.md) and [release procedure](https://github.com/openvax/datacache/blob/master/RELEASING.md).
 
 ## Development
 

@@ -44,5 +44,6 @@ nav:
 - Reference:
   - Choose an interface: reference/choosing.md
   - API reference: api.md
+  - Release notes: https://github.com/openvax/datacache/blob/master/CHANGELOG.md
 - Contributing:
   - Documentation style: dev/documentation-style.md
