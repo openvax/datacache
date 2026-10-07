@@ -154,18 +154,19 @@ def _inspect_generation(store, generation, assets, *, verify_files=True):
         # Reject symlinks and special files before the ordinary inspection API.
         fd = open_regular(target)
         try:
-            info = os.fstat(fd)
+            info = None if verify_files else os.fstat(fd)
         finally:
             os.close(fd)
         if verify_files:
             inspected = inspect_file(target, expected_sha256=spec['sha256'], expected_size=spec['size'])
+            if inspected.status != 'available':
+                raise inspected.error or FileValidationError(target, 'unavailable bundle asset')
         else:
+            # Metadata only: an open, readable regular file of the recorded size.
             if info.st_size != spec['size']:
                 raise FileValidationError(target, 'bundle asset size disagrees with manifest')
             inspected = FileInspection(str(target), 'available', size=info.st_size, mtime=info.st_mtime)
         files[name] = inspected
-        if inspected.status != 'available':
-            raise inspected.error or FileValidationError(target, 'unavailable bundle asset')
     trusted = verify_files and assets is not None and all(spec['sha256'] for spec in assets.values())
     return BundleInspection(str(store), 'available', bool(trusted), str(directory), files)
 
@@ -429,12 +430,13 @@ class VersionedDatasetRegistry:
                               force=force, verified=self.verified, verify_files=verify_files,
                               download_options=download_options)
 
-    def local_path(self, name, version=None, *, asset=None, verify_files=False):
+    def local_path(self, name, version=None, *, asset=None, verify_files=True):
         """Resolve an installed snapshot; no writes/network. Missing raises.
 
         For one asset, return its Path; for multiple assets return the generation
-        directory, or select an individual asset with asset=. Payload hashing is
-        opt-in with verify_files=True; the default checks metadata and sizes.
+        directory, or select an individual asset with asset=. Assets are hashed
+        by default; verify_files=False checks metadata and sizes only, which
+        cannot detect same-size corruption.
         """
         inspected = self.inspect(name, version, verify_files=verify_files)
         if inspected.status == 'missing':
@@ -448,14 +450,22 @@ class VersionedDatasetRegistry:
         return Path(inspected.generation)
 
     def ensure(self, name, version=None, **download_options):
-        self.download(name, version, **download_options)
-        return self.local_path(name, version)
+        """Download/reuse, then return what local_path would: the single asset's
+        Path, or the generation directory of several assets."""
+        paths = self.download(name, version, **download_options)
+        if len(paths) == 1:
+            return Path(next(iter(paths.values())))
+        # The paths download validated: no second inspection, so a concurrent
+        # refresh cannot swap the generation between the two.
+        asset_name, asset_path = next(iter(paths.items()))
+        return Path(asset_path).parents[len(Path(asset_name).parts) - 1]
 
-    def is_cached(self, name, version=None, *, verify_files=False):
+    def is_cached(self, name, version=None, *, verify_files=True):
+        """Whether inspection reports available; verify_files=False skips hashing."""
         return self.inspect(name, version, verify_files=verify_files).status == 'available'
 
-    def status(self, *, verify_files=False):
-        """One read-only status row per pinned default; hashing is opt-in."""
+    def status(self, *, verify_files=True):
+        """One read-only status row per pinned default; verify_files=False skips hashing."""
         return [dict(name=name, version=self.resolve_version(name),
                      description=self._datasets[name]['description'],
                      available_versions=sorted(self._datasets[name]['versions']),

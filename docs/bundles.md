@@ -124,12 +124,15 @@ required inventory, regular file types, readability and recorded sizes without
 reading payloads. Both bundle and per-file results have `verified=False`.
 Same-size corruption requires full verification to detect.
 
-`local_path`, `is_cached` and `status` use metadata-only checks by default;
-pass `verify_files=True` for full checks. Explicit inspection and download
-cache-hit checks retain their full-verification defaults. An opt-in
-`verify_files=False` on `install_bundle`, `registry.download` or `ensure`
-avoids payload reads on reuse only: new acquisitions and recovery always
-validate bytes before publishing. All these checks remain offline and read-only.
+Every registry method hashes by default, so `inspect`, `local_path`,
+`is_cached`, `status`, `download` and `ensure` agree about a corrupted bundle.
+Pass `verify_files=False` to any of them for metadata-only checks where speed
+matters more than detecting same-size corruption. On `install_bundle`,
+`registry.download` or `ensure` it skips payload reads on reuse only: new
+acquisitions and recovery always validate bytes before publishing. All these
+checks remain offline and read-only. Archive registries differ: their
+`local_path`, `is_cached` and `status` have been metadata-only by default since
+they were added, and take `verify_files=True` for full checks.
 
 `verified=False` on installation or registry construction explicitly permits
 acquiring assets without trusted hashes/sizes. Their observed hashes are still
