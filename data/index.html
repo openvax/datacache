@@ -562,8 +562,6 @@
       
         
       
-        
-      
     
     
     
@@ -649,34 +647,6 @@
     
   
     Install archive trees
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../materialization/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Build derived files
   
 
     
@@ -1235,10 +1205,6 @@ Supplying <code>expected_sha256</code>, <code>expected_size</code>, or <code>for
 still requests source validation or refresh. Refreshing a source alone does not
 rebuild a matching database; also increment <code>version</code> when its data changes.</p>
 <h2 id="custom-single-file-transformations">Custom single-file transformations<a class="headerlink" href="#custom-single-file-transformations" title="Permanent link">&para;</a></h2>
-<p>For versioned dependencies, multiple outputs, resumable compressed inputs or
-automatic post-publication source cleanup, use the
-<a href="../materialization/">derived-artifact materialization API</a>. The existing helper
-below retains its compatible single-file behavior.</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">datacache</span><span class="w"> </span><span class="kn">import</span> <span class="n">fetch_and_transform</span>
 
