@@ -176,6 +176,42 @@ restart. The same `timeout` is passed to each request; Requests timeouts govern
 connection/read inactivity, not an overall elapsed-time deadline. Retry count
 and waiting time are bounded independently of the transfer duration.
 
+## Small metadata and freshness
+
+`fetch_bytes` returns a resource's bytes in memory with the same transport,
+TLS trust and retry policy as `fetch_file`, without writing to disk. It suits
+small resources such as directory listings, and caches that are read-only.
+
+Metadata that changes upstream, such as a list of releases, can be cached and
+refreshed periodically. `expire_after` is named as in requests-cache, and
+`return_stale_on_error` behaves like the HTTP `stale-if-error` directive:
+
+```python
+path = fetch_file(
+    "https://example.org/releases/",
+    destination="/data/references/releases.html",
+    raw=True,
+    timeout=10,
+    expire_after=86400,  # seconds or a datetime.timedelta
+    return_stale_on_error=True,
+    validator=require_release_links,
+)
+```
+
+- `expire_after` downloads a cached copy again once it is older than the
+  given time, or once it no longer validates. Age comes from the provenance
+  record's fetch time when there is one (`record_provenance=True`), otherwise
+  from the file's modification time, which publication sets when the download
+  is written.
+- `return_stale_on_error` returns the cached copy, with a logged warning, when a
+  refresh fails, including a rejected validation. Without a valid cached copy
+  the error propagates; so does a progress callback's exception, which cancels
+  the fetch.
+- `validator(path)` rejects content that a successful transfer can still get
+  wrong, such as an HTTP 200 error page from a proxy, by raising or returning
+  `False`. It runs on the staged bytes before publication, so a rejected
+  download never replaces the cached copy, and on cache hits.
+
 ## Read-only cache inspection
 
 Path lookup, presence, and integrity checks have different contracts:
