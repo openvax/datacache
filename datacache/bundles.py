@@ -14,7 +14,7 @@ from uuid import uuid4
 
 from ._filesystem import file_lock, open_regular, path_present, read_json, write_json
 from .integrity import FileValidationError, _validate_expectations
-from .inspection import inspect_file
+from .inspection import FileInspection, inspect_file
 from .provenance import redact_url, sidecar_path
 
 STORE = '.datacache-bundle.json'
@@ -117,7 +117,8 @@ class BundleInspection:
 
     status is available, missing, invalid, inaccessible, or recovery-required.
     verified means every file matched caller-supplied trusted hashes now;
-    receipt-only inspection checks recorded hashes without asserting trust.
+    receipt-only full inspection checks recorded hashes without asserting trust.
+    Metadata-only inspection checks readability and recorded sizes, not hashes.
     """
     path: str
     status: str
@@ -127,7 +128,7 @@ class BundleInspection:
     error: object = None
 
 
-def _inspect_generation(store, generation, assets):
+def _inspect_generation(store, generation, assets, *, verify_files=True):
     directory = _generation(store, generation)
     receipt = read_json(directory / MANIFEST)
     recorded = _receipt_assets(receipt)
@@ -152,23 +153,36 @@ def _inspect_generation(store, generation, assets):
             _directory(directory / parent)
         # Reject symlinks and special files before the ordinary inspection API.
         fd = open_regular(target)
-        os.close(fd)
-        inspected = inspect_file(target, expected_sha256=spec['sha256'], expected_size=spec['size'])
+        try:
+            info = None if verify_files else os.fstat(fd)
+        finally:
+            os.close(fd)
+        if verify_files:
+            inspected = inspect_file(target, expected_sha256=spec['sha256'], expected_size=spec['size'])
+            if inspected.status != 'available':
+                raise inspected.error or FileValidationError(target, 'unavailable bundle asset')
+        else:
+            # Metadata only: an open, readable regular file of the recorded size.
+            if info.st_size != spec['size']:
+                raise FileValidationError(target, 'bundle asset size disagrees with manifest')
+            inspected = FileInspection(str(target), 'available', size=info.st_size, mtime=info.st_mtime)
         files[name] = inspected
-        if inspected.status != 'available':
-            raise inspected.error or FileValidationError(target, 'unavailable bundle asset')
-    trusted = assets is not None and all(spec['sha256'] for spec in assets.values())
+    trusted = verify_files and assets is not None and all(spec['sha256'] for spec in assets.values())
     return BundleInspection(str(store), 'available', bool(trusted), str(directory), files)
 
 
-def inspect_bundle(destination, assets=None):
+def inspect_bundle(destination, assets=None, *, verify_files=True):
     """Validate one installed snapshot offline, without writes, locks or repair.
 
     Optional assets is the caller's trusted mapping (url, sha256, size). Without
     it, verify consistency with the per-generation receipt, verified=False.
     An interrupted install with completed local generations but no pointer is
     recovery-required; explicit install_bundle can recover it without network.
+    verify_files=False checks the receipt, source expectations, required file
+    types, readability and sizes without reading payloads; verified stays False.
     """
+    if not isinstance(verify_files, bool):
+        raise ValueError('verify_files must be a boolean')
     path = Path(destination)
     expected = _assets(assets, verified=False) if assets is not None else None
     try:
@@ -190,7 +204,7 @@ def inspect_bundle(destination, assets=None):
             if any((path / 'generations').iterdir()):
                 return BundleInspection(str(path), 'recovery-required')
             return BundleInspection(str(path), 'missing')
-        return _inspect_generation(path, pointer['generation'], expected)
+        return _inspect_generation(path, pointer['generation'], expected, verify_files=verify_files)
     except PermissionError as error:
         return BundleInspection(str(path), 'inaccessible', error=error)
     except (OSError, ValueError, KeyError, TypeError, RecursionError) as error:
@@ -240,7 +254,7 @@ def _recover(path, assets):
     return None
 
 
-def install_bundle(destination, assets, *, force=False, verified=True, download_options=None):
+def install_bundle(destination, assets, *, force=False, verified=True, verify_files=True, download_options=None):
     """Install all assets before publishing one atomic generation pointer.
 
     assets maps relative names to {url, sha256, size, decompress?}. Trusted
@@ -253,10 +267,12 @@ def install_bundle(destination, assets, *, force=False, verified=True, download_
     retained, so these paths survive later force installs. Generated outputs
     belong outside this managed source store. Installation requires a POSIX
     local filesystem with flock and atomic sibling os.replace.
+    verify_files controls existing-generation checks only. New generations and
+    explicit recovery always validate payloads before publication.
     """
     from .download import fetch_file
-    if not isinstance(verified, bool) or not isinstance(force, bool):
-        raise ValueError('verified and force must be booleans')
+    if not all(isinstance(value, bool) for value in (verified, force, verify_files)):
+        raise ValueError('verified, force and verify_files must be booleans')
     expected = _assets(assets, verified)
     options = dict(download_options or {})
     allowed = {'timeout', 'chunk_size', 'progress_callback', 'show_progress',
@@ -264,7 +280,7 @@ def install_bundle(destination, assets, *, force=False, verified=True, download_
     if set(options) - allowed:
         raise ValueError('unsupported bundle download options: %s' % sorted(set(options) - allowed))
     path = Path(destination)
-    inspection = inspect_bundle(path, expected)
+    inspection = inspect_bundle(path, expected, verify_files=verify_files)
     if not force and inspection.status == 'available':
         return _paths(inspection)
     if inspection.status == 'inaccessible':
@@ -277,7 +293,7 @@ def install_bundle(destination, assets, *, force=False, verified=True, download_
     key = hashlib.sha256(os.fsencode(path.name)).hexdigest()[:32]
     with file_lock(path.parent / ('.datacache-bundle-lock-' + key)):
         _initialize(path)
-        inspection = inspect_bundle(path, expected)
+        inspection = inspect_bundle(path, expected, verify_files=verify_files)
         if not force and inspection.status == 'available':
             return _paths(inspection)
         if inspection.status == 'invalid' and not force:
@@ -395,23 +411,27 @@ class VersionedDatasetRegistry:
             _directory(parent)
         return parent / version
 
-    def inspect(self, name, version=None):
+    def inspect(self, name, version=None, *, verify_files=True):
         version = self.resolve_version(name, version)
-        return inspect_bundle(self.bundle_path(name, version), self._datasets[name]['versions'][version])
+        return inspect_bundle(self.bundle_path(name, version), self._datasets[name]['versions'][version],
+                              verify_files=verify_files)
 
-    def download(self, name, version=None, *, force=False, **download_options):
+    def download(self, name, version=None, *, force=False, verify_files=True, **download_options):
         """Explicitly install/repair and return a mapping of asset snapshot paths."""
         version = self.resolve_version(name, version)
         return install_bundle(self.bundle_path(name, version), self._datasets[name]['versions'][version],
-                              force=force, verified=self.verified, download_options=download_options)
+                              force=force, verified=self.verified, verify_files=verify_files,
+                              download_options=download_options)
 
-    def local_path(self, name, version=None, *, asset=None):
+    def local_path(self, name, version=None, *, asset=None, verify_files=True):
         """Resolve an installed snapshot; no writes/network. Missing raises.
 
         For one asset, return its Path; for multiple assets return the generation
-        directory, or select an individual asset with asset=.
+        directory, or select an individual asset with asset=. Assets are hashed
+        by default; verify_files=False checks metadata and sizes only, which
+        cannot detect same-size corruption.
         """
-        inspected = self.inspect(name, version)
+        inspected = self.inspect(name, version, verify_files=verify_files)
         if inspected.status == 'missing':
             raise FileNotFoundError(inspected.path)
         if inspected.status != 'available':
@@ -423,15 +443,23 @@ class VersionedDatasetRegistry:
         return Path(inspected.generation)
 
     def ensure(self, name, version=None, **download_options):
-        self.download(name, version, **download_options)
-        return self.local_path(name, version)
+        """Download/reuse, then return what local_path would: the single asset's
+        Path, or the generation directory of several assets."""
+        paths = self.download(name, version, **download_options)
+        if len(paths) == 1:
+            return Path(next(iter(paths.values())))
+        # The paths download validated: no second inspection, so a concurrent
+        # refresh cannot swap the generation between the two.
+        asset_name, asset_path = next(iter(paths.items()))
+        return Path(asset_path).parents[len(Path(asset_name).parts) - 1]
 
-    def is_cached(self, name, version=None):
-        return self.inspect(name, version).status == 'available'
+    def is_cached(self, name, version=None, *, verify_files=True):
+        """Whether inspection reports available; verify_files=False skips hashing."""
+        return self.inspect(name, version, verify_files=verify_files).status == 'available'
 
-    def status(self):
-        """One read-only status row per dataset's pinned default."""
+    def status(self, *, verify_files=True):
+        """One read-only status row per pinned default; verify_files=False skips hashing."""
         return [dict(name=name, version=self.resolve_version(name),
                      description=self._datasets[name]['description'],
                      available_versions=sorted(self._datasets[name]['versions']),
-                     inspection=self.inspect(name)) for name in sorted(self._datasets)]
+                     inspection=self.inspect(name, verify_files=verify_files)) for name in sorted(self._datasets)]

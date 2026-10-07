@@ -80,8 +80,8 @@ not visit those outputs.
 generation, and `generation` is that generation's directory. The `error` field
 retains the cause of a failed inspection.
 
-Inspection hashes every asset. With trusted registry metadata, `verified=True`
-means every file matched the supplied SHA-256 just now. Every completed generation
+Explicit inspection hashes every asset by default. With trusted registry
+metadata, `verified=True` means every file matched the supplied SHA-256 just now. Every completed generation
 also has its own manifest recording sizes, observed SHA-256 digests, source URLs,
 and fetch time. `inspect_bundle(directory)` can check those recorded hashes
 without a registry or network, but returns `verified=False`: a local receipt is
@@ -90,9 +90,26 @@ fragments; a separate SHA-256 fingerprint identifies the full source URL without
 storing that omitted text. Paths are retained, so do not use secret-bearing URL
 paths.
 
+Use `inspect_bundle(directory, assets, verify_files=False)` or
+`registry.inspect(name, verify_files=False)` for metadata-only checks. This
+validates ownership, the selected pointer/manifest, registry expectations, the
+required inventory, regular file types, readability and recorded sizes without
+reading payloads. Both bundle and per-file results have `verified=False`.
+Same-size corruption requires full verification to detect.
+
+Every registry method hashes by default, so `inspect`, `local_path`,
+`is_cached`, `status`, `download` and `ensure` agree about a corrupted bundle.
+Pass `verify_files=False` to any of them for metadata-only checks where speed
+matters more than detecting same-size corruption. On `install_bundle`,
+`registry.download` or `ensure` it skips payload reads on reuse only: new
+acquisitions and recovery always validate bytes before publishing. All these
+checks remain offline and read-only. Archive registries differ: their
+`local_path`, `is_cached` and `status` have been metadata-only by default since
+they were added, and take `verify_files=True` for full checks.
+
 `verified=False` on installation or registry construction explicitly permits
 acquiring assets without trusted hashes/sizes. Their observed hashes are still
-recorded and checked on reuse, but cannot authenticate the original download.
+recorded and checked on full verification, but cannot authenticate the original download.
 Use this mode only for upstream data without immutable integrity metadata.
 Without a trusted hash, reuse requires the same full URL fingerprint and
 decompression setting. Changing either reports an invalid installation; use

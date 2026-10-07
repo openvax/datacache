@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.19.0
+
+- Add opt-in `verify_files=False` to `inspect_bundle`, `install_bundle` and
+  `VersionedDatasetRegistry`'s `inspect`, `local_path`, `is_cached`, `status`,
+  `download` and `ensure`: checks ownership, source identity, required file
+  types, readability and recorded sizes without reading payloads, so it misses
+  same-size corruption. Fast results never claim hash verification. Full
+  verification stays the default everywhere, so all registry methods agree
+  about a corrupted bundle. New generations and recovery always validate
+  bytes before publication (#88).
+- `VersionedDatasetRegistry.ensure` returns the paths its download validated
+  instead of inspecting the bundle a second time.
+- `VersionedArchiveRegistry.status` takes `verify_files` like the archive
+  registry's other lookups; it stays metadata-only by default.
+
 ## 1.18.1
 
 - Reorganize the documentation into a site (`./docs.sh`, published from

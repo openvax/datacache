@@ -220,6 +220,7 @@ def test_registry_versions_are_independent_and_pinned(tmp_path, assets):
     reg.download('example', '2025-01')
     assert reg.local_path('example', '2025-01').is_file()
     assert reg.status()[0]['inspection'].verified
+    assert not reg.status(verify_files=False)[0]['inspection'].verified
     with pytest.raises(ValueError):
         reg.resolve_version('example', 'latest')
 

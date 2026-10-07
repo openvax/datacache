@@ -902,8 +902,12 @@ class VersionedArchiveRegistry:
         return self.inspect(
             name, version, verify_files=verify_files).status == "available"
 
-    def status(self, name=None):
-        """Return one offline status row per concrete archive version."""
+    def status(self, name=None, *, verify_files=False):
+        """Return one offline status row per concrete archive version.
+
+        Rows check publication and source metadata without reading payloads;
+        verify_files=True hashes every file as inspect does by default.
+        """
         if name is not None:
             self.resolve_version(name)
             names = [name]
@@ -914,7 +918,7 @@ class VersionedArchiveRegistry:
             archive = self._archives[archive_name]
             for version, definition in archive["versions"].items():
                 inspection = self.inspect(
-                    archive_name, version, verify_files=False)
+                    archive_name, version, verify_files=verify_files)
                 identities = [source.get("url") or _local_identity(source["path"])
                               for source in definition["sources"]]
                 rows.append({
