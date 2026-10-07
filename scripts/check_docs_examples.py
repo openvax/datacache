@@ -8,7 +8,11 @@ Each page's examples share one namespace, in order.
 import contextlib
 import io
 import re
+import sys
 from pathlib import Path
+
+# Document the checked-out code, not whichever datacache is installed.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 def main():
