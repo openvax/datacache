@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.17.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.18.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -74,7 +74,7 @@ fetch_file(
     progress_callback=None, *, destination=None, cache_root=None, expected_sha256=None,
     expected_size=None, max_retries=2, retry_backoff=1.0, retry_max_delay=30.0,
     show_progress=False, record_provenance=False, allow_empty=False, resume=False,
-    raw=False, expire_after=None, stale_if_error=False, validator=None
+    raw=False, expire_after=None, return_stale_on_error=False, validator=None
 )
 ```
 
@@ -108,7 +108,7 @@ replacement leaves the previous file intact.
 | `record_provenance` | Boolean; after publishing a download, also write a hidden `.<name>.datacache.json` record of the source URL (without user name, password, query string, or fragment; the path is kept as is, so avoid recording URLs with secrets in their path), the fetch time, the size, and the SHA-256 when `expected_sha256` verified it. [inspect_file](#inspect_file) reports these offline. The record has the file's permissions. Default `False`: a caller that downloads to a temporary name and then moves the file would leave the record behind. Cache hits never write one, any new download removes a previous record first, and a failure to write one never fails the download. |
 | `allow_empty` | Boolean accepting an empty installed file; default `False`. A complete but empty response, such as a withdrawn upstream record, is otherwise never published: HTTP retries it as transient, then raises `FileValidationError`. An empty cached file is likewise an invalid hit. `expected_size=0` also allows an empty file. |
 | `expire_after` | How long a cached file stays fresh: non-negative seconds or a `datetime.timedelta`, as in requests-cache. An older cached file is downloaded again, as is one that no longer validates; `0` refreshes every time. Age comes from the provenance record's fetch time when one describes the file, otherwise from its modification time; a future time counts as new. Default `None` reuses a valid file however old and raises for an invalid one. |
-| `stale_if_error` | Boolean; when a refresh (`force=True` or an expired `expire_after`) raises and a valid cached file exists, log a warning (without URL secrets) and return the cached path, like HTTP `stale-if-error`. Without a valid cached file the error propagates, as does an exception from `progress_callback`, which cancels the fetch. The cached file is checked only after a failed refresh. Default `False`. |
+| `return_stale_on_error` | Boolean; when a refresh (`force=True` or an expired `expire_after`) raises and a valid cached file exists, log a warning (without URL secrets) and return the cached path, like HTTP `stale-if-error`. Without a valid cached file the error propagates, as does an exception from `progress_callback`, which cancels the fetch. The cached file is checked only after a failed refresh. Default `False`. |
 | `validator` | Optional callable `validator(path)` for content a successful transfer can still get wrong, such as an HTTP 200 error page. It rejects the file by raising (normally `ValueError`) or returning `False`. It checks the installed bytes before publication, so a rejected download never replaces the cached file, and checks cache hits. Rejection raises `FileValidationError`, chained to any exception. Not supported with `resume=True`. |
 
 ZIP downloads install the member stored at the output name; otherwise a member
@@ -150,7 +150,7 @@ def has_header(path):
 # unreachable, and never cache content without the expected header.
 fresh = dc.fetch_file(
     url, filename="records.csv", cache_root=cache_root, expire_after=86400,
-    stale_if_error=True, validator=has_header,
+    return_stale_on_error=True, validator=has_header,
 )
 assert fresh == path
 ```
@@ -928,7 +928,7 @@ Cache.fetch(
     use_wget_if_available=None, *, chunk_size=1048576, progress_callback=None,
     expected_sha256=None, expected_size=None, max_retries=2, retry_backoff=1.0,
     retry_max_delay=30.0, show_progress=False, record_provenance=False,
-    allow_empty=False, resume=False, raw=False, expire_after=None, stale_if_error=False,
+    allow_empty=False, resume=False, raw=False, expire_after=None, return_stale_on_error=False,
     validator=None
 )
 ```

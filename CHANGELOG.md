@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.18.0
+
+- Rename `fetch_file` and `Cache.fetch`'s `stale_if_error`, added in 1.17.0, to
+  `return_stale_on_error`, which says what it does: return the cached copy when
+  a refresh fails. The old name is no longer accepted.
+
 ## 1.17.0
 
 - Add `fetch_bytes` for small resources such as directory listings: the body
