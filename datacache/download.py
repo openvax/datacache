@@ -681,7 +681,7 @@ def fetch_file(
         resume=False,
         raw=False,
         expire_after=None,
-        stale_if_error=False,
+        return_stale_on_error=False,
         validator=None):
     """
     Download a remote file and store it locally in a cache directory. Don't
@@ -809,11 +809,11 @@ def fetch_file(
         modification time; a future time counts as new. Default None reuses a
         valid file however old and raises for an invalid one.
 
-    stale_if_error : bool, optional
+    return_stale_on_error : bool, optional
         When a refresh (force=True or an expired expire_after) fails with an
         exception and a valid cached file exists, log a warning and return the
-        cached path instead, like HTTP's stale-if-error and requests-cache's
-        option of the same name. Without a valid cached file the error
+        cached path instead, as HTTP's stale-if-error directive allows.
+        Without a valid cached file the error
         propagates, as does an exception from progress_callback, which
         cancels the fetch. Default False.
 
@@ -855,8 +855,8 @@ def fetch_file(
     if not isinstance(allow_empty, bool):
         raise ValueError("allow_empty must be a boolean")
     expiry = _expiry_seconds(expire_after)
-    if not isinstance(stale_if_error, bool):
-        raise ValueError("stale_if_error must be a boolean")
+    if not isinstance(return_stale_on_error, bool):
+        raise ValueError("return_stale_on_error must be a boolean")
     if validator is not None and not callable(validator):
         raise ValueError("validator must be callable")
     if validator is not None and resume:
@@ -889,7 +889,7 @@ def fetch_file(
                    html_conversion):
         raise ValueError("resume=True supports raw downloads only; use raw=True or retain the archive suffix")
     # Whether the cached file is known valid, for a failed refresh to fall
-    # back to (stale_if_error); with force=True it is checked only on failure.
+    # back to (return_stale_on_error); with force=True it is checked only on failure.
     cached = False
     refresh = force
     if not force:
@@ -962,7 +962,7 @@ def fetch_file(
                 allow_empty=allow_empty,
                 validator=validator)
     except Exception as error:
-        if not stale_if_error or any(error is cancel for cancel in callback_errors):
+        if not return_stale_on_error or any(error is cancel for cancel in callback_errors):
             raise
         if not cached:
             try:

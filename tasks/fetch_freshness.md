@@ -14,14 +14,14 @@ For small resources; also usable when the cache is read-only.
 Implementation: move the retry loop out of `_download_to_temp_file` into one
 helper used by both, so they cannot drift.
 
-## 2. `fetch_file(..., max_age=None, stale_if_error=False)` (and `Cache.fetch`)
+## 2. `fetch_file(..., max_age=None, return_stale_on_error=False)` (and `Cache.fetch`)
 
 - `max_age`: non-negative seconds. A valid cached file older than this is
   downloaded again. Age comes from the provenance record's `fetched_at` when
   a valid record describes the file, else from its modification time
   (publication by os.replace keeps the download time). `None` keeps today's
   behaviour: a valid cached file is reused however old.
-- `stale_if_error`: when a refresh (force=True or max_age expiry) fails with
+- `return_stale_on_error`: when a refresh (force=True or max_age expiry) fails with
   an `Exception` and a valid cached file exists, log a warning and return the
   cached path. Without a cached file the error propagates. Off by default.
 
@@ -45,6 +45,6 @@ docs/api.md: version, fetch_file/Cache.fetch signatures and parameter rows,
 new fetch_bytes section with a runnable example. downloads.md: a short
 "Small metadata and freshness" section. CHANGELOG 1.17.0.
 Tests: fetch_bytes retries/empty/file URLs; shared loop unchanged for files;
-max_age by provenance and by mtime; stale_if_error on network error and on
+max_age by provenance and by mtime; return_stale_on_error on network error and on
 validation failure, and propagation without a cache; validate on publish and
 on cache hit; Cache.fetch forwarding.

@@ -183,8 +183,8 @@ TLS trust and retry policy as `fetch_file`, without writing to disk. It suits
 small resources such as directory listings, and caches that are read-only.
 
 Metadata that changes upstream, such as a list of releases, can be cached and
-refreshed periodically. These options follow requests-cache and the HTTP
-`stale-if-error` directive:
+refreshed periodically. `expire_after` is named as in requests-cache, and
+`return_stale_on_error` behaves like the HTTP `stale-if-error` directive:
 
 ```python
 path = fetch_file(
@@ -193,7 +193,7 @@ path = fetch_file(
     raw=True,
     timeout=10,
     expire_after=86400,  # seconds or a datetime.timedelta
-    stale_if_error=True,
+    return_stale_on_error=True,
     validator=require_release_links,
 )
 ```
@@ -203,7 +203,7 @@ path = fetch_file(
   record's fetch time when there is one (`record_provenance=True`), otherwise
   from the file's modification time, which publication sets when the download
   is written.
-- `stale_if_error` returns the cached copy, with a logged warning, when a
+- `return_stale_on_error` returns the cached copy, with a logged warning, when a
   refresh fails, including a rejected validation. Without a valid cached copy
   the error propagates; so does a progress callback's exception, which cancels
   the fetch.

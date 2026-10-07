@@ -128,7 +128,7 @@ class Cache:
             resume=False,
             raw=False,
             expire_after=None,
-            stale_if_error=False,
+            return_stale_on_error=False,
             validator=None):
         """
         Return the local path to the downloaded copy of a given URL.
@@ -145,7 +145,7 @@ class Cache:
         raw=True disables decompression and HTML conversion even for an explicit
         filename. It cannot be combined with decompress=True. Resume options
         have the same size, hash, and strong-ETag requirements as fetch_file.
-        expire_after, stale_if_error and validator refresh expired copies,
+        expire_after, return_stale_on_error and validator refresh expired copies,
         fall back to a cached copy when a refresh fails, and reject wrong
         content, as described for fetch_file.
 
@@ -175,7 +175,7 @@ class Cache:
             resume=resume,
             raw=raw,
             expire_after=expire_after,
-            stale_if_error=stale_if_error,
+            return_stale_on_error=return_stale_on_error,
             validator=validator)
 
         self._local_paths[key] = path

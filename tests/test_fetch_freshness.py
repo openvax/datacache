@@ -1,4 +1,4 @@
-"""fetch_bytes, and fetch_file's expire_after, stale_if_error and validator."""
+"""fetch_bytes, and fetch_file's expire_after, return_stale_on_error and validator."""
 
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -149,7 +149,7 @@ def test_invalid_expiry_is_rejected(server, tmp_path, expire_after):
     assert server.requests == []
 
 
-# stale_if_error
+# return_stale_on_error
 
 
 def test_failed_refresh_returns_the_cached_copy(server, tmp_path, caplog):
@@ -158,7 +158,7 @@ def test_failed_refresh_returns_the_cached_copy(server, tmp_path, caplog):
     server.responses = [(503, b"down")]
     with caplog.at_level(logging.WARNING, logger="datacache"):
         assert fetch_file(server.url, destination=path, raw=True, expire_after=60,
-                          stale_if_error=True) == path
+                          return_stale_on_error=True) == path
     assert open(path, "rb").read() == b"first\n"
     assert "using the cached copy" in caplog.text
 
@@ -167,14 +167,14 @@ def test_forced_refresh_can_fall_back_too(server, tmp_path):
     path = fetch_file(server.url, destination=tmp_path / "listing.html", raw=True)
     server.responses = [(500, b"error")]
     assert fetch_file(server.url, destination=path, raw=True, force=True,
-                      stale_if_error=True) == path
+                      return_stale_on_error=True) == path
 
 
 def test_errors_propagate_without_a_cached_copy_or_the_option(server, tmp_path):
     server.responses = [(503, b"down")]
     with pytest.raises(requests.HTTPError):
         fetch_file(server.url, destination=tmp_path / "missing.html", raw=True,
-                   stale_if_error=True)
+                   return_stale_on_error=True)
     server.responses = [b"first\n"]
     path = fetch_file(server.url, destination=tmp_path / "listing.html", raw=True)
     age(path, 120)
@@ -215,7 +215,7 @@ def test_rejected_refresh_keeps_and_can_return_the_cached_copy(server, tmp_path)
     with pytest.raises(FileValidationError):
         fetch_file(server.url, destination=path, raw=True, force=True, validator=has_first)
     assert fetch_file(server.url, destination=path, raw=True, force=True,
-                      validator=has_first, stale_if_error=True) == path
+                      validator=has_first, return_stale_on_error=True) == path
     assert open(path, "rb").read() == b"first\n"
 
 
@@ -239,7 +239,7 @@ def test_cache_fetch_forwards_the_options(server, tmp_path):
     age(path, 120)
     server.responses = [(503, b"down")]
     assert cache.fetch(server.url, filename="listing.html", raw=True, expire_after=60,
-                       stale_if_error=True, validator=has_first) == path
+                       return_stale_on_error=True, validator=has_first) == path
     assert len(server.requests) == 4  # One download, then three refresh attempts.
 
 
@@ -263,7 +263,7 @@ def test_fallback_warning_does_not_log_url_secrets(server, tmp_path, caplog):
     path = fetch_file(url, destination=tmp_path / "listing.html", raw=True)
     server.responses = [(503, b"down")]
     with caplog.at_level(logging.WARNING, logger="datacache"):
-        fetch_file(url, destination=path, raw=True, force=True, stale_if_error=True)
+        fetch_file(url, destination=path, raw=True, force=True, return_stale_on_error=True)
     assert "using the cached copy" in caplog.text and "SECRET" not in caplog.text
 
 
@@ -276,7 +276,7 @@ def test_cancelling_progress_callback_is_not_a_fallback(server, tmp_path):
 
     path = fetch_file(server.url, destination=tmp_path / "listing.html", raw=True)
     with pytest.raises(Cancelled):
-        fetch_file(server.url, destination=path, raw=True, force=True, stale_if_error=True,
+        fetch_file(server.url, destination=path, raw=True, force=True, return_stale_on_error=True,
                    progress_callback=cancel)
 
 
@@ -287,7 +287,7 @@ def test_forced_refresh_checks_the_cached_copy_only_on_failure(server, tmp_path)
     def validator(path):
         checked.append(path)
 
-    fetch_file(server.url, destination=path, raw=True, force=True, stale_if_error=True,
+    fetch_file(server.url, destination=path, raw=True, force=True, return_stale_on_error=True,
                validator=validator)
     assert len(checked) == 1  # The new download only.
 
@@ -314,14 +314,14 @@ def test_expiring_cache_replaces_content_that_no_longer_validates(server, tmp_pa
     server.responses = [(503, b"down")]
     with pytest.raises(requests.HTTPError):  # Invalid content is no fallback.
         fetch_file(server.url, destination=destination, raw=True, expire_after=3600,
-                   stale_if_error=True, validator=has_first)
+                   return_stale_on_error=True, validator=has_first)
 
 
 def test_rejection_keeps_its_cause_without_a_cached_copy(server, tmp_path):
     server.responses = [b"proxy error page"]
     with pytest.raises(FileValidationError) as raised:
         fetch_file(server.url, destination=tmp_path / "listing.html", raw=True,
-                   stale_if_error=True, validator=has_first)
+                   return_stale_on_error=True, validator=has_first)
     assert isinstance(raised.value.__cause__, ValueError)
 
 
