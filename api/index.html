@@ -2217,7 +2217,7 @@
 
 <h1 id="public-api-reference">Public API reference<a class="headerlink" href="#public-api-reference" title="Permanent link">&para;</a></h1>
 <p>This reference covers every name exported in <code>datacache.__all__</code> and every
-public <code>Cache</code> method in DataCache 1.18.1. Import these names from <code>datacache</code>.
+public <code>Cache</code> method in DataCache 1.19.0. Import these names from <code>datacache</code>.
 Signatures below show all defaults; arguments after <code>*</code> are keyword-only.
 Method signatures omit <code>self</code> and are called on a <code>Cache</code> instance.</p>
 <p>Start with the <a href="../#cache-and-verify-a-file">quickstart</a> for a first download.
@@ -3384,26 +3384,33 @@ DataCache. <code>verified=False</code> explicitly enables historical unpinned ca
 <td>Whether a published generation is available; full verification is optional.</td>
 </tr>
 <tr>
-<td><code>status(name=None)</code></td>
-<td>One read-only row per concrete version, including catalogue and downloaded source URLs, store/generation paths, default flag, status, fetch time, observed archive size/hash and inspection.</td>
+<td><code>status(name=None, *, verify_files=False)</code></td>
+<td>One read-only row per concrete version, including catalogue and downloaded source URLs, store/generation paths, default flag, status, fetch time, observed archive size/hash and inspection. Metadata-only by default; <code>verify_files=True</code> hashes every file.</td>
 </tr>
 </tbody>
 </table>
 <h2 id="install_bundle">install_bundle<a class="headerlink" href="#install_bundle" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>install_bundle(destination, assets, *, force=False, verified=True, download_options=None)
+<div class="highlight"><pre><span></span><code>install_bundle(destination, assets, *, force=False, verified=True, verify_files=True, download_options=None)
 </code></pre></div>
 <p>Atomically install a mapping of relative asset names to <code>{url, sha256, size,
 decompress?}</code> metadata. Returns a dict of asset names to immutable generation
 paths. Invalid caches require <code>force=True</code>. <code>verified=False</code> explicitly permits
 unpinned sources; their observed hashes are recorded without authenticating them.
+<code>verify_files=False</code> avoids payload reads for existing-generation checks; it
+checks readability, file types and recorded sizes but cannot detect same-size
+corruption. New generations and explicit recovery always validate bytes before
+publication, regardless of this cache-hit setting.
 <code>download_options</code> accepts timeout, chunk size, progress, retry settings and resume.
 Publication requires a POSIX local filesystem. <a href="../bundles/">Complete guide</a>.</p>
 <h2 id="inspect_bundle">inspect_bundle<a class="headerlink" href="#inspect_bundle" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>inspect_bundle(destination, assets=None)
+<div class="highlight"><pre><span></span><code>inspect_bundle(destination, assets=None, *, verify_files=True)
 </code></pre></div>
 <p>Return a <code>BundleInspection</code> without writes, network, locks or recovery. Supply
 trusted assets to verify against the registry; omit them to check consistency
-against the installed generation's own recorded hashes (<code>verified=False</code>).</p>
+against the installed generation's own recorded hashes (<code>verified=False</code>).
+<code>verify_files=False</code> validates metadata, source expectations, required file types,
+readability and recorded sizes without reading payloads. Its bundle and file
+results always have <code>verified=False</code>, even with trusted hashes in the registry.</p>
 <h2 id="bundleinspection">BundleInspection<a class="headerlink" href="#bundleinspection" title="Permanent link">&para;</a></h2>
 <p>A frozen record with <code>path</code>, <code>status</code>, <code>verified</code>, <code>generation</code>, <code>files</code>, and
 <code>error</code>. Status is <code>available</code>, <code>missing</code>, <code>invalid</code>, <code>inaccessible</code>, or
@@ -3433,28 +3440,28 @@ The <a href="../bundles/">bundle guide</a> includes an example and downstream mi
 <td>Expected managed store <code>Path</code>, without creating it.</td>
 </tr>
 <tr>
-<td><code>inspect(name, version=None)</code></td>
-<td>Read-only <code>BundleInspection</code>.</td>
+<td><code>inspect(name, version=None, *, verify_files=True)</code></td>
+<td>Read-only <code>BundleInspection</code>; full payload verification by default.</td>
 </tr>
 <tr>
-<td><code>download(name, version=None, *, force=False, **download_options)</code></td>
-<td>Install/reuse and return a dict of asset snapshot paths.</td>
+<td><code>download(name, version=None, *, force=False, verify_files=True, **download_options)</code></td>
+<td>Install/reuse and return a dict of asset snapshot paths; the flag selects cache-hit cost only.</td>
 </tr>
 <tr>
-<td><code>local_path(name, version=None, *, asset=None)</code></td>
-<td>Installed single asset's <code>Path</code>, or a multi-file generation directory; select one asset by name. Missing raises <code>FileNotFoundError</code>; invalid/recovery-required raises <code>FileValidationError</code>.</td>
+<td><code>local_path(name, version=None, *, asset=None, verify_files=True)</code></td>
+<td>Installed single asset's <code>Path</code>, or a multi-file generation directory; select one asset by name. Assets are hashed by default; <code>verify_files=False</code> checks metadata and sizes only. Missing raises <code>FileNotFoundError</code>; invalid/recovery-required raises <code>FileValidationError</code>.</td>
 </tr>
 <tr>
 <td><code>ensure(name, version=None, **download_options)</code></td>
-<td>Download/reuse, then return <code>local_path</code>.</td>
+<td>Download/reuse, then return what <code>local_path</code> would, from the paths the download validated. <code>verify_files=False</code> among the options skips hashing on reuse.</td>
 </tr>
 <tr>
-<td><code>is_cached(name, version=None)</code></td>
-<td>Whether verified inspection reports <code>available</code>.</td>
+<td><code>is_cached(name, version=None, *, verify_files=True)</code></td>
+<td>Whether inspection reports <code>available</code>; <code>verify_files=False</code> skips hashing.</td>
 </tr>
 <tr>
-<td><code>status()</code></td>
-<td>One row per dataset's pinned default: name, version, description, available_versions and inspection.</td>
+<td><code>status(*, verify_files=True)</code></td>
+<td>One row per pinned default: name, version, description, available_versions and inspection. <code>verify_files=False</code> skips hashing.</td>
 </tr>
 </tbody>
 </table>
