@@ -767,3 +767,112 @@ def test_interrupted_local_copy_never_modifies_original(tmp_path, sources, outpu
     assert not (input_dir(store) / 'dna.fa.gz').exists()
     assert not list(input_dir(store).glob('.copy-*'))
     assert install(store, sources, outputs)
+
+
+# Review fixes
+
+
+def unpinned(tmp_path, data):
+    source = tmp_path / 'local.fa.gz'
+    source.write_bytes(gzip.compress(data, mtime=0))
+    return source, {'dna.fa.gz': dict(path=source)}
+
+
+def unpinned_outputs():
+    return {'dna.fa': {}, 'index/info.json': {}}
+
+
+def test_recovery_picks_the_newest_generation_not_the_highest_name(tmp_path):
+    source, sources = unpinned(tmp_path, DATA)
+    store = tmp_path / 'dna'
+    older = Path(install(store, sources, unpinned_outputs())['dna.fa']).parent
+    source.write_bytes(gzip.compress(b'>chr1\nTTTTTTTT\n', mtime=0))
+    newer = Path(install(store, sources, unpinned_outputs(), force=True)['dna.fa']).parent
+    # Names are random: make the older generation's name sort highest.
+    older.rename(store / 'generations' / ('f' * 32))
+    newer.rename(store / 'generations' / ('0' * 32))
+    (store / module.CURRENT).unlink()
+    recovered = install(store, sources, unpinned_outputs())
+    assert Path(recovered['dna.fa']).parent.name == '0' * 32
+    assert Path(recovered['dna.fa']).read_bytes() == b'>chr1\nTTTTTTTT\n'
+
+
+def test_forced_refresh_copies_an_edited_local_source_again(tmp_path):
+    source, sources = unpinned(tmp_path, DATA)
+    store = tmp_path / 'dna'
+    install(store, sources, unpinned_outputs(), retain_sources=True)
+    source.write_bytes(gzip.compress(b'>chr1\nTTTTTTTT\n', mtime=0))
+    paths = install(store, sources, unpinned_outputs(), force=True)
+    assert Path(paths['dna.fa']).read_bytes() == b'>chr1\nTTTTTTTT\n'
+    state = inspect_materialization(store)
+    assert state.sources['dna.fa.gz']['sha256'] == sha256(source.read_bytes()).hexdigest()
+
+
+def test_force_repairs_a_corrupt_private_input_receipt(tmp_path, sources, outputs):
+    import shutil
+    store = tmp_path / 'dna'
+    install(store, sources, outputs, retain_sources=True)
+    # No generations left, so the next call has to acquire inputs again.
+    (store / module.CURRENT).unlink()
+    for generation in (store / 'generations').iterdir():
+        shutil.rmtree(generation)
+    (input_dir(store) / module.INPUTS).write_text('{')
+    with pytest.raises(FileValidationError, match='use force=True to repair'):
+        install(store, sources, outputs)
+    paths = install(store, sources, outputs, force=True)
+    assert Path(paths['dna.fa']).read_bytes() == DATA
+
+
+def test_force_rebuilds_instead_of_recovering_a_lost_pointer(tmp_path, sources, outputs):
+    store = tmp_path / 'dna'
+    old = install(store, sources, outputs)
+    (store / module.CURRENT).unlink()
+    built = []
+
+    def counting_build(inputs, targets):
+        built.append(True)
+        build(inputs, targets)
+
+    new = install(store, sources, outputs, builder=counting_build, force=True)
+    assert built == [True] and new != old
+    (store / module.CURRENT).unlink()
+    assert install(store, sources, outputs, builder=counting_build) == new  # Plain call recovers.
+    assert built == [True]
+
+
+def test_forced_refresh_does_not_hash_the_old_outputs(tmp_path, sources, outputs, monkeypatch):
+    store = tmp_path / 'dna'
+    install(store, sources, outputs)
+    modes = []
+    original = module._inspect_materialization
+
+    def recording(path, expected, *, verify_files=True):
+        modes.append(verify_files)
+        return original(path, expected, verify_files=verify_files)
+
+    monkeypatch.setattr(module, '_inspect_materialization', recording)
+    install(store, sources, outputs, force=True)
+    assert modes and not any(modes)
+
+
+@pytest.mark.parametrize('builder_fails', [True, False])
+def test_cleanup_failure_never_masks_the_outcome(tmp_path, sources, outputs, monkeypatch, caplog, builder_fails):
+    store = tmp_path / 'dna'
+    original = module.shutil.rmtree
+
+    def failing_rmtree(path, *args, **kwargs):
+        if Path(path).name.startswith('.staging-'):
+            raise OSError('busy')
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(module.shutil, 'rmtree', failing_rmtree)
+
+    def failing_build(inputs, targets):
+        raise RuntimeError('builder failed')
+
+    if builder_fails:
+        with pytest.raises(RuntimeError, match='builder failed'):
+            install(store, sources, outputs, builder=failing_build)
+    else:
+        assert Path(install(store, sources, outputs)['dna.fa']).read_bytes() == DATA
+    assert 'Could not remove the staging directory' in caplog.text

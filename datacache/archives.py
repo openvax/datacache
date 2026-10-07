@@ -26,7 +26,7 @@ from uuid import uuid4
 from filelock import FileLock
 
 from ._filesystem import open_regular, path_present, read_json, write_json
-from .bundles import _relative_name
+from .bundles import _newest_generations_first, _relative_name
 from .inspection import FileInspection
 from .integrity import FileValidationError, _validate_expectations
 from .provenance import redact_url
@@ -419,7 +419,8 @@ def _initialize(path):
 
 
 def _recover(path, definition):
-    for entry in sorted((path / "generations").iterdir(), reverse=True):
+    for name in _newest_generations_first(path, MANIFEST, "fetched_at"):
+        entry = path / "generations" / name
         try:
             candidate = _inspect_generation(path, entry.name, definition)
         except (OSError, ValueError, KeyError, TypeError, RecursionError):

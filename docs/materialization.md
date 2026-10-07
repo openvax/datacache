@@ -36,7 +36,7 @@ state = inspect_materialization(
 )
 ```
 
-The [offline reference-DNA example](../examples/reference_dna_materialization.py)
+The [offline reference-DNA example](https://github.com/openvax/datacache/blob/master/examples/reference_dna_materialization.py)
 is runnable with `python -m examples.reference_dna_materialization` and uses
 tiny gzip data without any biological-library dependency.
 
@@ -124,8 +124,12 @@ output generation untouched. Failed builder outputs are discarded; completed
 inputs survive for retry without another download. A killed builder can leave
 private partial outputs, which the next transaction with the same definition
 discards. Changing only the transform can reuse retained matching inputs.
-`force=True` rebuilds outputs, reuses sound inputs, and can repair corrupted
-regular private inputs; it never adopts unsafe paths or foreign directories.
+`force=True` always rebuilds outputs: it never selects an older generation,
+even when `current.json` is missing, and it doesn't hash the outputs it replaces.
+It reuses remote inputs that still match, copies a local source again while
+the original exists (so an in-place correction is picked up; once the original
+is gone, a retained copy still serves), and repairs corrupted private inputs or
+input receipts. It never adopts unsafe paths or foreign directories.
 
 All declared outputs and `.datacache-manifest.json` are staged and checked as
 one tree. DataCache renames that tree into `generations/<id>` and atomically
@@ -135,9 +139,12 @@ returned snapshot paths continue to exist across later refreshes. Do not add
 indexes or edit files in a published generation; declare them as outputs or
 place independently mutable files outside the managed store.
 
-If the first pointer publication is interrupted, explicit `materialize` can
-fully check and select a matching complete local generation without fetching
-inputs or calling the builder. Inspection alone does not recover anything.
+If the first pointer publication is interrupted, explicit `materialize`
+without `force` can fully check and select a matching complete local
+generation without fetching inputs or calling the builder. It tries the newest
+generation first, by the creation time its receipt records. Inspection alone
+does not recover anything. A failure to remove the private staging directory is
+logged; it never replaces a builder's error or fails a published build.
 
 After successful pointer publication/recovery, owned inputs for that source
 definition are removed by default. `retain_sources=True` keeps them privately

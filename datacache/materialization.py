@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import shutil
@@ -13,7 +14,9 @@ from urllib.request import url2pathname
 from uuid import uuid4
 
 from ._filesystem import file_lock, open_regular, path_present, read_json, write_json
-from .bundles import _directory, _file_mode, _generation, _initialize, _relative_name, _store
+from .bundles import (
+    _directory, _file_mode, _generation, _initialize, _newest_generations_first, _relative_name, _store,
+)
 from .inspection import FileInspection
 from .integrity import FileValidationError, _validate_expectations
 from .progress import Progress
@@ -25,6 +28,8 @@ CURRENT = 'current.json'
 INPUTS = '.datacache-inputs.json'
 FORMAT = 1
 CHUNK_SIZE = 2 ** 20
+
+logger = logging.getLogger(__name__)
 
 
 def _json_copy(value):
@@ -166,12 +171,8 @@ def _source_records(value, definition):
             raise ValueError('source receipt identity or trust disagrees with definition')
         transport = record.get('transport')
         if transport is not None:
-            from .resume import _strong_etag
-            if (not isinstance(transport, dict) or set(transport) != {'header', 'value'} or
-                    transport['header'] not in ('ETag', 'Last-Modified') or
-                    not isinstance(transport['value'], str) or
-                    '\r' in transport['value'] or '\n' in transport['value'] or
-                    (transport['header'] == 'ETag' and not _strong_etag(transport['value']))):
+            from .resume import _valid_validator
+            if not _valid_validator(transport):
                 raise ValueError('invalid validated transport metadata')
     return value
 
@@ -309,9 +310,17 @@ def _acquire_inputs(directory, definition, acquisition, options, *, force=False)
     from .download import fetch_file
     _private(directory)
     receipt_path = directory / INPUTS
-    records = read_json(receipt_path, limit=None) if path_present(receipt_path) else {}
-    if not isinstance(records, dict) or set(records) - set(definition):
-        raise FileValidationError(receipt_path, 'invalid private input receipt')
+    try:
+        records = read_json(receipt_path, limit=None) if path_present(receipt_path) else {}
+        if not isinstance(records, dict) or set(records) - set(definition):
+            raise FileValidationError(receipt_path, 'invalid private input receipt')
+    except (ValueError, RecursionError) as error:
+        if not force:
+            raise FileValidationError(
+                receipt_path, 'invalid private input receipt; use force=True to repair') from error
+        # Unrecorded inputs are checked or acquired again below.
+        records = {}
+        write_json(receipt_path, records)
     paths = {}
     for name, spec in definition.items():
         target = directory / name
@@ -320,13 +329,25 @@ def _acquire_inputs(directory, definition, acquisition, options, *, force=False)
             if not path_present(current):
                 current.mkdir(mode=0o700)
             _directory(current)
+        kind, source = acquisition[name]
+        if force and kind == 'path' and name in records and path_present(Path(source)):
+            # The caller may have corrected a local source in place without
+            # changing its path, so a forced refresh copies it again while the
+            # original exists; once it's gone, the retained copy still serves.
+            del records[name]
+            write_json(receipt_path, records)
+            if path_present(target):
+                os.close(open_regular(target))  # Never remove a planted link/special file.
+                target.unlink()
+            provenance.remove(target)
         if name in records:
-            _source_records({name: records[name]}, {name: spec})
             try:
+                _source_records({name: records[name]}, {name: spec})
                 _observe(target, {key: records[name][key] for key in ('sha256', 'size')})
-            except (FileNotFoundError, FileValidationError):
+            except (FileNotFoundError, ValueError) as error:
                 if not force:
-                    raise FileValidationError(target, 'invalid private input; use force=True to repair')
+                    raise FileValidationError(
+                        target, 'invalid private input; use force=True to repair') from error
                 if path_present(target):
                     fd = open_regular(target)  # Never repair a planted link/special file.
                     os.close(fd)
@@ -354,7 +375,7 @@ def _acquire_inputs(directory, definition, acquisition, options, *, force=False)
                         raise FileValidationError(target, 'invalid private input; use force=True to repair')
                     target.unlink()
                     provenance.remove(target)
-        kind, source = acquisition[name]
+        copied = None
         if kind == 'url':
             fetch_file(source, destination=target, raw=True, record_provenance=True,
                        expected_sha256=spec['sha256'], expected_size=spec['size'], **options)
@@ -362,21 +383,27 @@ def _acquire_inputs(directory, definition, acquisition, options, *, force=False)
             temporary = directory / ('.copy-' + uuid4().hex)
             try:
                 with os.fdopen(open_regular(source), 'rb') as handle, temporary.open('xb') as output:
+                    digest = hashlib.sha256()
                     with Progress(options['show_progress'], 'Copying', os.fstat(handle.fileno()).st_size) as progress:
                         size = 0
                         for chunk in iter(lambda: handle.read(options.get('chunk_size', CHUNK_SIZE)), b''):
                             output.write(chunk)
+                            digest.update(chunk)  # Hash while copying: one read.
                             size += len(chunk)
                             progress(size, progress.total)
                             if options.get('progress_callback') is not None:
                                 options['progress_callback'](size, progress.total)
                     output.flush()
                     os.fsync(output.fileno())
-                _observe(temporary, spec, show_progress=options['show_progress'])
+                copied = dict(sha256=digest.hexdigest(), size=size)
+                _check_observed(temporary, copied, spec)
                 os.replace(temporary, target)
             finally:
                 temporary.unlink(missing_ok=True)
-        observed, info = _observe(target, spec, show_progress=options['show_progress'])
+        if copied is not None:
+            observed, info = copied, os.stat(target)
+        else:
+            observed, info = _observe(target, spec, show_progress=options['show_progress'])
         origin_record = provenance.read(target, info) or {}
         record = dict(observed, origin=spec['origin'], identity=spec['identity'],
                       verified=spec['sha256'] is not None,
@@ -440,7 +467,9 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
     path = Path(destination).absolute()
 
     def inspect_current():
-        return _inspect_materialization(path, definition, verify_files=verify_files)
+        # A forced refresh rebuilds whatever is there; it only needs to know
+        # whether the store is readable, not to hash the old outputs.
+        return _inspect_materialization(path, definition, verify_files=verify_files and not force)
 
     def check_hit(inspection):
         if inspection.status == 'inaccessible':
@@ -461,13 +490,13 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
         inspection = inspect_current()
         if check_hit(inspection):
             return {name: value.path for name, value in inspection.files.items()}
-        if inspection.status in ('missing', 'recovery-required'):
-            for entry in sorted((path / 'generations').iterdir(), reverse=True):
+        if not force and inspection.status in ('missing', 'recovery-required'):
+            for name in _newest_generations_first(path, MANIFEST, 'created_at'):
                 try:
-                    candidate = _inspect_tree(path, _generation(path, entry.name), definition)
+                    candidate = _inspect_tree(path, _generation(path, name), definition)
                 except (OSError, ValueError, KeyError, TypeError, RecursionError):
                     continue
-                write_json(path / CURRENT, {'generation': entry.name}, mode=_file_mode(path))
+                write_json(path / CURRENT, {'generation': name}, mode=_file_mode(path))
                 _cleanup_inputs(path, definition, retain_sources)
                 return {name: value.path for name, value in candidate.files.items()}
         inputs = _input_directory(path, definition)
@@ -494,14 +523,17 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
             observed = {}
             # Reject extras/links/specials before hashing any declared output.
             _tree(staged, definition['outputs'], verify_files=False, allow_manifest=False)
+            mode = _file_mode(staged)
             for name, target in output_paths.items():
                 observed[name] = _observe(target, definition['outputs'][name],
                                           show_progress=options['show_progress'])[0]
-                os.chmod(target, _file_mode(staged))
+                os.chmod(target, mode)
             receipt = dict(format=FORMAT, created_at=datetime.now(timezone.utc).isoformat(),
                            definition=definition, sources=records, outputs=observed)
-            write_json(staged / MANIFEST, receipt, mode=_file_mode(staged))
-            _inspect_tree(path, staged, definition)
+            write_json(staged / MANIFEST, receipt, mode=mode)
+            # The outputs were just hashed into the receipt; check its structure,
+            # inventory and sizes without hashing them again.
+            _inspect_tree(path, staged, definition, verify_files=False)
             generation = uuid4().hex
             final = path / 'generations' / generation
             os.replace(staged, final)
@@ -511,5 +543,9 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
             _cleanup_inputs(path, definition, retain_sources)
             return {name: value.path for name, value in candidate.files.items()}
         finally:
-            _private(working)
-            shutil.rmtree(working)
+            # Cleanup never replaces the builder's error or fails a publication.
+            try:
+                _private(working)  # Only ever remove our own private directory.
+                shutil.rmtree(working)
+            except (OSError, ValueError) as error:
+                logger.warning("Could not remove the staging directory %s: %s", working, error)

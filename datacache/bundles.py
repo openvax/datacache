@@ -252,9 +252,28 @@ def _file_mode(path):
     return _normal_creation_mode(path)
 
 
+def _newest_generations_first(store, manifest, time_key):
+    """Generation names, newest first by the UTC time their receipt records
+    under time_key, else by directory modification time. Names are random
+    UUIDs, so their own order says nothing about age."""
+    def created(entry):
+        try:
+            recorded = datetime.fromisoformat(read_json(entry / manifest, limit=None)[time_key])
+            if recorded.tzinfo is None:
+                recorded = recorded.replace(tzinfo=timezone.utc)
+            return recorded.timestamp()
+        except (OSError, ValueError, KeyError, TypeError, RecursionError, OverflowError):
+            try:
+                return entry.lstat().st_mtime
+            except OSError:
+                return float('-inf')
+    entries = list((store / 'generations').iterdir())
+    return [entry.name for entry in sorted(entries, key=lambda e: (created(e), e.name), reverse=True)]
+
+
 def _recover(path, assets):
-    generations = path / 'generations'
-    for entry in sorted(generations.iterdir(), reverse=True):
+    for name in _newest_generations_first(path, MANIFEST, 'fetched_at'):
+        entry = path / 'generations' / name
         try:
             candidate = _inspect_generation(path, entry.name, assets)
         except (OSError, ValueError, KeyError, TypeError, RecursionError):

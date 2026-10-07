@@ -61,6 +61,17 @@ def discard_partial(destination):
             (directory / name).unlink(missing_ok=True)
 
 
+def _valid_validator(validator):
+    """Whether a recorded transport validator is a usable If-Range value:
+    {header: ETag (strong) or Last-Modified, value: one header line}."""
+    return (
+        isinstance(validator, dict) and set(validator) == {'header', 'value'}
+        and validator['header'] in ('ETag', 'Last-Modified')
+        and isinstance(validator['value'], str)
+        and '\r' not in validator['value'] and '\n' not in validator['value']
+        and (validator['header'] != 'ETag' or _strong_etag(validator['value'])))
+
+
 def _strong_etag(value):
     # RFC 9110 entity-tag syntax, without the weak W/ prefix. Embedded quotes,
     # whitespace, and control characters cannot authorize an If-Range request.
@@ -107,11 +118,7 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
             # Unlink, never truncate an unknown path planted in the state dir.
             partial.unlink(missing_ok=True)
         validator = metadata.get('validator')
-        valid_validator = (
-                isinstance(validator, dict) and validator.get('header') in ('ETag', 'Last-Modified')
-                and isinstance(validator.get('value'), str)
-                and '\r' not in validator['value'] and '\n' not in validator['value']
-                and (validator['header'] != 'ETag' or _strong_etag(validator['value'])))
+        valid_validator = _valid_validator(validator)
         strong_validator = (valid_validator and validator['header'] == 'ETag')
         if ((validator is not None and not valid_validator)
                 or (expected_sha256 is None and not strong_validator)):

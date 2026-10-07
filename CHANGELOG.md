@@ -8,7 +8,12 @@
   publish immutable output generations atomically, and discard owned inputs
   only after successful publication unless retention is requested. Local
   sources stay caller-owned; scientific validation stays in the builder (#90).
-
+  `force=True` always rebuilds, copies local sources again while the original
+  exists, and repairs corrupt private input receipts.
+- Recover the newest complete generation when a bundle, archive or
+  materialization pointer is lost. Generation names are random, so recovery
+  previously chose an arbitrary matching generation and could roll back to
+  older content; it now orders by the creation time each receipt records.
 - Add a `store_path(name, version)` callback to `VersionedDatasetRegistry` for
   exact consumer-chosen managed-store locations. It is mutually exclusive with
   root configuration and does not run at construction; the first lookup
