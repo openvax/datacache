@@ -1293,7 +1293,7 @@ VersionedDatasetRegistry(datasets, *, cache_root=None, cache_dir=None, store_pat
 ```
 
 Select exactly one root path, zero-argument `cache_dir` callable, or
-`store_path(name, version)` callback selecting the exact managed store path.
+`store_path(name, version)` callback selecting the exact managed store path; it is called once per dataset version on first lookup, and each version needs its own store.
 Root strategies keep `<root>/<name>/<version>`; the exact-path callback owns
 the consumer layout but not the internal generation layout. Each dataset
 specifies a `default_version` and `versions`, mapping concrete versions to asset

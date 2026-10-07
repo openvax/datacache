@@ -77,26 +77,35 @@ not visit those outputs.
 
 Select exactly one of `cache_root`, a zero-argument `cache_dir` root callable,
 or an exact `store_path(name, version)` callback. Root strategies retain
-`<root>/<name>/<version>`; the callback can keep an application's semantic
-layout while placing new managed sources beside its existing derived indexes:
+`<root>/<name>/<version>`; the callback can keep an application's own layout,
+for example a version directory per release:
 
 ```python
 registry = VersionedDatasetRegistry(
     datasets,
-    store_path=lambda name, version: (
-        application_root / "GRCh38" / ("ensembl-" + version) / "sources" / name),
+    store_path=lambda name, version: application_root / version / "sources" / name,
 )
 store = registry.bundle_path("reference")
 ```
 
 The callback receives a validated concrete version, including when the caller
-omits it and selects the pinned default. Construction never calls it;
-`bundle_path` calls it without filesystem inspection or mutation. Callbacks
-should only compute paths. Inspection, installation, recovery and refresh all
-use the chosen store, while DataCache still owns its immutable generations.
+omits it and selects the pinned default. Construction never calls it. The first
+lookup calls it once for every dataset version, without filesystem inspection
+or mutation, and the paths are reused afterwards, so callbacks should only
+compute paths. Each version needs its own store: a callback that gives two
+versions the same path raises `ValueError`, as does one that returns something
+other than a path. Inspection, installation, recovery and refresh all use the
+chosen store, while DataCache still owns its immutable generations.
+
+The store's parent belongs to the application and may be a link, for example to
+another disk; the store itself is never a link. Installation creates missing
+parent directories and keeps its lock file and temporary staging directories
+in the parent, so give the stores a parent of their own rather than a
+directory the application lists or cleans.
 
 Do not point this callback at a populated legacy data/index directory: even
-`force=True` cannot adopt a foreign directory. Keep those old caches readable
+`force=True` cannot adopt a foreign directory, and installation raises
+`FileValidationError` saying so. Keep those old caches readable
 and deliberately install into a new managed source subdirectory instead. Model,
 biological naming and migration policy remain the application's responsibility.
 

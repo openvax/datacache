@@ -215,11 +215,21 @@ def _paths(inspection):
     return {name: value.path for name, value in inspection.files.items()}
 
 
+def _refuse_foreign(path):
+    """Raise if path is a populated directory that isn't a bundle store, which
+    neither installation nor force=True ever takes over."""
+    if (path_present(path) and stat.S_ISDIR(path.lstat().st_mode)
+            and not path_present(path / STORE) and any(path.iterdir())):
+        raise FileValidationError(
+            path, 'not a datacache bundle store; a populated directory is never taken over')
+
+
 def _initialize(path):
     existing_mode = None
     if path_present(path):
         _directory(path)
         if any(path.iterdir()):
+            _refuse_foreign(path)
             _store(path)  # Never take over an arbitrary nonempty directory.
             return
         existing_mode = stat.S_IMODE(path.lstat().st_mode)
@@ -286,6 +296,7 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
     if inspection.status == 'inaccessible':
         raise inspection.error
     if not force and inspection.status == 'invalid':
+        _refuse_foreign(path)
         raise FileValidationError(path, 'invalid bundle; use force=True to explicitly repair') from inspection.error
     if os.name != 'posix':
         raise NotImplementedError('Bundle installation requires a POSIX local filesystem')
@@ -378,12 +389,18 @@ class VersionedDatasetRegistry:
             raise ValueError('provide exactly one of cache_root, cache_dir or store_path')
         if not isinstance(verified, bool):
             raise ValueError('verified must be a boolean')
-        self._root = cache_dir if cache_dir is not None else lambda: cache_root
         if cache_dir is not None and not callable(cache_dir):
             raise ValueError('cache_dir must be callable')
         if store_path is not None and not callable(store_path):
             raise ValueError('store_path must be callable')
-        self._store_path = store_path
+        if store_path is None:
+            # A root callable is consulted on every lookup, as hitlist expects.
+            root = cache_dir if cache_dir is not None else lambda: cache_root
+            self._store_path = lambda name, version: Path(root()) / name / version
+        else:
+            self._store_path = store_path
+        # Custom store paths, resolved and checked once on first use.
+        self._custom_stores = None if store_path is None else {}
         self.verified = verified
         self._datasets = {}
         for name, spec in datasets.items():
@@ -411,12 +428,33 @@ class VersionedDatasetRegistry:
     def bundle_path(self, name, version=None):
         """Resolve the store path without checking it or creating directories."""
         version = self.resolve_version(name, version)
-        if self._store_path is not None:
-            return Path(self._store_path(name, version))
-        parent = Path(self._root()) / name
-        if path_present(parent):
-            _directory(parent)
-        return parent / version
+        if self._custom_stores is None:
+            path = self._store_path(name, version)
+            # <root>/<name> is DataCache's own directory: never follow a link there.
+            if path_present(path.parent):
+                _directory(path.parent)
+            return path
+        # A custom store's parent belongs to the application and may be a link
+        # (e.g. to another disk); the store itself is still never one.
+        if not self._custom_stores:
+            self._custom_stores = self._resolve_custom_stores()
+        return self._custom_stores[(name, version)]
+
+    def _resolve_custom_stores(self):
+        """Every (name, version)'s store_path result: one store per version."""
+        stores, owners = {}, {}
+        for name in sorted(self._datasets):
+            for version in sorted(self._datasets[name]['versions']):
+                path = self._store_path(name, version)
+                if not isinstance(path, (str, os.PathLike)) or not os.fspath(path):
+                    raise ValueError('store_path(%r, %r) returned %r, not a path' % (name, version, path))
+                key = os.path.normpath(os.path.abspath(path))
+                if key in owners:
+                    raise ValueError('store_path gives %s for both %s %s and %s %s; '
+                                     'each version needs its own store' % ((key,) + owners[key] + (name, version)))
+                owners[key] = (name, version)
+                stores[(name, version)] = Path(path)
+        return stores
 
     def inspect(self, name, version=None, *, verify_files=True):
         version = self.resolve_version(name, version)
