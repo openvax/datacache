@@ -201,6 +201,6 @@ progress, disk-space and partial-discard details.
 - **pyensembl:** single-file download and SQLite APIs remain supported. Bundles
   are optional for references with trustworthy multi-file metadata.
 
-The [runnable offline example](../examples/versioned_datasets.py) demonstrates
+The [runnable offline example](https://github.com/openvax/datacache/blob/master/examples/versioned_datasets.py) demonstrates
 single-file, paired-file and multi-file registries, generated SQLite indices,
 shared reuse, and inspection with all upstream sources removed.
