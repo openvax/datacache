@@ -2,6 +2,12 @@
 
 ## 1.19.0
 
+- Add a `store_path(name, version)` callback to `VersionedDatasetRegistry` for
+  exact consumer-chosen managed-store locations. It is mutually exclusive with
+  root configuration and does not run at construction; the first lookup
+  resolves every dataset version once and rejects two versions sharing a
+  store. A populated foreign directory is never taken over, with or without
+  `force=True` (#93).
 - Add opt-in `verify_files=False` to `inspect_bundle`, `install_bundle` and
   `VersionedDatasetRegistry`'s `inspect`, `local_path`, `is_cached`, `status`,
   `download` and `ensure`: checks ownership, source identity, required file
