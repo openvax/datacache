@@ -7,11 +7,13 @@
   with nothing written to disk. Downloads and `fetch_bytes` share one retry
   loop.
 - Add `expire_after` to `fetch_file` and `Cache.fetch`, named as in
-  requests-cache: a valid cached file older than the given seconds or
-  `timedelta` is downloaded again. Age comes from the provenance record's
-  fetch time, or else the file's modification time.
+  requests-cache: a cached file older than the given seconds or `timedelta`,
+  or one that no longer validates, is downloaded again (also with
+  `resume=True`). Age comes from the provenance record's fetch time, or else
+  the file's modification time.
 - Add `stale_if_error`: when a refresh fails, return the valid cached file
-  with a warning instead of raising, like HTTP `stale-if-error`.
+  with a redacted warning instead of raising, like HTTP `stale-if-error`.
+  Progress-callback cancellations still propagate.
 - Add `validator`: a callable that rejects wrong content, such as an HTTP 200
   error page, by raising or returning `False`, before it replaces the cached
   file and on cache hits. Generalizes the empty-response check (#74).

@@ -11,7 +11,7 @@
 # limitations under the License.
 
 from contextlib import closing
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import gzip
 import io
 import logging
@@ -605,10 +605,14 @@ def _age_seconds(full_path):
     record = provenance.read(full_path, info)
     if record is not None:
         try:
-            fetched = datetime.fromisoformat(record["fetched_at"]).timestamp()
+            recorded = datetime.fromisoformat(record["fetched_at"])
+            if recorded.tzinfo is None:
+                recorded = recorded.replace(tzinfo=timezone.utc)  # Records are UTC.
+            fetched = recorded.timestamp()
         except (TypeError, ValueError, OverflowError):
             pass
-    return time.time() - fetched
+    # A modification time in the future (clock skew, rsync) counts as new.
+    return max(0.0, time.time() - fetched)
 
 
 def expected_path(
@@ -798,18 +802,20 @@ def fetch_file(
 
     expire_after : float or datetime.timedelta, optional
         How long a cached file stays fresh, in seconds or as a timedelta, like
-        requests-cache's option of the same name. An older valid cached file
-        is downloaded again; 0 refreshes every time. Its age comes from the
-        provenance record's fetch time when one describes the file (see
-        record_provenance), otherwise from its modification time. Default None
-        reuses a valid file however old.
+        requests-cache's option of the same name. An older cached file is
+        downloaded again, as is one that no longer validates; 0 refreshes
+        every time. Its age comes from the provenance record's fetch time when
+        one describes the file (see record_provenance), otherwise from its
+        modification time; a future time counts as new. Default None reuses a
+        valid file however old and raises for an invalid one.
 
     stale_if_error : bool, optional
         When a refresh (force=True or an expired expire_after) fails with an
         exception and a valid cached file exists, log a warning and return the
         cached path instead, like HTTP's stale-if-error and requests-cache's
         option of the same name. Without a valid cached file the error
-        propagates. Default False.
+        propagates, as does an exception from progress_callback, which
+        cancels the fetch. Default False.
 
     validator : callable, optional
         validator(path) checks content that a successful transfer can still
@@ -882,8 +888,10 @@ def fetch_file(
                    (source_suffix in (".gz", ".zip") and archive_decompression) or
                    html_conversion):
         raise ValueError("resume=True supports raw downloads only; use raw=True or retain the archive suffix")
-    # A valid cached file a failed refresh may fall back to (stale_if_error).
+    # Whether the cached file is known valid, for a failed refresh to fall
+    # back to (stale_if_error); with force=True it is checked only on failure.
     cached = False
+    refresh = force
     if not force:
         try:
             _check_cached_file(full_path, expected_sha256, expected_size, reject_empty, validator)
@@ -898,20 +906,30 @@ def fetch_file(
                 replaceable = False
             if not replaceable:
                 raise
-            raise FileValidationError(
-                full_path, error.reason + "; use force=True to explicitly replace it") from error
+            if expiry is None:
+                raise FileValidationError(
+                    full_path, error.reason + "; use force=True to explicitly replace it") from error
+            # An expiring cache replaces content that no longer validates.
+            logger.info("Cached file %s is invalid (%s); fetching it again", full_path, error.reason)
+            refresh = True
         else:
-            if expiry is None or _age_seconds(full_path) <= expiry:
+            if expiry is None or (expiry > 0 and _age_seconds(full_path) < expiry):
                 logger.info("Cached file %s from URL %s", full_path, download_url)
                 return full_path
             cached = True
+            refresh = True
             logger.info("Cached file %s has expired; fetching it again", full_path)
-    elif stale_if_error:
-        try:
-            _check_cached_file(full_path, expected_sha256, expected_size, reject_empty, validator)
-            cached = True
-        except (OSError, ValueError):
-            pass
+    # A progress callback's exception cancels the fetch; never fall back.
+    callback_errors = []
+    if progress_callback is not None:
+        caller_callback = progress_callback
+
+        def progress_callback(done, total):
+            try:
+                caller_callback(done, total)
+            except BaseException as error:
+                callback_errors.append(error)
+                raise
     try:
         os.makedirs(os.path.dirname(full_path) or ".", exist_ok=True)
         logger.info("Fetching %s from URL %s", full_path, download_url)
@@ -923,7 +941,7 @@ def fetch_file(
                 progress_callback=progress_callback, show_progress=show_progress,
                 max_retries=max_retries, retry_backoff=retry_backoff,
                 retry_max_delay=retry_max_delay, record_provenance=record_provenance,
-                force=force)
+                force=refresh)
         else:
             _download_and_decompress_if_necessary(
                 full_path=full_path,
@@ -944,10 +962,19 @@ def fetch_file(
                 allow_empty=allow_empty,
                 validator=validator)
     except Exception as error:
-        if not (stale_if_error and cached):
+        if not stale_if_error or any(error is cancel for cancel in callback_errors):
             raise
-        logger.warning("Could not refresh %s (%s: %s); using the cached copy",
-                       full_path, type(error).__name__, error)
+        if not cached:
+            try:
+                # A failed download leaves the destination untouched.
+                _check_cached_file(full_path, expected_sha256, expected_size, reject_empty, validator)
+                cached = True
+            except (OSError, ValueError):
+                pass
+        if not cached:
+            raise  # The refresh's own error, with its cause.
+        logger.warning("Could not refresh %s (%s); using the cached copy",
+                       full_path, error_description(error))
     return full_path
 
 

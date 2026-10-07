@@ -198,13 +198,15 @@ path = fetch_file(
 )
 ```
 
-- `expire_after` downloads a valid cached copy again once it is older than the
-  given time. Age comes from the provenance record's fetch time when there is
-  one (`record_provenance=True`), otherwise from the file's modification time,
-  which publication sets when the download is written.
+- `expire_after` downloads a cached copy again once it is older than the
+  given time, or once it no longer validates. Age comes from the provenance
+  record's fetch time when there is one (`record_provenance=True`), otherwise
+  from the file's modification time, which publication sets when the download
+  is written.
 - `stale_if_error` returns the cached copy, with a logged warning, when a
-  refresh fails for any reason, including a rejected validation. Without a
-  valid cached copy the error propagates.
+  refresh fails, including a rejected validation. Without a valid cached copy
+  the error propagates; so does a progress callback's exception, which cancels
+  the fetch.
 - `validator(path)` rejects content that a successful transfer can still get
   wrong, such as an HTTP 200 error page from a proxy, by raising or returning
   `False`. It runs on the staged bytes before publication, so a rejected

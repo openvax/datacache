@@ -241,3 +241,97 @@ def test_cache_fetch_forwards_the_options(server, tmp_path):
     assert cache.fetch(server.url, filename="listing.html", raw=True, expire_after=60,
                        stale_if_error=True, validator=has_first) == path
     assert len(server.requests) == 4  # One download, then three refresh attempts.
+
+
+# Review fixes
+
+
+def test_expired_resumable_download_is_forced(server, tmp_path, monkeypatch):
+    from datacache import resume
+    path = fetch_file(server.url, destination=tmp_path / "listing.html", raw=True)
+    age(path, 120)
+    calls = []
+    monkeypatch.setattr(resume, "download_resumable",
+                        lambda *args, **kwargs: calls.append(kwargs["force"]))
+    fetch_file(server.url, destination=path, raw=True, resume=True,
+               expected_size=os.path.getsize(path), expire_after=60)
+    assert calls == [True]
+
+
+def test_fallback_warning_does_not_log_url_secrets(server, tmp_path, caplog):
+    url = server.url + "?token=SECRET"
+    path = fetch_file(url, destination=tmp_path / "listing.html", raw=True)
+    server.responses = [(503, b"down")]
+    with caplog.at_level(logging.WARNING, logger="datacache"):
+        fetch_file(url, destination=path, raw=True, force=True, stale_if_error=True)
+    assert "using the cached copy" in caplog.text and "SECRET" not in caplog.text
+
+
+def test_cancelling_progress_callback_is_not_a_fallback(server, tmp_path):
+    class Cancelled(Exception):
+        pass
+
+    def cancel(done, total):
+        raise Cancelled()
+
+    path = fetch_file(server.url, destination=tmp_path / "listing.html", raw=True)
+    with pytest.raises(Cancelled):
+        fetch_file(server.url, destination=path, raw=True, force=True, stale_if_error=True,
+                   progress_callback=cancel)
+
+
+def test_forced_refresh_checks_the_cached_copy_only_on_failure(server, tmp_path):
+    path = fetch_file(server.url, destination=tmp_path / "listing.html", raw=True)
+    checked = []
+
+    def validator(path):
+        checked.append(path)
+
+    fetch_file(server.url, destination=path, raw=True, force=True, stale_if_error=True,
+               validator=validator)
+    assert len(checked) == 1  # The new download only.
+
+
+def test_zero_expiry_refreshes_even_a_future_dated_file(server, tmp_path):
+    path = fetch_file(server.url, destination=tmp_path / "listing.html", raw=True)
+    age(path, -3600)  # Modified an hour in the future.
+    server.responses = [b"second\n"]
+    fetch_file(server.url, destination=path, raw=True, expire_after=0)
+    assert open(path, "rb").read() == b"second\n"
+    age(path, -3600)
+    server.responses = [b"third\n"]
+    fetch_file(server.url, destination=path, raw=True, expire_after=60)  # Counts as new.
+    assert open(path, "rb").read() == b"second\n"
+
+
+def test_expiring_cache_replaces_content_that_no_longer_validates(server, tmp_path):
+    destination = tmp_path / "listing.html"
+    destination.write_bytes(b"old error page")
+    path = fetch_file(server.url, destination=destination, raw=True, expire_after=3600,
+                      validator=has_first)
+    assert open(path, "rb").read() == b"first\n"
+    destination.write_bytes(b"old error page")
+    server.responses = [(503, b"down")]
+    with pytest.raises(requests.HTTPError):  # Invalid content is no fallback.
+        fetch_file(server.url, destination=destination, raw=True, expire_after=3600,
+                   stale_if_error=True, validator=has_first)
+
+
+def test_rejection_keeps_its_cause_without_a_cached_copy(server, tmp_path):
+    server.responses = [b"proxy error page"]
+    with pytest.raises(FileValidationError) as raised:
+        fetch_file(server.url, destination=tmp_path / "listing.html", raw=True,
+                   stale_if_error=True, validator=has_first)
+    assert isinstance(raised.value.__cause__, ValueError)
+
+
+def test_timezone_free_fetch_time_is_utc(server, tmp_path, monkeypatch):
+    path = fetch_file(server.url, destination=tmp_path / "listing.html", raw=True,
+                      record_provenance=True)
+    record_path = provenance.sidecar_path(path)
+    record = json.loads(open(record_path).read())
+    two_hours_ago = datetime.now(timezone.utc) - timedelta(hours=2)
+    record["fetched_at"] = two_hours_ago.replace(tzinfo=None).isoformat()
+    with open(record_path, "w") as handle:
+        json.dump(record, handle)
+    assert 7100 < download._age_seconds(path) < 7300
