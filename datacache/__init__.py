@@ -10,7 +10,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .download import expected_path, file_exists, fetch_file, fetch_and_transform, fetch_csv_dataframe
+from .download import (
+    expected_path, file_exists, fetch_bytes, fetch_file, fetch_and_transform, fetch_csv_dataframe,
+)
 from .integrity import FileValidationError, validate_file
 from .inspection import CacheInspection, FileInspection, inspect_file, inspect_files
 from .permissions import make_file_readable
@@ -41,6 +43,7 @@ from .version import __version__
 __all__ = [
     '__version__',
     'fetch_file',
+    'fetch_bytes',
     'discard_partial',
     'BundleInspection',
     'ArchiveInspection',

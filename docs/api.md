@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.17.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.19.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -14,7 +14,7 @@ explain the longer workflows and compatibility guarantees.
 
 | Area | APIs |
 | --- | --- |
-| Downloading | [fetch_file](#fetch_file), [fetch_csv_dataframe](#fetch_csv_dataframe), [fetch_and_transform](#fetch_and_transform) |
+| Downloading | [fetch_file](#fetch_file), [fetch_bytes](#fetch_bytes), [fetch_csv_dataframe](#fetch_csv_dataframe), [fetch_and_transform](#fetch_and_transform) |
 | Complete archive trees | [install_archive](#install_archive), [inspect_archive](#inspect_archive), [ArchiveInspection](#archiveinspection), [VersionedArchiveRegistry](#versionedarchiveregistry) |
 | Versioned file bundles | [install_bundle](#install_bundle), [inspect_bundle](#inspect_bundle), [BundleInspection](#bundleinspection), [VersionedDatasetRegistry](#versioneddatasetregistry), [VersionedFileRegistry](#versionedfileregistry) |
 | Paths and presence | [expected_path](#expected_path), [file_exists](#file_exists), [build_local_filename](#build_local_filename), [get_data_dir](#get_data_dir), [get_cache_root](#get_cache_root), [resolve_path](#resolve_path), [build_path](#build_path), [ensure_dir](#ensure_dir), [clear_cache](#clear_cache) |
@@ -74,7 +74,7 @@ fetch_file(
     progress_callback=None, *, destination=None, cache_root=None, expected_sha256=None,
     expected_size=None, max_retries=2, retry_backoff=1.0, retry_max_delay=30.0,
     show_progress=False, record_provenance=False, allow_empty=False, resume=False,
-    raw=False
+    raw=False, expire_after=None, return_stale_on_error=False, validator=None
 )
 ```
 
@@ -107,6 +107,9 @@ replacement leaves the previous file intact.
 | `resume` | Boolean retaining private partials for raw HTTP transfers. Requires size and a POSIX local filesystem. Without an expected SHA-256, every accepted response must supply a strong ETag. Size-only cache hits check only byte count. See [resumable downloads](downloads.md#resumable-http-downloads). |
 | `record_provenance` | Boolean; after publishing a download, also write a hidden `.<name>.datacache.json` record of the source URL (without user name, password, query string, or fragment; the path is kept as is, so avoid recording URLs with secrets in their path), the fetch time, the size, and the SHA-256 when `expected_sha256` verified it. [inspect_file](#inspect_file) reports these offline. The record has the file's permissions. Default `False`: a caller that downloads to a temporary name and then moves the file would leave the record behind. Cache hits never write one, any new download removes a previous record first, and a failure to write one never fails the download. |
 | `allow_empty` | Boolean accepting an empty installed file; default `False`. A complete but empty response, such as a withdrawn upstream record, is otherwise never published: HTTP retries it as transient, then raises `FileValidationError`. An empty cached file is likewise an invalid hit. `expected_size=0` also allows an empty file. |
+| `expire_after` | How long a cached file stays fresh: non-negative seconds or a `datetime.timedelta`, as in requests-cache. An older cached file is downloaded again, as is one that no longer validates; `0` refreshes every time. Age comes from the provenance record's fetch time when one describes the file, otherwise from its modification time; a future time counts as new. Default `None` reuses a valid file however old and raises for an invalid one. |
+| `return_stale_on_error` | Boolean; when a refresh (`force=True` or an expired `expire_after`) raises and a valid cached file exists, log a warning (without URL secrets) and return the cached path, like HTTP `stale-if-error`. Without a valid cached file the error propagates, as does an exception from `progress_callback`, which cancels the fetch. The cached file is checked only after a failed refresh. Default `False`. |
+| `validator` | Optional callable `validator(path)` for content a successful transfer can still get wrong, such as an HTTP 200 error page. It rejects the file by raising (normally `ValueError`) or returning `False`. It checks the installed bytes before publication, so a rejected download never replaces the cached file, and checks cache hits. Rejection raises `FileValidationError`, chained to any exception. Not supported with `resume=True`. |
 
 ZIP downloads install the member stored at the output name; otherwise a member
 with that name, ignoring letter case, in any folder: the one nearest the archive
@@ -136,6 +139,48 @@ path = dc.fetch_file(
     expected_sha256=sha256, expected_size=len(contents), timeout=30,
 )
 assert dc.fetch_file(url, filename="records.csv", cache_root=cache_root) == path
+
+
+def has_header(path):
+    if not Path(path).read_bytes().startswith(b"id,value"):
+        raise ValueError("not the records table")
+
+
+# Refresh copies older than a day, keep the cached copy if the source is
+# unreachable, and never cache content without the expected header.
+fresh = dc.fetch_file(
+    url, filename="records.csv", cache_root=cache_root, expire_after=86400,
+    return_stale_on_error=True, validator=has_header,
+)
+assert fresh == path
+```
+
+### `fetch_bytes`
+
+```text
+fetch_bytes(
+    download_url, *, timeout=None, max_retries=2, retry_backoff=1.0,
+    retry_max_delay=30.0, allow_empty=False
+)
+```
+
+Return a resource's bytes in memory, transferred and retried exactly as
+[fetch_file](#fetch_file) downloads are, without writing anything to disk. Use
+it for small resources such as directory listings and metadata, or where the
+cache is read-only.
+
+| Parameter | Meaning |
+| --- | --- |
+| `download_url` | Source URL string: HTTP, HTTPS, FTP, or `file://`. |
+| `timeout`, `max_retries`, `retry_backoff`, `retry_max_delay` | As for [fetch_file](#fetch_file). Only HTTP(S) transfers are retried. |
+| `allow_empty` | Boolean accepting an empty body; default `False`. An empty HTTP response is otherwise retried as transient, then rejected. |
+
+**Returns:** `bytes`. **Raises:** `ValueError` for invalid options or an empty
+body; Requests exceptions for HTTP failures, preserved after retry exhaustion;
+`urllib.error.URLError` for file and FTP failures.
+
+```python
+assert dc.fetch_bytes(url, timeout=30) == contents
 ```
 
 ### `fetch_csv_dataframe`
@@ -882,8 +927,9 @@ Cache.fetch(
     url, filename=None, decompress=False, force=False, timeout=None,
     use_wget_if_available=None, *, chunk_size=1048576, progress_callback=None,
     expected_sha256=None, expected_size=None, max_retries=2, retry_backoff=1.0,
-    retry_max_delay=30.0, show_progress=False, record_provenance=False, allow_empty=False,
-    resume=False, raw=False
+    retry_max_delay=30.0, show_progress=False, record_provenance=False,
+    allow_empty=False, resume=False, raw=False, expire_after=None, return_stale_on_error=False,
+    validator=None
 )
 ```
 

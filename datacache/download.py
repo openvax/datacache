@@ -11,8 +11,11 @@
 # limitations under the License.
 
 from contextlib import closing
+from datetime import datetime, timedelta, timezone
 import gzip
+import io
 import logging
+import math
 import os
 import stat
 import time
@@ -134,6 +137,47 @@ def _stream_to_file(
     return bytes_downloaded
 
 
+def _with_retries(
+        download_url,
+        attempt,
+        *,
+        max_retries=DEFAULT_MAX_RETRIES,
+        retry_backoff=DEFAULT_RETRY_BACKOFF,
+        retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
+        may_retry=None):
+    """Return attempt(), retrying transient HTTP(S) failures.
+
+    Connection errors, 408/429/5xx responses and empty bodies (EmptyResponse)
+    are retried with doubling backoff capped by retry_max_delay; Retry-After is
+    honored within that cap. Other schemes and other errors are not retried,
+    nor is any failure for which may_retry(error) is false. Options must
+    already be validated.
+    """
+    http = urllib.parse.urlsplit(download_url).scheme.lower() in ("http", "https")
+    backoff = min(retry_backoff, retry_max_delay)
+    for number in range(max_retries + 1):
+        try:
+            return attempt()
+        except BaseException as error:
+            retryable = isinstance(error, EmptyResponse) or is_retryable_http_error(error)
+            if not http or not retryable or (may_retry is not None and not may_retry(error)):
+                raise
+            if number == max_retries:
+                logger.warning("HTTP download failed after %d attempt(s): %s",
+                               number + 1, error_description(error))
+                raise
+            delay = retry_delay(error, backoff, retry_max_delay)
+            if delay is None:
+                logger.warning("HTTP download attempt %d/%d failed (%s); Retry-After exceeds retry_max_delay",
+                               number + 1, max_retries + 1, error_description(error))
+                raise
+            logger.warning("HTTP download attempt %d/%d failed (%s); retrying in %.3g seconds",
+                           number + 1, max_retries + 1, error_description(error), delay)
+            if delay:
+                time.sleep(delay)
+            backoff = min(backoff * 2, retry_max_delay)
+
+
 def _download_to_temp_file(
         download_url,
         timeout=None,
@@ -152,11 +196,12 @@ def _download_to_temp_file(
     if not download_url:
         raise ValueError("URL not provided")
 
-    http = urllib.parse.urlsplit(download_url).scheme.lower() in ("http", "https")
-    backoff = min(retry_backoff, retry_max_delay)
-    for attempt in range(max_retries + 1):
-        tmp_path = None
+    callback_failed = False
+
+    def attempt():
+        nonlocal callback_failed
         callback_failed = False
+        tmp_path = None
 
         def report(done, total):
             nonlocal callback_failed
@@ -183,26 +228,71 @@ def _download_to_temp_file(
                     if not allow_empty:
                         raise EmptyResponse("the transfer delivered no bytes")
             return tmp_path
-        except BaseException as error:
+        except BaseException:
             if tmp_path is not None:
                 _remove_staging_file(tmp_path)
-            retryable = isinstance(error, EmptyResponse) or is_retryable_http_error(error)
-            if not http or callback_failed or not retryable:
-                raise
-            if attempt == max_retries:
-                logger.warning("HTTP download failed after %d attempt(s): %s",
-                               attempt + 1, error_description(error))
-                raise
-            delay = retry_delay(error, backoff, retry_max_delay)
-            if delay is None:
-                logger.warning("HTTP download attempt %d/%d failed (%s); Retry-After exceeds retry_max_delay",
-                               attempt + 1, max_retries + 1, error_description(error))
-                raise
-            logger.warning("HTTP download attempt %d/%d failed (%s); retrying in %.3g seconds",
-                           attempt + 1, max_retries + 1, error_description(error), delay)
-            if delay:
-                time.sleep(delay)
-            backoff = min(backoff * 2, retry_max_delay)
+            raise
+
+    return _with_retries(
+        download_url, attempt, max_retries=max_retries, retry_backoff=retry_backoff,
+        retry_max_delay=retry_max_delay, may_retry=lambda error: not callback_failed)
+
+
+def fetch_bytes(
+        download_url,
+        *,
+        timeout=None,
+        max_retries=DEFAULT_MAX_RETRIES,
+        retry_backoff=DEFAULT_RETRY_BACKOFF,
+        retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
+        allow_empty=False):
+    """
+    Return a remote resource's bytes in memory, transferred and retried
+    exactly as fetch_file downloads are. Nothing is written to disk.
+
+    Meant for small resources such as directory listings and metadata: the
+    whole body is held in memory. It also works where a cache is read-only.
+
+    Parameters
+    ----------
+    download_url : str
+        HTTP, HTTPS, FTP, or file:// URL.
+
+    timeout, max_retries, retry_backoff, retry_max_delay : optional
+        As for fetch_file: a per-attempt timeout (None waits indefinitely),
+        and retries of connection errors, 408/429/5xx responses and empty
+        bodies with capped backoff that honors Retry-After. Only HTTP(S)
+        transfers are retried.
+
+    allow_empty : bool, optional
+        Accept an empty body, default False. An empty HTTP response is
+        otherwise retried as transient, then rejected with ValueError.
+
+    Raises ValueError for invalid options or an empty body; Requests
+    exceptions for HTTP failures, preserved after retry exhaustion; and
+    urllib.error.URLError for file and FTP failures.
+    """
+    retry_backoff, retry_max_delay = validate_retry_options(max_retries, retry_backoff, retry_max_delay)
+    if not isinstance(download_url, str) or not download_url:
+        raise ValueError("URL not provided")
+    if not isinstance(allow_empty, bool):
+        raise ValueError("allow_empty must be a boolean")
+
+    def attempt():
+        buffer = io.BytesIO()
+        _stream_to_file(download_url, buffer, timeout=timeout)
+        if not buffer.getbuffer().nbytes and not allow_empty:
+            raise EmptyResponse("the transfer delivered no bytes")
+        return buffer.getvalue()
+
+    try:
+        return _with_retries(
+            download_url, attempt, max_retries=max_retries,
+            retry_backoff=retry_backoff, retry_max_delay=retry_max_delay)
+    except EmptyResponse as error:
+        raise ValueError(
+            "%s returned no bytes; pass allow_empty=True if an empty body is expected"
+            % provenance.redact_url(download_url)) from error
 
 
 def _open_staging_file(directory=None, prefix=".datacache-", suffix="", mode=0o600):
@@ -374,7 +464,8 @@ def _download_and_decompress_if_necessary(
         retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
         show_progress=False,
         record_provenance=False,
-        allow_empty=False):
+        allow_empty=False,
+        validator=None):
     """
     Download, transform and validate in sibling staging files, then publish
     with one atomic replace. Expectations always describe installed bytes.
@@ -454,6 +545,7 @@ def _download_and_decompress_if_necessary(
                 validate_file(staged_path, expected_sha256, expected_size)
         except FileValidationError as error:
             raise FileValidationError(full_path, "downloaded file " + error.reason) from error
+        _run_validator(validator, staged_path, full_path, "downloaded file")
         record = None
         if record_provenance:
             # Describe the private staged bytes, not whatever is at full_path
@@ -468,6 +560,59 @@ def _download_and_decompress_if_necessary(
         if staged_path != tmp_path:
             _remove_staging_file(staged_path)
         _remove_staging_file(tmp_path)
+
+
+def _run_validator(validator, path, reported_path, description):
+    """Raise FileValidationError for reported_path if validator(path) raises or
+    returns False."""
+    if validator is None:
+        return
+    try:
+        accepted = validator(path)
+    except Exception as error:
+        raise FileValidationError(
+            reported_path, "%s failed validation: %s" % (description, error)) from error
+    if accepted is False:
+        raise FileValidationError(reported_path, "%s failed validation" % description)
+
+
+def _expiry_seconds(expire_after):
+    """expire_after as seconds, or None for no expiry; ValueError if invalid."""
+    if expire_after is None:
+        return None
+    if isinstance(expire_after, timedelta):
+        expire_after = expire_after.total_seconds()
+    if (isinstance(expire_after, bool) or not isinstance(expire_after, (int, float)) or
+            not math.isfinite(expire_after) or expire_after < 0):
+        raise ValueError("expire_after must be a non-negative number of seconds or a timedelta")
+    return expire_after
+
+
+def _check_cached_file(full_path, expected_sha256, expected_size, reject_empty, validator):
+    """Raise unless full_path is a usable cache hit; FileNotFoundError if absent."""
+    validate_file(full_path, expected_sha256, expected_size)
+    if reject_empty and os.stat(full_path).st_size == 0:
+        raise FileValidationError(full_path, "cached file is empty (pass allow_empty=True if an empty file is expected)")
+    _run_validator(validator, full_path, full_path, "cached file")
+
+
+def _age_seconds(full_path):
+    """Seconds since full_path was fetched: from its provenance record when one
+    describes it, otherwise from its modification time, which atomic
+    publication sets when the download is written."""
+    info = os.stat(full_path)
+    fetched = info.st_mtime
+    record = provenance.read(full_path, info)
+    if record is not None:
+        try:
+            recorded = datetime.fromisoformat(record["fetched_at"])
+            if recorded.tzinfo is None:
+                recorded = recorded.replace(tzinfo=timezone.utc)  # Records are UTC.
+            fetched = recorded.timestamp()
+        except (TypeError, ValueError, OverflowError):
+            pass
+    # A modification time in the future (clock skew, rsync) counts as new.
+    return max(0.0, time.time() - fetched)
 
 
 def expected_path(
@@ -534,10 +679,14 @@ def fetch_file(
         record_provenance=False,
         allow_empty=False,
         resume=False,
-        raw=False):
+        raw=False,
+        expire_after=None,
+        return_stale_on_error=False,
+        validator=None):
     """
     Download a remote file and store it locally in a cache directory. Don't
-    download it again if it's already present (unless `force` is True.)
+    download it again if it's already present (unless `force` is True, or the
+    cached copy is older than `expire_after`).
 
     Parameters
     ----------
@@ -651,6 +800,32 @@ def fetch_file(
         retries it as transient, then FileValidationError is raised. An empty
         cached file is likewise invalid. expected_size=0 also allows it.
 
+    expire_after : float or datetime.timedelta, optional
+        How long a cached file stays fresh, in seconds or as a timedelta, like
+        requests-cache's option of the same name. An older cached file is
+        downloaded again, as is one that no longer validates; 0 refreshes
+        every time. Its age comes from the provenance record's fetch time when
+        one describes the file (see record_provenance), otherwise from its
+        modification time; a future time counts as new. Default None reuses a
+        valid file however old and raises for an invalid one.
+
+    return_stale_on_error : bool, optional
+        When a refresh (force=True or an expired expire_after) fails with an
+        exception and a valid cached file exists, log a warning and return the
+        cached path instead, as HTTP's stale-if-error directive allows.
+        Without a valid cached file the error
+        propagates, as does an exception from progress_callback, which
+        cancels the fetch. Default False.
+
+    validator : callable, optional
+        validator(path) checks content that a successful transfer can still
+        get wrong, such as an HTTP 200 error page. It rejects the file by
+        raising (normally ValueError) or returning False. It runs on the
+        installed bytes before publication, so a rejected download never
+        replaces the cached file, and on cache hits. Rejection raises
+        FileValidationError, chained to any exception. Not supported with
+        resume=True.
+
     A corrupt cache hit raises FileValidationError; use force=True for an
     explicit repair. Missing files are downloaded. Transport, decompression
     and filesystem exceptions propagate. Failed downloads leave an existing
@@ -679,6 +854,13 @@ def fetch_file(
         raise ValueError("record_provenance must be a boolean")
     if not isinstance(allow_empty, bool):
         raise ValueError("allow_empty must be a boolean")
+    expiry = _expiry_seconds(expire_after)
+    if not isinstance(return_stale_on_error, bool):
+        raise ValueError("return_stale_on_error must be a boolean")
+    if validator is not None and not callable(validator):
+        raise ValueError("validator must be callable")
+    if validator is not None and resume:
+        raise ValueError("validator cannot be combined with resume=True")
     reject_empty = not allow_empty and expected_size != 0
     if progress_callback is not None and not callable(progress_callback):
         raise ValueError("progress_callback must be callable")
@@ -706,11 +888,13 @@ def fetch_file(
                    (source_suffix in (".gz", ".zip") and archive_decompression) or
                    html_conversion):
         raise ValueError("resume=True supports raw downloads only; use raw=True or retain the archive suffix")
+    # Whether the cached file is known valid, for a failed refresh to fall
+    # back to (return_stale_on_error); with force=True it is checked only on failure.
+    cached = False
+    refresh = force
     if not force:
         try:
-            validate_file(full_path, expected_sha256, expected_size)
-            if reject_empty and os.stat(full_path).st_size == 0:
-                raise FileValidationError(full_path, "cached file is empty (pass allow_empty=True if an empty file is expected)")
+            _check_cached_file(full_path, expected_sha256, expected_size, reject_empty, validator)
         except FileNotFoundError:
             pass
         except FileValidationError as error:
@@ -722,40 +906,75 @@ def fetch_file(
                 replaceable = False
             if not replaceable:
                 raise
-            raise FileValidationError(
-                full_path, error.reason + "; use force=True to explicitly replace it") from error
+            if expiry is None:
+                raise FileValidationError(
+                    full_path, error.reason + "; use force=True to explicitly replace it") from error
+            # An expiring cache replaces content that no longer validates.
+            logger.info("Cached file %s is invalid (%s); fetching it again", full_path, error.reason)
+            refresh = True
         else:
-            logger.info("Cached file %s from URL %s", full_path, download_url)
-            return full_path
-    os.makedirs(os.path.dirname(full_path) or ".", exist_ok=True)
-    logger.info("Fetching %s from URL %s", full_path, download_url)
-    if resume:
-        from .resume import download_resumable
-        download_resumable(
-            download_url, full_path, expected_sha256=expected_sha256,
-            expected_size=expected_size, timeout=timeout, chunk_size=chunk_size,
-            progress_callback=progress_callback, show_progress=show_progress,
-            max_retries=max_retries, retry_backoff=retry_backoff,
-            retry_max_delay=retry_max_delay, record_provenance=record_provenance,
-            force=force)
-        return full_path
-    _download_and_decompress_if_necessary(
-        full_path=full_path,
-        download_url=download_url,
-        timeout=timeout,
-        chunk_size=chunk_size,
-        progress_callback=progress_callback,
-        decompress=archive_decompression,
-        convert_html=html_conversion,
-        explicit_output=explicit_output,
-        expected_sha256=expected_sha256,
-        expected_size=expected_size,
-        max_retries=max_retries,
-        retry_backoff=retry_backoff,
-        retry_max_delay=retry_max_delay,
-        show_progress=show_progress,
-        record_provenance=record_provenance,
-        allow_empty=allow_empty)
+            if expiry is None or (expiry > 0 and _age_seconds(full_path) < expiry):
+                logger.info("Cached file %s from URL %s", full_path, download_url)
+                return full_path
+            cached = True
+            refresh = True
+            logger.info("Cached file %s has expired; fetching it again", full_path)
+    # A progress callback's exception cancels the fetch; never fall back.
+    callback_errors = []
+    if progress_callback is not None:
+        caller_callback = progress_callback
+
+        def progress_callback(done, total):
+            try:
+                caller_callback(done, total)
+            except BaseException as error:
+                callback_errors.append(error)
+                raise
+    try:
+        os.makedirs(os.path.dirname(full_path) or ".", exist_ok=True)
+        logger.info("Fetching %s from URL %s", full_path, download_url)
+        if resume:
+            from .resume import download_resumable
+            download_resumable(
+                download_url, full_path, expected_sha256=expected_sha256,
+                expected_size=expected_size, timeout=timeout, chunk_size=chunk_size,
+                progress_callback=progress_callback, show_progress=show_progress,
+                max_retries=max_retries, retry_backoff=retry_backoff,
+                retry_max_delay=retry_max_delay, record_provenance=record_provenance,
+                force=refresh)
+        else:
+            _download_and_decompress_if_necessary(
+                full_path=full_path,
+                download_url=download_url,
+                timeout=timeout,
+                chunk_size=chunk_size,
+                progress_callback=progress_callback,
+                decompress=archive_decompression,
+                convert_html=html_conversion,
+                explicit_output=explicit_output,
+                expected_sha256=expected_sha256,
+                expected_size=expected_size,
+                max_retries=max_retries,
+                retry_backoff=retry_backoff,
+                retry_max_delay=retry_max_delay,
+                show_progress=show_progress,
+                record_provenance=record_provenance,
+                allow_empty=allow_empty,
+                validator=validator)
+    except Exception as error:
+        if not return_stale_on_error or any(error is cancel for cancel in callback_errors):
+            raise
+        if not cached:
+            try:
+                # A failed download leaves the destination untouched.
+                _check_cached_file(full_path, expected_sha256, expected_size, reject_empty, validator)
+                cached = True
+            except (OSError, ValueError):
+                pass
+        if not cached:
+            raise  # The refresh's own error, with its cause.
+        logger.warning("Could not refresh %s (%s); using the cached copy",
+                       full_path, error_description(error))
     return full_path
 
 

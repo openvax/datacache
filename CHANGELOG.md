@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.17.0
+## 1.19.0
 
 - Add `verify_files=False` bundle inspection and cache-hit checks that validate
   ownership, source identity, required file types, readability and recorded
@@ -8,6 +8,29 @@
   Dataset registry path lookup, presence and status use this mode by default;
   explicit inspection and installation retain full checks. New generations and
   recovery always validate bytes before publication (#88).
+## 1.18.0
+
+- Rename `fetch_file` and `Cache.fetch`'s `stale_if_error`, added in 1.17.0, to
+  `return_stale_on_error`, which says what it does: return the cached copy when
+  a refresh fails. The old name is no longer accepted.
+
+## 1.17.0
+
+- Add `fetch_bytes` for small resources such as directory listings: the body
+  in memory, transferred and retried exactly like `fetch_file` downloads,
+  with nothing written to disk. Downloads and `fetch_bytes` share one retry
+  loop.
+- Add `expire_after` to `fetch_file` and `Cache.fetch`, named as in
+  requests-cache: a cached file older than the given seconds or `timedelta`,
+  or one that no longer validates, is downloaded again (also with
+  `resume=True`). Age comes from the provenance record's fetch time, or else
+  the file's modification time.
+- Add `stale_if_error`: when a refresh fails, return the valid cached file
+  with a redacted warning instead of raising, like HTTP `stale-if-error`.
+  Progress-callback cancellations still propagate.
+- Add `validator`: a callable that rejects wrong content, such as an HTTP 200
+  error page, by raising or returning `False`, before it replaces the cached
+  file and on cache hits. Generalizes the empty-response check (#74).
 
 ## 1.16.1
 
