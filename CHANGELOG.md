@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.18.1
+
+- Reorganize the documentation into a site (`./docs.sh`, published from
+  master): installation and an offline verified-cache example on the home
+  page, guides ordered by common tasks, and an interface and guarantees
+  reference. The README links to the guides by absolute URL, so they work on
+  PyPI, and old README section links land on the guides that replaced them.
+- Run the documentation's examples and check internal links in the
+  documentation build.
+
 ## 1.18.0
 
 - Rename `fetch_file` and `Cache.fetch`'s `stale_if_error`, added in 1.17.0, to

@@ -1,11 +1,11 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.18.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.18.1. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
-Start with the [quickstart](../README.md#quickstart) for a first download.
+Start with the [quickstart](index.md#cache-and-verify-a-file) for a first download.
 The [download guide](downloads.md), [archive guide](archives.md), [data guide](data.md),
 [progress guide](progress.md), and [shared-cache guide](shared-caches.md)
 explain the longer workflows and compatibility guarantees.
