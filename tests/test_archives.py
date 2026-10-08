@@ -30,7 +30,7 @@ from datacache import (
     FileValidationError, VersionedArchiveRegistry, inspect_archive,
     install_archive,
 )
-from datacache import archives, download
+from datacache import archives, download, generation_store
 
 
 def make_tar(path, members, *, mode="w:bz2"):
@@ -90,15 +90,15 @@ def test_install_inspect_and_read_only_reuse(tmp_path, archive_file, monkeypatch
     assert fast.status == "available" and not fast.verified
     assert fast.files == {} and Path(fast.generation) == generation
 
-    walk_tree = archives._walk_tree
+    check_tree = archives.check_tree
     monkeypatch.setattr(
-        archives, "_walk_tree",
+        archives, "check_tree",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             AssertionError("fast inspection hashed the tree")))
     assert inspect_archive(
         destination, sources, extra_files={"DOWNLOAD_INFO.csv": receipt},
         verify_files=False).status == "available"
-    monkeypatch.setattr(archives, "_walk_tree", walk_tree)
+    monkeypatch.setattr(archives, "check_tree", check_tree)
 
     refreshed = install_archive(
         destination, sources, expected_sha256=digest, expected_size=len(data),
@@ -112,6 +112,7 @@ def test_install_inspect_and_read_only_reuse(tmp_path, archive_file, monkeypatch
     monkeypatch.setattr(archives, "FileLock", forbidden)
     monkeypatch.setattr(download, "fetch_file", forbidden)
     monkeypatch.setattr(archives, "write_json", forbidden)
+    monkeypatch.setattr(generation_store, "write_json", forbidden)
     assert install_archive(
         destination, sources, expected_sha256=digest, expected_size=len(data),
         extra_files={"DOWNLOAD_INFO.csv": receipt}) == refreshed
@@ -162,7 +163,7 @@ def test_large_tree_manifest_installs_and_recovers_offline(tmp_path):
     assert inspected.status == "available" and inspected.verified
     assert len(inspected.files) == 12000
 
-    (destination / archives.CURRENT).unlink()
+    (destination / generation_store.CURRENT).unlink()
     source.unlink()
     assert inspect_archive(destination).status == "recovery-required"
     assert install_archive(destination, source, **options) == generation
@@ -366,7 +367,7 @@ def test_failed_refresh_preserves_old_generation(tmp_path, archive_file, monkeyp
     old = install_archive(
         destination, old_source, expected_sha256=old_digest,
         expected_size=len(old_data))
-    pointer = (destination / archives.CURRENT).read_bytes()
+    pointer = (destination / generation_store.CURRENT).read_bytes()
     replacement = make_tar(tmp_path / "replacement.tar.bz2", [("new.txt", b"new")])
     replacement_data = replacement.read_bytes()
 
@@ -379,7 +380,7 @@ def test_failed_refresh_preserves_old_generation(tmp_path, archive_file, monkeyp
             destination, replacement, expected_sha256=sha256(replacement_data).hexdigest(),
             expected_size=len(replacement_data), force=True)
 
-    assert (destination / archives.CURRENT).read_bytes() == pointer
+    assert (destination / generation_store.CURRENT).read_bytes() == pointer
     assert inspect_archive(
         destination, old_source, expected_sha256=old_digest,
         expected_size=len(old_data)).status == "available"
@@ -412,14 +413,14 @@ def test_interrupted_first_extraction_is_hidden_and_retryable(
 def test_interrupted_pointer_publication_recovers_without_source(tmp_path, archive_file, monkeypatch):
     source, data, digest = archive_file
     destination = tmp_path / "download"
-    original = archives.write_json
+    original = generation_store.write_json
 
     def interrupt(path, value, **kwargs):
-        if Path(path).name == archives.CURRENT:
+        if Path(path).name == generation_store.CURRENT:
             raise KeyboardInterrupt("after generation rename")
         return original(path, value, **kwargs)
 
-    monkeypatch.setattr(archives, "write_json", interrupt)
+    monkeypatch.setattr(generation_store, "write_json", interrupt)
     with pytest.raises(KeyboardInterrupt):
         install_archive(
             destination, source, expected_sha256=digest, expected_size=len(data))
@@ -427,7 +428,7 @@ def test_interrupted_pointer_publication_recovers_without_source(tmp_path, archi
         destination, source, expected_sha256=digest,
         expected_size=len(data)).status == "recovery-required"
 
-    monkeypatch.setattr(archives, "write_json", original)
+    monkeypatch.setattr(generation_store, "write_json", original)
     source.unlink()
 
     def forbidden(*args, **kwargs):
@@ -491,11 +492,13 @@ def test_foreign_directories_are_never_claimed_even_with_force(tmp_path, archive
         destination.mkdir()
         if contents:
             (destination / "legacy.txt").write_text(contents)
-        with pytest.raises((FileNotFoundError, FileValidationError)):
-            install_archive(
-                destination, source, expected_sha256=digest,
-                expected_size=len(data), force=True)
+        for force in (False, True):
+            with pytest.raises(FileValidationError, match="never taken over"):
+                install_archive(
+                    destination, source, expected_sha256=digest,
+                    expected_size=len(data), force=force)
         assert not contents or (destination / "legacy.txt").read_text() == contents
+        assert [path.name for path in destination.iterdir()] == (["legacy.txt"] if contents else [])
 
 
 def test_tree_changes_and_extra_files_are_detected(tmp_path, archive_file):
@@ -554,7 +557,7 @@ def test_published_tree_uses_normal_creation_permissions(
     assert generation.stat().st_mode & 0o777 == 0o777 & ~creation_mask
     assert (generation / "README.txt").stat().st_mode & 0o777 == 0o666 & ~creation_mask
     assert (generation / archives.MANIFEST).stat().st_mode & 0o777 == 0o666 & ~creation_mask
-    assert (destination / archives.CURRENT).stat().st_mode & 0o777 == 0o666 & ~creation_mask
+    assert (destination / generation_store.CURRENT).stat().st_mode & 0o777 == 0o666 & ~creation_mask
 
 
 def test_concurrent_installers_converge_on_one_generation(tmp_path, archive_file):

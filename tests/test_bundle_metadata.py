@@ -12,7 +12,7 @@ import threading
 import pytest
 
 from datacache import FileValidationError, VersionedDatasetRegistry, inspect_bundle, install_bundle
-from datacache import bundles, download
+from datacache import bundles, download, generation_store
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='POSIX bundle installation')
 
@@ -73,6 +73,7 @@ def test_fast_resolution_and_cache_hits_read_no_payloads_or_write(installed, mon
     monkeypatch.setattr(bundles, 'inspect_file', forbidden)
     monkeypatch.setattr(bundles, 'file_lock', forbidden)
     monkeypatch.setattr(bundles, 'write_json', forbidden)
+    monkeypatch.setattr(generation_store, 'write_json', forbidden)
     monkeypatch.setattr(download, 'fetch_file', forbidden)
     monkeypatch.setattr(Path, 'mkdir', forbidden)
     state = registry.inspect('reference', verify_files=False)
@@ -156,7 +157,7 @@ def test_fast_lookup_rejects_invalid_metadata_and_unsafe_files(installed, tmp_pa
         nested.rename(generation / 'original-nested')
         nested.symlink_to(generation / 'original-nested', target_is_directory=True)
     elif damage == 'pointer':
-        (store / bundles.CURRENT).write_text(json.dumps({'generation': '../outside'}))
+        (store / generation_store.CURRENT).write_text(json.dumps({'generation': '../outside'}))
     elif damage == 'manifest':
         manifest.write_text('{')
     elif damage == 'inventory':
@@ -193,7 +194,7 @@ def test_fast_lookup_reports_permission_errors(installed, monkeypatch):
 def test_fast_install_flag_never_weakens_new_generation_validation(installed, monkeypatch):
     registry, assets, paths = installed
     store = registry.bundle_path('reference')
-    pointer = (store / bundles.CURRENT).read_bytes()
+    pointer = (store / generation_store.CURRENT).read_bytes()
 
     def bad_download(url, *, destination, **kwargs):
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -203,14 +204,14 @@ def test_fast_install_flag_never_weakens_new_generation_validation(installed, mo
     monkeypatch.setattr(download, 'fetch_file', bad_download)
     with pytest.raises(FileValidationError, match='SHA-256'):
         registry.download('reference', force=True, verify_files=False)
-    assert (store / bundles.CURRENT).read_bytes() == pointer
+    assert (store / generation_store.CURRENT).read_bytes() == pointer
     assert registry.local_path('reference', asset='records.txt') == Path(paths['records.txt'])
 
 
 def test_fast_install_flag_never_weakens_recovery_validation(installed, monkeypatch):
     registry, assets, paths = installed
     store = registry.bundle_path('reference')
-    (store / bundles.CURRENT).unlink()
+    (store / generation_store.CURRENT).unlink()
     Path(paths['records.txt']).write_bytes(b'changed')
     assert registry.inspect('reference', verify_files=False).status == 'recovery-required'
 
@@ -220,21 +221,21 @@ def test_fast_install_flag_never_weakens_recovery_validation(installed, monkeypa
     monkeypatch.setattr(download, 'fetch_file', forbidden)
     with pytest.raises(RuntimeError, match='recovery rejected'):
         registry.download('reference', verify_files=False)
-    assert not (store / bundles.CURRENT).exists()
+    assert not (store / generation_store.CURRENT).exists()
 
 
 def test_fast_readers_resolve_one_generation_during_refresh(installed, monkeypatch):
     registry, assets, paths = installed
     entered, release = threading.Event(), threading.Event()
-    original = bundles.write_json
+    original = generation_store.write_json
 
     def paused(path, value, **kwargs):
-        if Path(path).name == bundles.CURRENT:
+        if Path(path).name == generation_store.CURRENT:
             entered.set()
             assert release.wait(5)
         return original(path, value, **kwargs)
 
-    monkeypatch.setattr(bundles, 'write_json', paused)
+    monkeypatch.setattr(generation_store, 'write_json', paused)
     with ThreadPoolExecutor() as pool:
         future = pool.submit(registry.download, 'reference', force=True)
         assert entered.wait(5)

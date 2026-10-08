@@ -27,7 +27,7 @@ from typechecks import (
 
 from .common import MAX_NAME_BYTES, build_local_filename, name_digest, name_length, resolve_path
 from .download import (
-    fetch_csv_dataframe, _open_staging_file, _normal_creation_mode,
+    fetch_csv_dataframe, _open_staging_file, normal_creation_mode,
     _remove_staging_file,
 )
 from .database import METADATA_TABLE_NAME, Database, fold_identifier, tables_exist
@@ -193,7 +193,7 @@ def _create_cached_db(
             db.create(tables, version, show_progress=show_progress)
             db.connection.close()
             db = None
-            os.chmod(staged_path, _normal_creation_mode(directory))
+            os.chmod(staged_path, normal_creation_mode(directory))
             try:
                 os.link(staged_path, db_path)
             except FileExistsError:

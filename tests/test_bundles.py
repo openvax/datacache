@@ -13,7 +13,7 @@ import pytest
 from datacache import (
     FileValidationError, VersionedDatasetRegistry, inspect_bundle, install_bundle,
 )
-from datacache import bundles, download
+from datacache import bundles, download, generation_store
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='POSIX bundle locks')
 
@@ -55,6 +55,7 @@ def test_install_inspect_offline_and_generated_outputs_survive(tmp_path, assets,
     monkeypatch.setattr(download, 'fetch_file', forbidden)
     monkeypatch.setattr(bundles, 'file_lock', forbidden)
     monkeypatch.setattr(bundles, 'write_json', forbidden)
+    monkeypatch.setattr(generation_store, 'write_json', forbidden)
     monkeypatch.setattr(Path, 'mkdir', forbidden)
     assert install_bundle(destination, assets) == refreshed
     assert inspect_bundle(destination, assets).verified
@@ -65,38 +66,38 @@ def test_install_inspect_offline_and_generated_outputs_survive(tmp_path, assets,
 def test_failed_refresh_preserves_old_generation(tmp_path, assets, monkeypatch, failure):
     destination = tmp_path / 'data'
     paths = install_bundle(destination, assets)
-    old_pointer = (destination / bundles.CURRENT).read_bytes()
+    old_pointer = (destination / generation_store.CURRENT).read_bytes()
     replacement = {k: dict(v) for k, v in assets.items()}
     if failure == 'last-download':
         replacement['release/manifest.json']['url'] = (tmp_path / 'missing').as_uri()
     elif failure == 'hash':
         replacement['release/manifest.json']['sha256'] = '0' * 64
     else:
-        original = bundles.write_json
+        original = generation_store.write_json
         def fail(path, value, **kwargs):
-            if Path(path).name == bundles.CURRENT:
+            if Path(path).name == generation_store.CURRENT:
                 raise OSError('publication failed')
             return original(path, value, **kwargs)
-        monkeypatch.setattr(bundles, 'write_json', fail)
+        monkeypatch.setattr(generation_store, 'write_json', fail)
     with pytest.raises((OSError, FileValidationError)):
         install_bundle(destination, replacement, force=True)
-    assert (destination / bundles.CURRENT).read_bytes() == old_pointer
+    assert (destination / generation_store.CURRENT).read_bytes() == old_pointer
     assert inspect_bundle(destination, assets).verified
     assert all(Path(path).exists() for path in paths.values())
 
 
 def test_interrupted_first_publish_recovers_without_network(tmp_path, assets, monkeypatch):
     destination = tmp_path / 'data'
-    original = bundles.write_json
+    original = generation_store.write_json
     def fail(path, value, **kwargs):
-        if Path(path).name == bundles.CURRENT:
+        if Path(path).name == generation_store.CURRENT:
             raise KeyboardInterrupt
         return original(path, value, **kwargs)
-    monkeypatch.setattr(bundles, 'write_json', fail)
+    monkeypatch.setattr(generation_store, 'write_json', fail)
     with pytest.raises(KeyboardInterrupt):
         install_bundle(destination, assets)
     assert inspect_bundle(destination, assets).status == 'recovery-required'
-    monkeypatch.setattr(bundles, 'write_json', original)
+    monkeypatch.setattr(generation_store, 'write_json', original)
     def forbidden(*args, **kwargs):
         raise AssertionError('recovery attempted network')
     monkeypatch.setattr(download, 'fetch_file', forbidden)
@@ -125,13 +126,13 @@ def test_managed_reader_sees_complete_old_generation_during_publish(tmp_path, as
     destination = tmp_path / 'data'
     old = install_bundle(destination, assets)
     entered, release = threading.Event(), threading.Event()
-    original = bundles.write_json
+    original = generation_store.write_json
     def paused(path, value, **kwargs):
-        if Path(path).name == bundles.CURRENT:
+        if Path(path).name == generation_store.CURRENT:
             entered.set()
             assert release.wait(5)
         return original(path, value, **kwargs)
-    monkeypatch.setattr(bundles, 'write_json', paused)
+    monkeypatch.setattr(generation_store, 'write_json', paused)
     with ThreadPoolExecutor() as pool:
         future = pool.submit(install_bundle, destination, assets, force=True)
         assert entered.wait(5)
@@ -192,7 +193,7 @@ def test_missing_manifest_and_symlinks_cannot_escape_store(tmp_path, assets):
     manifest = Path(inspected.generation) / bundles.MANIFEST
     manifest.unlink()
     assert inspect_bundle(dest).status == 'invalid'
-    (dest / bundles.CURRENT).write_text(json.dumps({'generation': '../../upstream'}))
+    (dest / generation_store.CURRENT).write_text(json.dumps({'generation': '../../upstream'}))
     assert inspect_bundle(dest).status == 'invalid'
 
 
@@ -363,6 +364,7 @@ def test_trusted_hashes_allow_cross_library_reuse_across_mirrors(tmp_path, asset
     monkeypatch.setattr(download, 'fetch_file', forbidden)
     monkeypatch.setattr(bundles, 'file_lock', forbidden)
     monkeypatch.setattr(bundles, 'write_json', forbidden)
+    monkeypatch.setattr(generation_store, 'write_json', forbidden)
     assert second.download('reference') == paths
     assert second.inspect('reference').verified
 
@@ -499,7 +501,7 @@ def test_concurrent_initialization_of_precreated_directory_reuses_winner(tmp_pat
     dest = tmp_path / 'bundle'
     dest.mkdir()
     missing_marker, resume_inspection = threading.Event(), threading.Event()
-    read_json = bundles.read_json
+    read_json = generation_store.read_json
 
     def pause_after_missing_marker(path, *args, **kwargs):
         try:
@@ -510,7 +512,7 @@ def test_concurrent_initialization_of_precreated_directory_reuses_winner(tmp_pat
                 assert resume_inspection.wait(5)
             raise
 
-    monkeypatch.setattr(bundles, 'read_json', pause_after_missing_marker)
+    monkeypatch.setattr(generation_store, 'read_json', pause_after_missing_marker)
     with ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(install_bundle, dest, assets)
         assert missing_marker.wait(5)
@@ -529,7 +531,7 @@ def test_recovery_picks_the_newest_generation_not_the_highest_name(tmp_path, ass
     # Generation names are random: make the older one's name sort highest.
     older.rename(dest / 'generations' / ('f' * 32))
     newer.rename(dest / 'generations' / ('0' * 32))
-    (dest / bundles.CURRENT).unlink()
+    (dest / generation_store.CURRENT).unlink()
     recovered = install_bundle(dest, assets)
     generations = {Path(path).relative_to(dest / 'generations').parts[0] for path in recovered.values()}
     assert generations == {'0' * 32}
@@ -541,4 +543,5 @@ def test_generation_age_falls_back_to_modification_time(tmp_path):
         directory = store / 'generations' / name
         directory.mkdir(parents=True)
         os.utime(directory, (time.time() - age, time.time() - age))
-    assert bundles._newest_generations_first(store, bundles.MANIFEST, 'fetched_at') == ['b' * 32, 'a' * 32]
+    newest_first = generation_store.GenerationStore(store, bundles.BUNDLE_STORE).generation_names_newest_first()
+    assert newest_first == ['b' * 32, 'a' * 32]

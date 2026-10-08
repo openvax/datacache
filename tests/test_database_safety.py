@@ -383,18 +383,6 @@ def test_names_are_distinct_exactly_when_sqlite_says_so(tmp_path):
         db_from_dataframe("ascii-columns.db", "t", pd.DataFrame({"ID": [1], "id": [2]}), cache_root=tmp_path)
 
 
-def test_from_fasta_dict_is_deprecated_but_still_works():
-    class Record:
-        def __init__(self, seq):
-            self.seq = seq
-
-    with pytest.warns(DeprecationWarning, match="from_fasta_dict"):
-        table = DatabaseTable.from_fasta_dict("sequences", {"first": Record("ACGT")}, "id", "sequence")
-    assert table.column_types == [("id", "TEXT"), ("sequence", "TEXT")]
-    assert table.primary_key == "id"
-    assert table.rows == [("first", "ACGT")]
-
-
 def test_names_without_room_for_the_journal_are_built_and_reused_but_not_rebuilt(tmp_path):
     # Staged creation works at any valid name, but SQLite rebuilds through
     # "<name>-journal", which does not fit here. Explain that clearly.
@@ -443,17 +431,6 @@ def test_python_and_sqlite_compare_names_alike():
                 same_in_sqlite = connection.execute(
                     "SELECT ? = ? COLLATE NOCASE", (left, right)).fetchone()[0]
                 assert (fold_identifier(left) == fold_identifier(right)) == bool(same_in_sqlite), (left, right)
-
-
-def test_from_fasta_dict_rejects_repeated_identifiers():
-    # A dict cannot repeat keys, but a pandas Series can.
-    class Record:
-        def __init__(self, seq):
-            self.seq = seq
-
-    records = pd.Series([Record("ACGT"), Record("TTTT")], index=["same", "same"])
-    with pytest.warns(DeprecationWarning), pytest.raises(ValueError, match="1 non-unique"):
-        DatabaseTable.from_fasta_dict("sequences", records, "id", "sequence")
 
 
 def test_a_lock_during_a_rebuild_is_reported_as_a_lock(tmp_path, monkeypatch):

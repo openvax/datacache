@@ -304,9 +304,7 @@ same bytes under pyensembl's existing cache keys. Explicit transform flags and
 the public `fetch_file` API retain the parsed-URL behavior documented above.
 The IEDB download endpoints used by pepdata continue to decompress archives
 named at the end of the URL query into the requested CSV filenames.
-The `_decompress_to_file` helper remains available and uses failure-safe atomic
-publication. New integrations should use the public download and inspection
-APIs.
+New integrations should use the public download and inspection APIs.
 
 ## Resumable HTTP downloads
 

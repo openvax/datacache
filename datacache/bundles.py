@@ -6,40 +6,26 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import stat
-import tempfile
 from uuid import uuid4
 
 from ._filesystem import file_lock, open_regular, path_present, read_json, write_json
+from .download import validate_download_options
+from .generation_store import (
+    INVALID_STORE_ERRORS, GenerationStore, StoreKind, normal_creation_mode, observe_file,
+    require_directory, validate_distinct_paths, validate_no_sidecar_collisions, validate_path_component,
+    validate_relative_name,
+)
 from .integrity import FileValidationError, _validate_expectations
 from .inspection import FileInspection, inspect_file
-from .provenance import redact_url, sidecar_path
+from .provenance import redact_url
 
 STORE = '.datacache-bundle.json'
 MANIFEST = '.datacache-manifest.json'
-CURRENT = 'current.json'
 FORMAT = 1
-
-
-def _relative_name(value):
-    if not isinstance(value, str) or not value or '\\' in value:
-        raise ValueError('asset names must be nonempty relative POSIX paths')
-    for part in value.split('/'):
-        if (part in ('', '.', '..') or part.endswith((' ', '.')) or
-                re.search(r'[\x00-\x1f<>:"|?*]', part) or
-                part.lower().startswith('.datacache-') or
-                re.fullmatch(r'(?i:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?', part)):
-            raise ValueError('unsafe asset path: %r' % value)
-    return value
-
-
-def _component(value):
-    _relative_name(value)
-    if '/' in value:
-        raise ValueError('dataset names and versions must be single path components')
-    return value
+BUNDLE_STORE = StoreKind(name='bundle', marker=STORE, marker_contents={'format': FORMAT},
+                         receipt=MANIFEST, created_at='fetched_at')
 
 
 def _assets(assets, verified=True):
@@ -47,7 +33,7 @@ def _assets(assets, verified=True):
         raise ValueError('assets must be a nonempty mapping of relative names to metadata')
     result = {}
     for name, spec in assets.items():
-        _relative_name(name)
+        validate_relative_name(name)
         if isinstance(spec, str):
             spec = {'url': spec}
         if not isinstance(spec, dict):
@@ -67,40 +53,14 @@ def _assets(assets, verified=True):
             raise ValueError('decompress must be a boolean')
         result[name] = dict(url=url, sha256=digest.lower() if digest else None,
                             size=size, decompress=decompress)
-    folded = {name.casefold() for name in result}
-    parents = {'/'.join(name.split('/')[:i]).casefold()
-               for name in result for i in range(1, len(name.split('/')))}
-    if len(folded) != len(result) or folded & parents:
-        raise ValueError('asset paths collide as files/directories or ignoring case')
-    sidecars = {Path(sidecar_path(name)).as_posix().casefold() for name in result}
-    if sidecars & (folded | parents):
-        raise ValueError('asset paths collide with automatic provenance sidecars')
+    validate_distinct_paths(result)
+    validate_no_sidecar_collisions(result)
     return result
 
 
 def _source_fingerprint(url):
     """Identify the complete source without storing credentials or query text."""
     return hashlib.sha256(url.encode('utf-8')).hexdigest()
-
-
-def _directory(path):
-    if not stat.S_ISDIR(path.lstat().st_mode):
-        raise FileValidationError(path, 'expected a directory, not a link')
-
-
-def _store(path, *, marker=STORE):
-    _directory(path)
-    if read_json(path / marker) != {'format': FORMAT}:
-        raise FileValidationError(path, 'unrecognized generation store')
-    _directory(path / 'generations')
-
-
-def _generation(path, generation):
-    if not isinstance(generation, str) or re.fullmatch('[0-9a-f]{32}', generation) is None:
-        raise FileValidationError(path, 'invalid generation pointer')
-    result = path / 'generations' / generation
-    _directory(result)
-    return result
 
 
 def _receipt_assets(receipt):
@@ -128,8 +88,7 @@ class BundleInspection:
     error: object = None
 
 
-def _inspect_generation(store, generation, assets, *, verify_files=True):
-    directory = _generation(store, generation)
+def _inspect_generation(store, directory, assets, *, verify_files=True):
     receipt = read_json(directory / MANIFEST)
     recorded = _receipt_assets(receipt)
     if assets is not None:
@@ -150,7 +109,7 @@ def _inspect_generation(store, generation, assets, *, verify_files=True):
     for name, spec in recorded.items():
         target = directory / name
         for parent in target.relative_to(directory).parents:
-            _directory(directory / parent)
+            require_directory(directory / parent)
         # Reject symlinks and special files before the ordinary inspection API.
         fd = open_regular(target)
         try:
@@ -168,7 +127,7 @@ def _inspect_generation(store, generation, assets, *, verify_files=True):
             inspected = FileInspection(str(target), 'available', size=info.st_size, mtime=info.st_mtime)
         files[name] = inspected
     trusted = verify_files and assets is not None and all(spec['sha256'] for spec in assets.values())
-    return BundleInspection(str(store), 'available', bool(trusted), str(directory), files)
+    return BundleInspection(str(store.path), 'available', bool(trusted), str(directory), files)
 
 
 def inspect_bundle(destination, assets=None, *, verify_files=True):
@@ -184,103 +143,21 @@ def inspect_bundle(destination, assets=None, *, verify_files=True):
     if not isinstance(verify_files, bool):
         raise ValueError('verify_files must be a boolean')
     path = Path(destination)
+    store = GenerationStore(path, BUNDLE_STORE)
     expected = _assets(assets, verified=False) if assets is not None else None
     try:
-        if not path_present(path):
-            return BundleInspection(str(path), 'missing')
-        try:
-            _store(path)
-        except FileNotFoundError:
-            # A caller may create the destination before installing. Existing
-            # recognized stores need no directory listing merely to inspect.
-            if not any(path.iterdir()):
-                return BundleInspection(str(path), 'missing')
-            # Another installer may have initialized an empty directory after
-            # our missing-marker read. Recheck before calling it invalid.
-            _store(path)
-        try:
-            pointer = read_json(path / CURRENT)
-        except FileNotFoundError:
-            if any((path / 'generations').iterdir()):
-                return BundleInspection(str(path), 'recovery-required')
-            return BundleInspection(str(path), 'missing')
-        return _inspect_generation(path, pointer['generation'], expected, verify_files=verify_files)
+        state = store.read_state()
+        if state.generation is None:
+            return BundleInspection(str(path), state.status)
+        return _inspect_generation(store, state.generation, expected, verify_files=verify_files)
     except PermissionError as error:
         return BundleInspection(str(path), 'inaccessible', error=error)
-    except (OSError, ValueError, KeyError, TypeError, RecursionError) as error:
+    except INVALID_STORE_ERRORS as error:
         return BundleInspection(str(path), 'invalid', error=error)
 
 
 def _paths(inspection):
     return {name: value.path for name, value in inspection.files.items()}
-
-
-def _refuse_foreign(path, *, marker=STORE):
-    """Raise if path is a populated directory that isn't a generation store,
-    which neither installation nor force=True ever takes over."""
-    if (path_present(path) and stat.S_ISDIR(path.lstat().st_mode)
-            and not path_present(path / marker) and any(path.iterdir())):
-        raise FileValidationError(
-            path, 'not a datacache generation store; a populated directory is never taken over')
-
-
-def _initialize(path, *, marker=STORE):
-    existing_mode = None
-    if path_present(path):
-        _directory(path)
-        if any(path.iterdir()):
-            _refuse_foreign(path, marker=marker)
-            _store(path, marker=marker)  # Never adopt a foreign directory.
-            return
-        existing_mode = stat.S_IMODE(path.lstat().st_mode)
-    # Publish a complete store skeleton at once: concurrent first-time readers
-    # see absence or a recognized store, never a half-written ownership marker.
-    staging = Path(tempfile.mkdtemp(prefix='.datacache-store-', dir=path.parent))
-    try:
-        write_json(staging / marker, {'format': FORMAT}, mode=_file_mode(path.parent))
-        (staging / 'generations').mkdir()
-        os.chmod(staging, existing_mode if existing_mode is not None else
-                 stat.S_IMODE((staging / 'generations').stat().st_mode))
-        os.replace(staging, path)
-    finally:
-        if staging.exists():
-            shutil.rmtree(staging)
-
-
-def _file_mode(path):
-    from .download import _normal_creation_mode
-    return _normal_creation_mode(path)
-
-
-def _newest_generations_first(store, manifest, time_key):
-    """Generation names, newest first by the UTC time their receipt records
-    under time_key, else by directory modification time. Names are random
-    UUIDs, so their own order says nothing about age."""
-    def created(entry):
-        try:
-            recorded = datetime.fromisoformat(read_json(entry / manifest, limit=None)[time_key])
-            if recorded.tzinfo is None:
-                recorded = recorded.replace(tzinfo=timezone.utc)
-            return recorded.timestamp()
-        except (OSError, ValueError, KeyError, TypeError, RecursionError, OverflowError):
-            try:
-                return entry.lstat().st_mtime
-            except OSError:
-                return float('-inf')
-    entries = list((store / 'generations').iterdir())
-    return [entry.name for entry in sorted(entries, key=lambda e: (created(e), e.name), reverse=True)]
-
-
-def _recover(path, assets):
-    for name in _newest_generations_first(path, MANIFEST, 'fetched_at'):
-        entry = path / 'generations' / name
-        try:
-            candidate = _inspect_generation(path, entry.name, assets)
-        except (OSError, ValueError, KeyError, TypeError, RecursionError):
-            continue
-        write_json(path / CURRENT, {'generation': entry.name}, mode=_file_mode(path))
-        return candidate
-    return None
 
 
 def install_bundle(destination, assets, *, force=False, verified=True, verify_files=True, download_options=None):
@@ -303,26 +180,23 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
     if not all(isinstance(value, bool) for value in (verified, force, verify_files)):
         raise ValueError('verified, force and verify_files must be booleans')
     expected = _assets(assets, verified)
-    options = dict(download_options or {})
-    allowed = {'timeout', 'chunk_size', 'progress_callback', 'show_progress',
-               'max_retries', 'retry_backoff', 'retry_max_delay', 'resume'}
-    if set(options) - allowed:
-        raise ValueError('unsupported bundle download options: %s' % sorted(set(options) - allowed))
+    options = validate_download_options(download_options, 'bundle')
     path = Path(destination)
+    store = GenerationStore(path, BUNDLE_STORE)
     inspection = inspect_bundle(path, expected, verify_files=verify_files)
     if not force and inspection.status == 'available':
         return _paths(inspection)
     if inspection.status == 'inaccessible':
         raise inspection.error
     if not force and inspection.status == 'invalid':
-        _refuse_foreign(path)
+        store.refuse_foreign_directory()
         raise FileValidationError(path, 'invalid bundle; use force=True to explicitly repair') from inspection.error
     if os.name != 'posix':
         raise NotImplementedError('Bundle installation requires a POSIX local filesystem')
     path.parent.mkdir(parents=True, exist_ok=True)
     key = hashlib.sha256(os.fsencode(path.name)).hexdigest()[:32]
     with file_lock(path.parent / ('.datacache-bundle-lock-' + key)):
-        _initialize(path)
+        store.create()
         inspection = inspect_bundle(path, expected, verify_files=verify_files)
         if not force and inspection.status == 'available':
             return _paths(inspection)
@@ -331,16 +205,15 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
         if inspection.status in ('missing', 'recovery-required', 'invalid'):
             # No automatic rollback from an invalid current generation unless
             # explicitly repairing. A missing pointer is explicit recovery.
-            recovered = _recover(path, expected)
+            recovered = store.recover(lambda generation: _inspect_generation(store, generation, expected))
             if recovered is not None:
                 return _paths(recovered)
-        generation = uuid4().hex
         # A resumable bundle keeps its private working directory across calls,
         # including completed assets. The registry identity selects it, and
         # different users never inherit each other's private partials.
         resumable = options.get('resume', False)
         staging_key = (hashlib.sha256(json.dumps(expected, sort_keys=True).encode()).hexdigest()
-                       + '-%d' % os.getuid()) if resumable else generation
+                       + '-%d' % os.getuid()) if resumable else uuid4().hex
         working = path / ('.staging-' + staging_key)
         working.mkdir(mode=0o700, exist_ok=resumable)
         info = working.lstat()
@@ -352,7 +225,7 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
         # rename, so an interrupted publication is recoverable by other readers.
         staged = working / 'files'
         staged.mkdir(exist_ok=resumable)
-        _directory(staged)
+        require_directory(staged)
         published = False
         try:
             recorded = {}
@@ -368,24 +241,18 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
                     # This is private, unpublished working state, not a user's
                     # installed bundle. Explicit installation may repair it.
                     fetch_file(spec['url'], force=True, **fetch_options)
-                observed_sha256 = spec['sha256']
-                if observed_sha256 is None:
-                    digest = hashlib.sha256()
-                    with target.open('rb') as source:
-                        for chunk in iter(lambda: source.read(2 ** 20), b''):
-                            digest.update(chunk)
-                    observed_sha256 = digest.hexdigest()
-                recorded[name] = dict(url=redact_url(spec['url']), sha256=observed_sha256,
-                                      size=target.stat().st_size, decompress=spec['decompress'])
+                # fetch_file already checked a trusted hash; hash only the rest.
+                observed = observe_file(target, read_contents=spec['sha256'] is None)
+                recorded[name] = dict(url=redact_url(spec['url']), sha256=observed.sha256 or spec['sha256'],
+                                      size=observed.size, decompress=spec['decompress'])
             receipt = dict(format=FORMAT, fetched_at=datetime.now(timezone.utc).isoformat(), assets=recorded,
                            source_fingerprints={name: _source_fingerprint(spec['url'])
                                                 for name, spec in expected.items()})
-            write_json(staged / MANIFEST, receipt, mode=_file_mode(staged))
-            final = path / 'generations' / generation
-            os.replace(staged, final)
+            write_json(staged / MANIFEST, receipt, mode=normal_creation_mode(staged))
+            generation = store.add_generation(staged)
             published = True
-            candidate = _inspect_generation(path, generation, expected)
-            write_json(path / CURRENT, {'generation': generation}, mode=_file_mode(path))
+            candidate = _inspect_generation(store, generation, expected)
+            store.publish(generation)
             return _paths(candidate)
         finally:
             if published or not resumable:
@@ -423,12 +290,12 @@ class VersionedDatasetRegistry:
         self.verified = verified
         self._datasets = {}
         for name, spec in datasets.items():
-            _component(name)
+            validate_path_component(name)
             versions = spec.get('versions')
             if versions is None:
                 versions = {version: {spec['filename']: {'url': url, 'decompress': True}}
                             for version, url in spec['urls'].items()}
-            normalized = {_component(version): _assets(assets, verified) for version, assets in versions.items()}
+            normalized = {validate_path_component(version): _assets(assets, verified) for version, assets in versions.items()}
             default = spec['default_version']
             if default not in normalized:
                 raise ValueError('default_version must name a pinned version')
@@ -451,7 +318,7 @@ class VersionedDatasetRegistry:
             path = self._store_path(name, version)
             # <root>/<name> is DataCache's own directory: never follow a link there.
             if path_present(path.parent):
-                _directory(path.parent)
+                require_directory(path.parent)
             return path
         # A custom store's parent belongs to the application and may be a link
         # (e.g. to another disk); the store itself is still never one.

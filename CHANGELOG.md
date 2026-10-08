@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.0.0
+
+- Remove `DatabaseTable.from_fasta_dict`, deprecated since 1.11.0. Parse FASTA
+  in the consuming library and pass a DataFrame to `db_from_dataframe` (#67).
+- Remove the private `download._decompress_to_file`, which nothing called
+  outside its own tests (#67).
+- Bundles, archive trees and materializations now share one implementation of
+  their store layout, in the new `datacache.generation_store` module:
+  `GenerationStore` (marker, `current.json`, recovery of the newest generation
+  that still checks out), `observe_file`, `list_tree` and `check_tree` for
+  hashing and inventorying generations, and `validate_relative_name` with the
+  other name checks. Each kind of store now differs only by its `StoreKind`.
+  `bundles.CURRENT`, `archives.CURRENT` and `materialization.CURRENT` are now
+  `generation_store.CURRENT` (#103).
+- Archive installs refuse a directory they may not take over, including an
+  empty one, with the same "never taken over" error as bundles and
+  materializations, instead of suggesting `force=True`, which never helps.
+- Archive and materialization tree checks report missing and unexpected files
+  and directories together, and reject a file that changes while it is hashed.
+- `install_bundle`, `install_archive` and `materialize` check
+  `download_options` exactly as `fetch_file` checks the same arguments, before
+  creating anything (#103).
+- Cap retry backoff in one place, `retries.retry_delay`; delays are unchanged
+  (#67).
+
 ## 1.19.1
 
 - Identify every HTTP and HTTPS request as

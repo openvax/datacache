@@ -15,28 +15,35 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
 import stat
 import tarfile
-import tempfile
 from uuid import uuid4
 
 from filelock import FileLock
 
-from ._filesystem import open_regular, path_present, read_json, write_json
-from .bundles import _newest_generations_first, _relative_name
-from .inspection import FileInspection
+from ._filesystem import open_regular, read_json, write_json
+from .download import validate_download_options
+from .generation_store import (
+    INVALID_STORE_ERRORS, GenerationStore, StoreKind, check_tree, list_tree, local_file_identity,
+    normal_creation_mode, observe_file, validate_file_record, validate_path_component, validate_relative_name,
+)
 from .integrity import FileValidationError, _validate_expectations
 from .provenance import redact_url
 
 
 STORE = ".datacache-archive-store.json"
 MANIFEST = ".datacache-archive-manifest.json"
-CURRENT = "current.json"
 FORMAT = 1
 CHUNK_SIZE = 2 ** 20
+# An existing directory, even an empty one, may be an application's legacy
+# install; archive stores never take one over.
+ARCHIVE_STORE = StoreKind(
+    name="archive", marker=STORE, marker_contents={"format": FORMAT, "kind": "archive-tree"},
+    receipt=MANIFEST, created_at="fetched_at", adopts_empty_directory=False)
 
 
 @dataclass(frozen=True)
@@ -62,10 +69,6 @@ class ArchiveInspection:
 
 def _fingerprint(value):
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
-
-
-def _local_identity(path):
-    return Path(path).absolute().as_uri()
 
 
 def _normalize_sources(sources):
@@ -100,7 +103,7 @@ def _normalize_sources(sources):
                 raise ValueError("archive source path must be path-like") from error
         if url is None and path is None:
             raise ValueError("each archive source requires url or path")
-        identity = url if url is not None else _local_identity(path)
+        identity = url if url is not None else local_file_identity(path)
         digest, size = source.get("sha256"), source.get("size")
         _validate_expectations(digest, size)
         result.append({
@@ -122,7 +125,7 @@ def _normalize_extra_files(extra_files):
     result = {}
     nodes = {}
     for name, value in extra_files.items():
-        _relative_name(name)
+        validate_relative_name(name)
         if isinstance(value, str):
             value = value.encode("utf-8")
         elif not isinstance(value, bytes):
@@ -164,32 +167,6 @@ def _definition(sources, expected_sha256, expected_size, extra_files, require_ve
     }
 
 
-def _directory(path):
-    if not stat.S_ISDIR(Path(path).lstat().st_mode):
-        raise FileValidationError(path, "expected a directory, not a link")
-
-
-def _file_mode(path):
-    from .download import _normal_creation_mode
-    return _normal_creation_mode(path)
-
-
-def _store(path):
-    _directory(path)
-    if read_json(path / STORE) != {"format": FORMAT, "kind": "archive-tree"}:
-        raise FileValidationError(path, "unrecognized archive store")
-    _directory(path / "generations")
-
-
-def _generation(store, generation):
-    if (not isinstance(generation, str) or len(generation) != 32 or
-            any(char not in "0123456789abcdef" for char in generation)):
-        raise FileValidationError(store, "invalid generation pointer")
-    result = store / "generations" / generation
-    _directory(result)
-    return result
-
-
 def _manifest(receipt):
     if (not isinstance(receipt, dict) or receipt.get("format") != FORMAT or
             receipt.get("kind") != "archive-tree"):
@@ -205,9 +182,7 @@ def _manifest(receipt):
             not isinstance(extra_files, dict) or not isinstance(directories, list) or
             not isinstance(fetched_at, str)):
         raise ValueError("invalid archive manifest")
-    _validate_expectations(archive.get("sha256"), archive.get("size"))
-    if archive.get("sha256") is None or archive.get("size") is None:
-        raise ValueError("archive manifest does not identify assembled bytes")
+    validate_file_record(archive)
     normalized_sources = []
     for source in sources:
         if not isinstance(source, dict):
@@ -219,26 +194,18 @@ def _manifest(receipt):
                 len(source["fingerprint"]) != 64 or
                 any(char not in "0123456789abcdef" for char in source["fingerprint"])):
             raise ValueError("invalid archive source receipt")
-        _validate_expectations(source["sha256"], source["size"])
-        if source["sha256"] is None or source["size"] is None:
-            raise ValueError("archive source receipt does not identify observed bytes")
+        validate_file_record({"sha256": source["sha256"], "size": source["size"]})
         normalized_sources.append(source)
     normalized_files = {}
     for name, spec in files.items():
-        _relative_name(name)
-        if not isinstance(spec, dict) or set(spec) != {"sha256", "size"}:
-            raise ValueError("invalid extracted file receipt")
-        _validate_expectations(spec["sha256"], spec["size"])
-        if spec["sha256"] is None or spec["size"] is None:
-            raise ValueError("extracted file receipt does not identify observed bytes")
-        normalized_files[name] = spec
+        normalized_files[validate_relative_name(name)] = validate_file_record(spec)
     for name, spec in extra_files.items():
         if name not in normalized_files or spec != normalized_files[name]:
             raise ValueError("consumer extra file receipt disagrees with tree manifest")
     normalized_directories = []
     folded = set()
     for name in directories:
-        _relative_name(name)
+        validate_relative_name(name)
         key = name.casefold()
         if key in folded:
             raise ValueError("duplicate directory in archive manifest")
@@ -250,14 +217,6 @@ def _manifest(receipt):
     return archive, normalized_sources, normalized_files, normalized_directories, fetched_at, extra_files
 
 
-def _hash_handle(handle):
-    digest, size = hashlib.sha256(), 0
-    for chunk in iter(lambda: handle.read(CHUNK_SIZE), b""):
-        digest.update(chunk)
-        size += len(chunk)
-    return digest.hexdigest(), size
-
-
 def _open_local_source(path):
     descriptor = open_regular(path, os.O_RDONLY | getattr(os, "O_BINARY", 0))
     try:
@@ -265,47 +224,6 @@ def _open_local_source(path):
     except BaseException:
         os.close(descriptor)
         raise
-
-
-def _walk_tree(root, receipt=None):
-    """Return observed file metadata, directories, and FileInspection values."""
-    observed, directories, inspections = {}, [], {}
-    stack = [(Path(root), "")]
-    while stack:
-        directory, prefix = stack.pop()
-        with os.scandir(directory) as scanned:
-            entries = sorted(
-                scanned, key=lambda entry: entry.name.casefold(), reverse=True)
-        for entry in entries:
-            relative = entry.name if not prefix else prefix + "/" + entry.name
-            if not prefix and relative == MANIFEST:
-                continue
-            _relative_name(relative)
-            info = entry.stat(follow_symlinks=False)
-            if stat.S_ISDIR(info.st_mode):
-                directories.append(relative)
-                stack.append((Path(entry.path), relative))
-                continue
-            if not stat.S_ISREG(info.st_mode):
-                raise FileValidationError(entry.path, "archive trees may contain only regular files and directories")
-            descriptor = open_regular(entry.path)
-            with os.fdopen(descriptor, "rb") as handle:
-                current = os.fstat(handle.fileno())
-                digest, size = _hash_handle(handle)
-            observed[relative] = {"sha256": digest, "size": size}
-            expected = receipt.get(relative) if receipt is not None else None
-            if expected is not None and expected != observed[relative]:
-                raise FileValidationError(entry.path, "installed file disagrees with archive manifest")
-            inspections[relative] = FileInspection(
-                entry.path, "available", verified=expected is not None,
-                size=current.st_size, mtime=current.st_mtime)
-    directories.sort()
-    if receipt is not None and set(observed) != set(receipt):
-        missing = sorted(set(receipt) - set(observed))
-        extra = sorted(set(observed) - set(receipt))
-        raise FileValidationError(root, "archive tree file set differs from manifest; missing=%r extra=%r" % (
-            missing, extra))
-    return observed, directories, inspections
 
 
 def _matches_definition(receipt_archive, receipt_sources, receipt_extras, definition):
@@ -336,6 +254,7 @@ def _matches_definition(receipt_archive, receipt_sources, receipt_extras, defini
 
 
 def _inspect_tree(store, directory, definition, verify_files=True):
+    """Check one generation, or a tree staged to become one, against its receipt."""
     # Tree inventories grow with the archive; the writer has no fixed size cap.
     receipt = read_json(directory / MANIFEST, limit=None)
     archive, sources, files, directories, fetched_at, extras = _manifest(receipt)
@@ -349,18 +268,13 @@ def _inspect_tree(store, directory, definition, verify_files=True):
     }
     if not verify_files:
         return ArchiveInspection(
-            str(store), "available", False, str(directory), **metadata)
-    _, observed_directories, inspections = _walk_tree(directory, files)
-    if observed_directories != sorted(directories):
-        raise FileValidationError(directory, "archive tree directories disagree with manifest")
+            str(store.path), "available", False, str(directory), **metadata)
+    observed = check_tree(directory, files, directories, ignore=(MANIFEST,))
+    # Each file matched the SHA-256 its receipt records.
+    inspections = {name: value.inspection(verified=True) for name, value in observed.items()}
     return ArchiveInspection(
-        str(store), "available", bool(definition and definition["trusted"]),
+        str(store.path), "available", bool(definition and definition["trusted"]),
         str(directory), inspections, **metadata)
-
-
-def _inspect_generation(store, generation, definition, verify_files=True):
-    return _inspect_tree(
-        store, _generation(store, generation), definition, verify_files=verify_files)
 
 
 def inspect_archive(
@@ -383,51 +297,16 @@ def inspect_archive(
     elif any(value is not None for value in (expected_sha256, expected_size, extra_files)):
         raise ValueError("sources are required with archive expectations or extra_files")
     path = Path(destination)
+    store = GenerationStore(path, ARCHIVE_STORE)
     try:
-        if not path_present(path):
-            return ArchiveInspection(str(path), "missing")
-        _store(path)
-        try:
-            pointer = read_json(path / CURRENT)
-        except FileNotFoundError:
-            if any((path / "generations").iterdir()):
-                return ArchiveInspection(str(path), "recovery-required")
-            return ArchiveInspection(str(path), "missing")
-        return _inspect_generation(
-            path, pointer["generation"], definition, verify_files=verify_files)
+        state = store.read_state()
+        if state.generation is None:
+            return ArchiveInspection(str(path), state.status)
+        return _inspect_tree(store, state.generation, definition, verify_files=verify_files)
     except PermissionError as error:
         return ArchiveInspection(str(path), "inaccessible", error=error)
-    except (OSError, ValueError, KeyError, TypeError, RecursionError) as error:
+    except INVALID_STORE_ERRORS as error:
         return ArchiveInspection(str(path), "invalid", error=error)
-
-
-def _initialize(path):
-    if path_present(path):
-        _store(path)  # Never claim a legacy, empty, or otherwise foreign path.
-        return
-    staging = Path(tempfile.mkdtemp(prefix=".datacache-archive-store-", dir=path.parent))
-    try:
-        write_json(
-            staging / STORE, {"format": FORMAT, "kind": "archive-tree"},
-            mode=_file_mode(staging))
-        (staging / "generations").mkdir()
-        os.chmod(staging, stat.S_IMODE((staging / "generations").stat().st_mode))
-        os.replace(staging, path)
-    finally:
-        if staging.exists():
-            shutil.rmtree(staging)
-
-
-def _recover(path, definition):
-    for name in _newest_generations_first(path, MANIFEST, "fetched_at"):
-        entry = path / "generations" / name
-        try:
-            candidate = _inspect_generation(path, entry.name, definition)
-        except (OSError, ValueError, KeyError, TypeError, RecursionError):
-            continue
-        write_json(path / CURRENT, {"generation": entry.name}, mode=_file_mode(path))
-        return candidate
-    return None
 
 
 def _archive_members(
@@ -461,7 +340,7 @@ def _archive_members(
         if kind == "directory" and name == ".":
             continue
         try:
-            _relative_name(name)
+            validate_relative_name(name)
         except ValueError as error:
             raise FileValidationError(
                 archive.name, "unsafe archive member path: %s" % member.name) from error
@@ -565,7 +444,6 @@ def _working_key(definition):
         "extra_files": {name: hashlib.sha256(value).hexdigest()
                         for name, value in definition["extra_files"].items()},
     }
-    import json
     return hashlib.sha256(json.dumps(serializable, sort_keys=True).encode("utf-8")).hexdigest()
 
 
@@ -650,11 +528,7 @@ def install_archive(
     definition = _definition(
         sources, expected_sha256, expected_size, extra_files,
         require_verified=verified)
-    options = dict(download_options or {})
-    allowed = {"timeout", "chunk_size", "progress_callback", "show_progress",
-               "max_retries", "retry_backoff", "retry_max_delay", "resume"}
-    if set(options) - allowed:
-        raise ValueError("unsupported archive download options: %s" % sorted(set(options) - allowed))
+    options = validate_download_options(download_options, "archive")
     if options.get("resume"):
         for index, source in enumerate(definition["sources"]):
             digest, size = _part_expectations(definition, index)
@@ -662,6 +536,7 @@ def install_archive(
                 raise ValueError("resumable archive parts require sha256 and size")
 
     path = Path(destination)
+    store = GenerationStore(path, ARCHIVE_STORE)
     inspection = inspect_archive(
         path, sources, expected_sha256=expected_sha256,
         expected_size=expected_size, extra_files=extra_files)
@@ -670,12 +545,13 @@ def install_archive(
     if inspection.status == "inaccessible":
         raise inspection.error
     if not force and inspection.status == "invalid":
+        store.refuse_foreign_directory()
         raise FileValidationError(path, "invalid archive installation; use force=True to explicitly repair") from inspection.error
 
     path.parent.mkdir(parents=True, exist_ok=True)
     key = hashlib.sha256(os.fsencode(path.name.casefold())).hexdigest()[:32]
     with FileLock(str(path.parent / (".datacache-archive-lock-" + key))):
-        _initialize(path)
+        store.create()
         inspection = inspect_archive(
             path, sources, expected_sha256=expected_sha256,
             expected_size=expected_size, extra_files=extra_files)
@@ -684,7 +560,7 @@ def install_archive(
         if inspection.status == "invalid" and not force:
             raise FileValidationError(path, "invalid archive installation; use force=True to explicitly repair") from inspection.error
         if inspection.status in ("missing", "recovery-required", "invalid"):
-            recovered = _recover(path, definition)
+            recovered = store.recover(lambda generation: _inspect_tree(store, generation, definition))
             if recovered is not None:
                 return Path(recovered.generation)
 
@@ -718,7 +594,8 @@ def install_archive(
                     raise FileValidationError(target, "extra file collides with archive content") from error
                 with os.fdopen(descriptor, "wb") as output:
                     output.write(value)
-            files, directories, _ = _walk_tree(tree)
+            listing = list_tree(tree)
+            files = {name: observe_file(file_path).record for name, file_path in listing.files.items()}
             receipt = {
                 "format": FORMAT,
                 "kind": "archive-tree",
@@ -727,17 +604,15 @@ def install_archive(
                 "sources": source_records,
                 "files": files,
                 "extra_files": {name: files[name] for name in definition["extra_files"]},
-                "directories": directories,
+                "directories": listing.directories,
             }
-            write_json(tree / MANIFEST, receipt, mode=_file_mode(tree))
+            write_json(tree / MANIFEST, receipt, mode=normal_creation_mode(tree))
             # Read back and validate the receipt and complete tree while private.
-            _inspect_tree(path, tree, definition)
-            generation = uuid4().hex
-            final = path / "generations" / generation
-            os.replace(tree, final)
+            _inspect_tree(store, tree, definition)
+            generation = store.add_generation(tree)
             published = True
-            write_json(path / CURRENT, {"generation": generation}, mode=_file_mode(path))
-            return final
+            store.publish(generation)
+            return generation
         finally:
             if published or not resumable:
                 shutil.rmtree(working)
@@ -773,8 +648,7 @@ class VersionedArchiveRegistry:
             "max_members", "max_extracted_size",
         }
         for name, archive in archives.items():
-            from .bundles import _component
-            _component(name)
+            validate_path_component(name)
             if not isinstance(archive, dict):
                 raise ValueError("archive definitions must be mappings")
             unknown = set(archive) - {"default_version", "versions", "description"}
@@ -785,7 +659,7 @@ class VersionedArchiveRegistry:
                 raise ValueError("each archive requires a nonempty versions mapping")
             normalized_versions = {}
             for version, value in versions.items():
-                _component(version)
+                validate_path_component(version)
                 if isinstance(value, dict) and "sources" in value:
                     options = dict(value)
                     unknown = set(options) - version_options
@@ -853,7 +727,7 @@ class VersionedArchiveRegistry:
         for source, path in zip(sources, source_paths):
             item = dict(source)
             if "url" not in item:
-                item["url"] = _local_identity(item["path"])
+                item["url"] = local_file_identity(item["path"])
             item["path"] = Path(path)
             result.append(item)
         return tuple(result)
@@ -920,7 +794,7 @@ class VersionedArchiveRegistry:
             for version, definition in archive["versions"].items():
                 inspection = self.inspect(
                     archive_name, version, verify_files=verify_files)
-                identities = [source.get("url") or _local_identity(source["path"])
+                identities = [source.get("url") or local_file_identity(source["path"])
                               for source in definition["sources"]]
                 rows.append({
                     "name": archive_name,

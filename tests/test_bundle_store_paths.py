@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from datacache import FileValidationError, VersionedDatasetRegistry
-from datacache import bundles, download
+from datacache import bundles, download, generation_store
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='POSIX bundle installation')
 
@@ -74,6 +74,7 @@ def test_custom_layout_install_versions_refresh_and_read_only_reuse(tmp_path, da
     monkeypatch.setattr(download, 'fetch_file', forbidden)
     monkeypatch.setattr(bundles, 'file_lock', forbidden)
     monkeypatch.setattr(bundles, 'write_json', forbidden)
+    monkeypatch.setattr(generation_store, 'write_json', forbidden)
     try:
         for path in entries:
             path.chmod(0o555 if path.is_dir() else 0o444)
@@ -89,19 +90,19 @@ def test_custom_layout_install_versions_refresh_and_read_only_reuse(tmp_path, da
 def test_custom_layout_recovers_completed_generation_without_network(tmp_path, datasets, monkeypatch):
     registry = VersionedDatasetRegistry(
         datasets, store_path=lambda name, version: tmp_path / ('sources-' + version) / name)
-    original = bundles.write_json
+    original = generation_store.write_json
 
     def interrupted(path, value, **kwargs):
-        if Path(path).name == bundles.CURRENT:
+        if Path(path).name == generation_store.CURRENT:
             raise KeyboardInterrupt('pointer publication interrupted')
         return original(path, value, **kwargs)
 
-    monkeypatch.setattr(bundles, 'write_json', interrupted)
+    monkeypatch.setattr(generation_store, 'write_json', interrupted)
     with pytest.raises(KeyboardInterrupt):
         registry.download('reference')
     state = registry.inspect('reference')
     assert state.status == 'recovery-required'
-    monkeypatch.setattr(bundles, 'write_json', original)
+    monkeypatch.setattr(generation_store, 'write_json', original)
 
     def forbidden(*args, **kwargs):
         raise AssertionError('recovery attempted acquisition')

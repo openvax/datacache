@@ -128,7 +128,7 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
         write_json(metadata_path, metadata)
         fd = open_regular(partial, os.O_RDWR | os.O_CREAT, private=True)
         with os.fdopen(fd, 'r+b') as output:
-            backoff = min(retry_backoff, retry_max_delay)
+            backoff = retry_backoff
             with Progress(show_progress, 'Downloading', expected_size) as progress:
                 def report():
                     done = output.tell()
@@ -241,7 +241,7 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
                                        attempt + 1, max_retries + 1, error_description(error), delay)
                         if delay:
                             time.sleep(delay)
-                        backoff = min(backoff * 2, retry_max_delay)
+                        backoff *= 2  # retry_delay caps it at retry_max_delay.
                 output.flush()
                 os.fsync(output.fileno())
         # Keep the resumable inode private even if publication fails after chmod.
