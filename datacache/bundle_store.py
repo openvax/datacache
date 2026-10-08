@@ -127,6 +127,9 @@ class BundleStore:
             (staging / 'bundles').mkdir()
             os.chmod(staging, existing_mode if existing_mode is not None else
                      stat.S_IMODE((staging / 'bundles').stat().st_mode))
+            if existing_mode is not None and os.name == 'nt':
+                # Windows can't rename onto a directory, even an empty one.
+                os.rmdir(self.path)
             os.replace(staging, self.path)
         finally:
             if staging.exists():
