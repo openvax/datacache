@@ -71,7 +71,7 @@ def test_fast_resolution_and_cache_hits_read_no_payloads_or_write(installed, mon
     monkeypatch.setattr(os, 'open', tracked_os_open)
     monkeypatch.setattr(os, 'read', guarded_read)
     monkeypatch.setattr(bundles, 'inspect_file', forbidden)
-    monkeypatch.setattr(bundles, 'file_lock', forbidden)
+    monkeypatch.setattr(bundle_store.BundleStore, 'lock', forbidden)
     monkeypatch.setattr(bundles, 'write_json', forbidden)
     monkeypatch.setattr(bundle_store, 'write_json', forbidden)
     monkeypatch.setattr(download, 'fetch_file', forbidden)

@@ -5,14 +5,16 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import shutil
 
 import pytest
 
 from datacache import FileValidationError, install_archive, install_bundle, materialize
 from datacache import bundle_store
 from datacache.bundle_store import (
-    MARKER, BundleStore, check_tree, hash_file, list_tree, local_file_identity, validate_distinct_paths,
-    validate_file_record, validate_no_sidecar_collisions, validate_path_component, validate_relative_name,
+    MARKER, BundleStore, check_tree, hash_file, is_bundle_name, list_tree, local_file_identity,
+    validate_distinct_paths, validate_file_record, validate_no_sidecar_collisions, validate_path_component,
+    validate_relative_name,
 )
 from datacache.download import validate_download_options
 
@@ -52,6 +54,18 @@ def test_bundle_names_are_utc_times_that_never_go_backwards(tmp_path, monkeypatc
     assert store.current_bundle().name == '2999-01-01T00-00-01Z'
 
 
+@pytest.mark.parametrize('name, expected', [
+    ('2026-10-08T17-02-42Z', True),
+    ('\u0662\u0660\u0662\u0666-10-08T17-02-42Z', False),  # Non-ASCII digits.
+    ('2026-1-08T17-02-42Z', False),
+    ('2026-13-08T17-02-42Z', False),
+    ('2026-10-08T17:02:42Z', False),
+    ('notes', False),
+])
+def test_only_canonical_utc_times_are_bundle_names(name, expected):
+    assert is_bundle_name(name) is expected
+
+
 def test_other_entries_in_bundles_are_ignored(tmp_path):
     store = BundleStore(tmp_path / 'store', 'bundle')
     store.create()
@@ -72,13 +86,35 @@ def test_a_linked_newest_bundle_is_rejected(tmp_path):
         store.current_bundle()
 
 
-def test_an_empty_directory_becomes_the_store_with_its_permissions(tmp_path):
+def test_an_empty_directory_becomes_the_store_in_place(tmp_path):
     (tmp_path / 'store').mkdir(mode=0o750)
+    before = (tmp_path / 'store').stat()
     store = BundleStore(tmp_path / 'store', 'archive')
     assert store.current_bundle() is None
     store.create()
-    assert (store.path.stat().st_mode & 0o777) == 0o750
-    store.check()
+    # The same directory, so its owner, group and permissions are kept.
+    after = store.path.stat()
+    assert (after.st_ino, after.st_dev) == (before.st_ino, before.st_dev)
+    assert (after.st_mode & 0o777) == 0o750
+    assert sorted(path.name for path in store.path.iterdir()) == [MARKER, 'bundles']
+    assert [path.name for path in tmp_path.iterdir()] == ['store']  # No leftover staged marker.
+
+
+def test_a_store_missing_bundles_has_nothing_installed_and_is_repaired(tmp_path):
+    store = BundleStore(tmp_path / 'store', 'bundle')
+    store.create()
+    publish(store)
+    shutil.rmtree(store.bundles)
+    # Also what readers see between create() placing the marker and bundles/.
+    assert store.current_bundle() is None
+    store.create()
+    assert store.current_bundle() is None and store.bundles.is_dir()
+    assert publish(store) == store.current_bundle()
+
+
+def test_paths_that_differ_only_by_case_share_a_lock(tmp_path):
+    assert BundleStore(tmp_path / 'GRCh38', 'bundle').lock_path == BundleStore(tmp_path / 'grch38', 'bundle').lock_path
+    assert BundleStore(tmp_path / 'a', 'bundle').lock_path.parent == tmp_path
 
 
 def test_directories_with_files_are_never_taken_over(tmp_path):
@@ -95,7 +131,10 @@ def test_one_kind_never_uses_another_kinds_store(tmp_path):
     other = BundleStore(tmp_path / 'store', 'bundle')
     with pytest.raises(FileValidationError, match='not a datacache bundle store'):
         other.current_bundle()
-    with pytest.raises(FileValidationError, match='not a datacache bundle store'):
+    # Installs check this before suggesting force=True, which can't help.
+    with pytest.raises(FileValidationError, match='never taken over'):
+        other.refuse_takeover()
+    with pytest.raises(FileValidationError, match='never taken over'):
         other.create()
 
 

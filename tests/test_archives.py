@@ -109,13 +109,42 @@ def test_install_inspect_and_read_only_reuse(tmp_path, archive_file, monkeypatch
     def forbidden(*args, **kwargs):
         raise AssertionError("a valid cache hit attempted a write, lock, or transfer")
 
-    monkeypatch.setattr(archives, "FileLock", forbidden)
+    monkeypatch.setattr(bundle_store.BundleStore, "lock", forbidden)
     monkeypatch.setattr(download, "fetch_file", forbidden)
     monkeypatch.setattr(archives, "write_json", forbidden)
     monkeypatch.setattr(bundle_store, "write_json", forbidden)
     assert install_archive(
         destination, sources, expected_sha256=digest, expected_size=len(data),
         extra_files={"DOWNLOAD_INFO.csv": receipt}) == refreshed
+
+
+def test_line_endings_and_control_bytes_are_installed_unchanged(tmp_path):
+    # Windows translates line endings, and stops reading at 0x1A, in files
+    # that aren't opened as binary.
+    contents = b"a,b\r\n1,2\r\n\x1a after the control byte\n"
+    source = make_tar(tmp_path / "table.tar.bz2", [("table.csv", contents)])
+    data = source.read_bytes()
+    destination = tmp_path / "download"
+    bundle = install_archive(
+        destination, source, expected_sha256=sha256(data).hexdigest(), expected_size=len(data),
+        extra_files={"DOWNLOAD_INFO.csv": "url\r\nhttps://example.test/table.tar.bz2\r\n"})
+    assert (bundle / "table.csv").read_bytes() == contents
+    manifest = json.loads((bundle / archives.MANIFEST).read_text())
+    assert manifest["files"]["table.csv"] == {"sha256": sha256(contents).hexdigest(), "size": len(contents)}
+    assert inspect_archive(destination).status == "available"
+
+
+def test_install_hashes_the_extracted_tree_once(tmp_path, archive_file, monkeypatch):
+    source, data, digest = archive_file
+    destination = tmp_path / "download"
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("hashed the extracted tree a second time")
+
+    monkeypatch.setattr(archives, "check_tree", forbidden)
+    install_archive(destination, source, expected_sha256=digest, expected_size=len(data))
+    monkeypatch.undo()
+    assert inspect_archive(destination, source, expected_sha256=digest, expected_size=len(data)).verified
 
 
 def test_standard_dot_prefixed_tar_tree_installs_and_inspects(tmp_path):

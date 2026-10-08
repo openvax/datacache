@@ -28,9 +28,13 @@
     `VersionedArchiveRegistry`.
   - `force=True` on an invalid bundle or archive always installs a new bundle;
     it no longer falls back to an older one.
-  - Archive installs accept an existing empty directory, like bundles and
-    materializations. A directory with files in it is still never taken over,
-    and saying so now comes before any suggestion of `force=True`.
+  - Every kind of install, archives included, turns an existing empty
+    directory into the store in place, so it keeps its owner, group and
+    permissions. A directory with files in it that isn't a store of the same
+    kind is never taken over, and the error says so instead of suggesting
+    `force=True`.
+  - All three kinds of install lock the same way: one lock file beside the
+    store, named without regard to letter case.
 - Archive and materialization checks report missing and unexpected files and
   directories together, and reject a file that changes while it is hashed.
 - `install_bundle`, `install_archive` and `materialize` check

@@ -13,9 +13,10 @@ from urllib.parse import urlsplit
 from urllib.request import url2pathname
 from uuid import uuid4
 
-from ._filesystem import file_lock, open_regular, path_present, read_json, write_json
+from ._filesystem import open_regular, path_present, read_json, write_json
 from .bundle_store import (
-    INVALID_STORE_ERRORS, MANIFEST, BundleStore, check_expected, check_tree, hash_file, local_file_identity,
+    CHUNK_SIZE, INVALID_STORE_ERRORS, MANIFEST, BundleStore, check_expected, check_tree, hash_file,
+    local_file_identity,
     parent_directories, require_directory, validate_distinct_paths, validate_file_record,
     validate_no_sidecar_collisions, validate_relative_name,
 )
@@ -26,7 +27,6 @@ from . import provenance
 
 INPUTS = '.datacache-inputs.json'
 FORMAT = 1
-CHUNK_SIZE = 2 ** 20
 
 logger = logging.getLogger(__name__)
 
@@ -389,8 +389,7 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
     if os.name != 'posix':
         raise NotImplementedError('Materialization requires a POSIX local filesystem')
     path.parent.mkdir(parents=True, exist_ok=True)
-    key = hashlib.sha256(os.fsencode(path.name)).hexdigest()[:32]
-    with file_lock(path.parent / ('.datacache-materialization-lock-' + key)):
+    with store.lock():
         store.create()
         inspection = inspect_current()
         if check_hit(inspection):

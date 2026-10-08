@@ -23,11 +23,10 @@ import stat
 import tarfile
 from uuid import uuid4
 
-from filelock import FileLock
-
 from ._filesystem import open_regular, read_json, write_json
 from .bundle_store import (
-    INVALID_STORE_ERRORS, MANIFEST, BundleStore, check_tree, hash_file, list_tree, local_file_identity,
+    CHUNK_SIZE, INVALID_STORE_ERRORS, MANIFEST, BundleStore, check_tree, hash_file, list_tree,
+    local_file_identity, source_fingerprint,
     validate_file_record, validate_path_component, validate_relative_name,
 )
 from .download import normal_creation_mode, validate_download_options
@@ -36,7 +35,6 @@ from .provenance import redact_url
 
 
 FORMAT = 1
-CHUNK_SIZE = 2 ** 20
 
 
 @dataclass(frozen=True)
@@ -59,10 +57,6 @@ class ArchiveInspection:
     fetched_at: object = None
     archive_size: object = None
     recorded_sha256: object = None
-
-
-def _fingerprint(value):
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def _normalize_sources(sources):
@@ -104,7 +98,7 @@ def _normalize_sources(sources):
             "url": url,
             "path": path,
             "identity": identity,
-            "fingerprint": _fingerprint(identity),
+            "fingerprint": source_fingerprint(identity),
             "sha256": digest.lower() if digest else None,
             "size": size,
         })
@@ -543,8 +537,7 @@ def install_archive(
         raise FileValidationError(path, "invalid archive installation; use force=True to explicitly repair") from inspection.error
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    key = hashlib.sha256(os.fsencode(path.name.casefold())).hexdigest()[:32]
-    with FileLock(str(path.parent / (".datacache-archive-lock-" + key))):
+    with store.lock():
         store.create()
         inspection = inspect_archive(
             path, sources, expected_sha256=expected_sha256,
@@ -597,8 +590,9 @@ def install_archive(
                 "directories": listing.directories,
             }
             write_json(tree / MANIFEST, receipt, mode=normal_creation_mode(tree))
-            # Read back and check the manifest and complete tree while private.
-            _check_bundle(store, tree, definition)
+            # Every file was just hashed into the manifest: read it back and
+            # check it while the tree is private, without hashing again.
+            _check_bundle(store, tree, definition, verify_files=False)
             bundle = store.publish(tree)
             published = True
             return bundle

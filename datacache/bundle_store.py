@@ -28,12 +28,13 @@ import hashlib
 import os
 from pathlib import Path
 import re
-import shutil
 import stat
-import tempfile
 from typing import Optional
+from uuid import uuid4
 
-from ._filesystem import open_regular, path_present, read_json, write_json
+from filelock import FileLock
+
+from ._filesystem import file_lock, open_regular, path_present, read_json, write_json
 from .download import normal_creation_mode
 from .inspection import FileInspection
 from .integrity import FileValidationError, _validate_expectations
@@ -44,9 +45,8 @@ FORMAT = 2
 MARKER = '.datacache-store.json'
 MANIFEST = '.datacache-manifest.json'
 CHUNK_SIZE = 2 ** 20
-# UTC creation time. Windows forbids ':', and this sorts oldest to newest.
+# UTC install time. Windows forbids ':', and this sorts oldest to newest.
 BUNDLE_NAME_FORMAT = '%Y-%m-%dT%H-%M-%SZ'
-BUNDLE_NAME = re.compile(r'\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z')
 
 # Exceptions meaning a store or bundle is unusable as found: corrupt,
 # incomplete, foreign or unreadable. PermissionError is one of them, so callers
@@ -59,28 +59,36 @@ class BundleStore:
 
     kind is 'bundle', 'archive' or 'materialization', recorded in the marker
     so that no kind of install takes over another's store. Reading never
-    writes or locks. create and publish expect the caller to hold the
-    store's installation lock.
+    writes or locks. Installs hold lock() while they call create and publish.
     """
 
     def __init__(self, path, kind):
         self.path = Path(path)
         self.kind = kind
         self.bundles = self.path / 'bundles'
+        # Beside the store, so it exists before the store does. Case-folded,
+        # so paths a case-insensitive filesystem treats as one share a lock.
+        key = hashlib.sha256(os.fsencode(self.path.name.casefold())).hexdigest()[:32]
+        self.lock_path = self.path.parent / ('.datacache-lock-' + key)
 
     def __repr__(self):
         return 'BundleStore(%r, %r)' % (str(self.path), self.kind)
 
+    def lock(self):
+        """The lock installs into this store take turns on."""
+        if os.name == 'posix':
+            return file_lock(self.lock_path)
+        return FileLock(str(self.lock_path))
+
     def check(self):
-        """Raise unless path is a store of this kind."""
+        """Raise unless path holds this kind's store marker."""
         require_directory(self.path)
         if read_json(self.path / MARKER) != {'format': FORMAT, 'kind': self.kind}:
             raise FileValidationError(self.path, 'not a datacache %s store' % self.kind)
-        require_directory(self.bundles)
 
     def bundle_names(self):
-        """Names of every bundle in the store, oldest first."""
-        return sorted(entry.name for entry in self.bundles.iterdir() if BUNDLE_NAME.fullmatch(entry.name))
+        """Names of every bundle in the store, oldest first. Other entries are ignored."""
+        return sorted(entry.name for entry in self.bundles.iterdir() if is_bundle_name(entry.name))
 
     def current_bundle(self):
         """The newest bundle's directory, or None when nothing is installed.
@@ -96,7 +104,10 @@ class BundleStore:
         except FileNotFoundError:
             if not any(self.path.iterdir()):
                 return None
-            self.check()  # Another installer may have created the store since.
+            self.check()  # Another installer may have placed the marker since.
+        if not path_present(self.bundles):
+            return None  # create() places the marker first, then bundles/.
+        require_directory(self.bundles)
         names = self.bundle_names()
         if not names:
             return None
@@ -105,46 +116,47 @@ class BundleStore:
         return bundle
 
     def create(self):
-        """Create the store unless it exists, never taking over a directory.
+        """Make path a store of this kind, never taking over a directory.
 
-        An empty directory becomes the store, keeping its permissions. A
-        directory with anything else in it raises FileValidationError. The
-        marker and bundles/ appear together with one rename, so concurrent
-        readers see no store or a complete one.
+        A missing or empty directory becomes the store, keeping its owner,
+        group and permissions: the marker is placed first, in one rename, then
+        bundles/. Readers see nothing installed until a bundle is published.
+        An existing store of this kind gets back anything that is missing.
+        Anything else raises FileValidationError (see refuse_takeover).
         """
-        existing_mode = None
-        if path_present(self.path):
-            require_directory(self.path)
-            if any(self.path.iterdir()):
-                self.refuse_takeover()
-                self.check()
-                return
-            existing_mode = stat.S_IMODE(self.path.lstat().st_mode)
-        staging = Path(tempfile.mkdtemp(prefix='.datacache-store-', dir=self.path.parent))
-        try:
-            write_json(staging / MARKER, {'format': FORMAT, 'kind': self.kind},
-                       mode=normal_creation_mode(self.path.parent))
-            (staging / 'bundles').mkdir()
-            os.chmod(staging, existing_mode if existing_mode is not None else
-                     stat.S_IMODE((staging / 'bundles').stat().st_mode))
-            if existing_mode is not None and os.name == 'nt':
-                # Windows can't rename onto a directory, even an empty one.
-                os.rmdir(self.path)
-            os.replace(staging, self.path)
-        finally:
-            if staging.exists():
-                shutil.rmtree(staging)
+        self.path.mkdir(exist_ok=True)
+        require_directory(self.path)
+        self.refuse_takeover()
+        if not path_present(self.path / MARKER):
+            # Write beside the store, then rename in: the store never holds a
+            # half-written marker or a temporary file.
+            staged = self.path.parent / ('.datacache-store-%s.json' % uuid4().hex)
+            try:
+                write_json(staged, {'format': FORMAT, 'kind': self.kind},
+                           mode=normal_creation_mode(self.path.parent))
+                os.replace(staged, self.path / MARKER)
+            finally:
+                staged.unlink(missing_ok=True)
+        self.check()
+        self.bundles.mkdir(exist_ok=True)
+        require_directory(self.bundles)
 
     def refuse_takeover(self):
-        """Raise if path is a directory with files in it but no store marker.
+        """Raise if path is a directory with files in it but isn't this kind's store.
 
         force=True never changes this, so callers check it before suggesting
         force.
         """
-        if (path_present(self.path) and stat.S_ISDIR(self.path.lstat().st_mode)
-                and not path_present(self.path / MARKER) and any(self.path.iterdir())):
+        if not (path_present(self.path) and stat.S_ISDIR(self.path.lstat().st_mode)
+                and any(self.path.iterdir())):
+            return
+        try:
+            marker = read_json(self.path / MARKER)
+        except (FileNotFoundError, ValueError, RecursionError):
+            marker = None
+        if marker != {'format': FORMAT, 'kind': self.kind}:
             raise FileValidationError(
-                self.path, 'not a datacache store; a directory with files in it is never taken over')
+                self.path, 'not a datacache %s store; a directory with files in it is never taken over' % self.kind)
 
     def publish(self, staged):
         """Rename a complete, checked directory into bundles/ as the newest.
@@ -161,6 +173,19 @@ class BundleStore:
         bundle = self.bundles / name
         os.replace(staged, bundle)
         return bundle
+
+
+def is_bundle_name(name):
+    """Whether name is a bundle's UTC install time, exactly as publish writes it."""
+    try:
+        return datetime.strptime(name, BUNDLE_NAME_FORMAT).strftime(BUNDLE_NAME_FORMAT) == name
+    except ValueError:
+        return False
+
+
+def source_fingerprint(source):
+    """SHA-256 identifying a source URL or path without storing its text."""
+    return hashlib.sha256(source.encode('utf-8')).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -199,7 +224,8 @@ def hash_file(path, expected=None, *, hash_contents=True, show_progress=False):
     bytes: sha256 is None and only the size is checked. expected is a mapping
     with sha256 and size; None values aren't checked.
     """
-    with os.fdopen(open_regular(path), 'rb') as handle:
+    # O_BINARY: Windows would otherwise translate line endings as it reads.
+    with os.fdopen(open_regular(path, os.O_RDONLY | getattr(os, 'O_BINARY', 0)), 'rb') as handle:
         info = os.fstat(handle.fileno())
         sha256 = None
         if hash_contents:

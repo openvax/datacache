@@ -390,6 +390,8 @@ def test_failed_bundle_rename_keeps_private_resumable_work(server, tmp_path, mon
     assert Path(paths['data']).read_bytes() == PAYLOAD
     assert len(requests) == 1
     assert not working.exists()
+    # The private resume lock stays out of the shared bundle.
+    assert not list(Path(paths['data']).parent.rglob('.datacache-resume-*'))
 
 
 @pytest.mark.parametrize('etag', [None, 'W/"v1"', 'v1', '"v1", "v2"', '"has space"', '"has\ttab"'])

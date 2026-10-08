@@ -103,7 +103,7 @@ def test_readonly_offline_hit_never_touches_sources(tmp_path, sources, outputs, 
         os.chmod(path, 0o555 if path.is_dir() else 0o444)
     try:
         monkeypatch.setattr(download, 'fetch_file', forbidden)
-        monkeypatch.setattr(module, 'file_lock', forbidden)
+        monkeypatch.setattr(bundle_store.BundleStore, 'lock', forbidden)
         monkeypatch.setattr(module, 'write_json', forbidden)
         monkeypatch.setattr(bundle_store, 'write_json', forbidden)
         monkeypatch.setattr(Path, 'mkdir', forbidden)

@@ -72,7 +72,7 @@ def test_custom_layout_install_versions_refresh_and_read_only_reuse(tmp_path, da
         raise AssertionError('offline reuse attempted a write or acquisition')
 
     monkeypatch.setattr(download, 'fetch_file', forbidden)
-    monkeypatch.setattr(bundles, 'file_lock', forbidden)
+    monkeypatch.setattr(bundle_store.BundleStore, 'lock', forbidden)
     monkeypatch.setattr(bundles, 'write_json', forbidden)
     monkeypatch.setattr(bundle_store, 'write_json', forbidden)
     try:

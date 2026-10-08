@@ -52,7 +52,7 @@ def test_install_inspect_offline_and_generated_outputs_survive(tmp_path, assets,
     def forbidden(*args, **kwargs):
         raise AssertionError('read-only reuse attempted a mutation or download')
     monkeypatch.setattr(download, 'fetch_file', forbidden)
-    monkeypatch.setattr(bundles, 'file_lock', forbidden)
+    monkeypatch.setattr(bundle_store.BundleStore, 'lock', forbidden)
     monkeypatch.setattr(bundles, 'write_json', forbidden)
     monkeypatch.setattr(bundle_store, 'write_json', forbidden)
     monkeypatch.setattr(Path, 'mkdir', forbidden)
@@ -343,7 +343,7 @@ def test_trusted_hashes_allow_cross_library_reuse_across_mirrors(tmp_path, asset
         raise AssertionError('trusted shared reuse must not download or write')
 
     monkeypatch.setattr(download, 'fetch_file', forbidden)
-    monkeypatch.setattr(bundles, 'file_lock', forbidden)
+    monkeypatch.setattr(bundle_store.BundleStore, 'lock', forbidden)
     monkeypatch.setattr(bundles, 'write_json', forbidden)
     monkeypatch.setattr(bundle_store, 'write_json', forbidden)
     assert second.download('reference') == paths

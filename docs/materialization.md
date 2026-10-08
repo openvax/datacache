@@ -152,7 +152,8 @@ policy, not output identity, so toggling it on a cache hit does not mutate disk.
 The store marker, `.datacache-store.json`, records that this is a
 materialization store, so DataCache never adopts a populated legacy directory or
 another kind of store, even with force.
-Empty precreated stores are allowed and keep their directory modes. As with
+An empty precreated directory becomes the store in place, keeping its owner,
+group and permissions. As with
 current resumable bundles, installation requires a POSIX local filesystem with
 `flock` and atomic sibling renames. Read-only existing hits require no lock.
 This is atomic visibility, not a guarantee against filesystem/power-loss faults.

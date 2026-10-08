@@ -66,10 +66,10 @@ state = inspect_bundle(source_directory, assets)
 the bundle, collide as files/directories or by letter case, or occupy DataCache's
 reserved metadata names. A file or directory at another asset's automatic
 provenance sidecar path is also rejected before installation starts. Source
-directories are managed stores: an existing empty directory is reported as
-`missing` and can be initialized without `force=True`, preserving its access
-mode. Installation refuses to take over a nonempty directory without its
-ownership marker, even with `force=True`. Store generated indices and other derived
+directories are stores: an existing empty directory is reported as `missing`
+and becomes the store on the first install, in place, so it keeps its owner,
+group and permissions. Installation never takes over a directory with files in
+it unless it is already a bundle store, even with `force=True`. Store generated indices and other derived
 outputs under a separate application-owned directory. Reinstalling sources does
 not visit those outputs.
 

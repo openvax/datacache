@@ -10,9 +10,10 @@ import shutil
 import stat
 from uuid import uuid4
 
-from ._filesystem import file_lock, open_regular, path_present, read_json, write_json
+from ._filesystem import open_regular, path_present, read_json, write_json
 from .bundle_store import (
-    INVALID_STORE_ERRORS, MANIFEST, BundleStore, hash_file, require_directory, validate_distinct_paths,
+    INVALID_STORE_ERRORS, MANIFEST, BundleStore, hash_file, require_directory, source_fingerprint,
+    validate_distinct_paths,
     validate_no_sidecar_collisions, validate_path_component, validate_relative_name,
 )
 from .download import normal_creation_mode, validate_download_options
@@ -53,11 +54,6 @@ def _assets(assets, verified=True):
     return result
 
 
-def _source_fingerprint(url):
-    """Identify the complete source without storing credentials or query text."""
-    return hashlib.sha256(url.encode('utf-8')).hexdigest()
-
-
 def _receipt_assets(receipt):
     if not isinstance(receipt, dict) or receipt.get('format') != FORMAT:
         raise ValueError('unrecognized bundle manifest')
@@ -93,7 +89,7 @@ def _check_bundle(store, directory, assets, *, verify_files=True):
             if spec['sha256'] is None:
                 fingerprints = receipt.get('source_fingerprints')
                 if (not isinstance(fingerprints, dict) or
-                        fingerprints.get(name) != _source_fingerprint(spec['url'])):
+                        fingerprints.get(name) != source_fingerprint(spec['url'])):
                     raise FileValidationError(directory, 'manifest source identity is missing or disagrees with registry')
                 if spec['decompress'] != recorded[name]['decompress']:
                     raise FileValidationError(directory, 'manifest decompression setting disagrees with registry')
@@ -185,8 +181,7 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
     if os.name != 'posix':
         raise NotImplementedError('Bundle installation requires a POSIX local filesystem')
     path.parent.mkdir(parents=True, exist_ok=True)
-    key = hashlib.sha256(os.fsencode(path.name)).hexdigest()[:32]
-    with file_lock(path.parent / ('.datacache-bundle-lock-' + key)):
+    with store.lock():
         store.create()
         inspection = inspect_bundle(path, expected, verify_files=verify_files)
         if not force and inspection.status == 'available':
@@ -231,8 +226,11 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
                 recorded[name] = dict(url=redact_url(spec['url']), sha256=hashed.sha256 or spec['sha256'],
                                       size=hashed.size, decompress=spec['decompress'])
             receipt = dict(format=FORMAT, fetched_at=datetime.now(timezone.utc).isoformat(), assets=recorded,
-                           source_fingerprints={name: _source_fingerprint(spec['url'])
+                           source_fingerprints={name: source_fingerprint(spec['url'])
                                                 for name, spec in expected.items()})
+            # fetch_file keeps a private lock beside each resumable download.
+            for state in list(staged.rglob('.datacache-resume-*')):
+                shutil.rmtree(state)
             write_json(staged / MANIFEST, receipt, mode=normal_creation_mode(staged))
             # Check the complete bundle, hashes included, before publishing it.
             _check_bundle(store, staged, expected)
