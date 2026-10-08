@@ -109,7 +109,8 @@ def _stream_to_file(
 
     if urllib.parse.urlsplit(download_url).scheme.lower() in ("http", "https"):
         import requests
-        with closing(requests.get(download_url, timeout=timeout, stream=True)) as response:
+        with closing(requests.get(download_url, headers={"User-Agent": common.USER_AGENT},
+                                  timeout=timeout, stream=True)) as response:
             response.raise_for_status()
             # Requests decodes content encoding before yielding chunks; a wire
             # length is not a valid total for the bytes we write in that case.
