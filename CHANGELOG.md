@@ -37,6 +37,13 @@
     store, named without regard to letter case.
 - Archive and materialization checks report missing and unexpected files and
   directories together, and reject a file that changes while it is hashed.
+  Archive `verify_files=False` checks every file's presence and size, as the
+  other kinds do, instead of only the manifest.
+- A file in an inspection is `verified` only when a hash the caller supplied
+  vouched for it, for every kind of store; a bundle's own manifest checks the
+  bytes but vouches for nothing.
+- Name checks reject paths whose parent directories differ only by letter
+  case, such as `A/x` and `a/y`.
 - `install_bundle`, `install_archive` and `materialize` check
   `download_options` exactly as `fetch_file` checks the same arguments, before
   creating anything (#103).

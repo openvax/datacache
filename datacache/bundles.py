@@ -7,18 +7,16 @@ import json
 import os
 from pathlib import Path
 import shutil
-import stat
 from uuid import uuid4
 
-from ._filesystem import open_regular, path_present, read_json, write_json
+from ._filesystem import path_present, read_json, write_json
 from .bundle_store import (
-    INVALID_STORE_ERRORS, MANIFEST, BundleStore, hash_file, require_directory, source_fingerprint,
-    validate_distinct_paths,
-    validate_no_sidecar_collisions, validate_path_component, validate_relative_name,
+    INVALID_STORE_ERRORS, MANIFEST, BundleStore, discard_private_directory, hash_file, private_directory,
+    require_directory, source_fingerprint, validate_distinct_paths, validate_no_sidecar_collisions,
+    validate_path_component, validate_relative_name,
 )
 from .download import normal_creation_mode, validate_download_options
 from .integrity import FileValidationError, _validate_expectations
-from .inspection import FileInspection, inspect_file
 from .provenance import redact_url
 
 FORMAT = 1
@@ -80,7 +78,8 @@ class BundleInspection:
 
 
 def _check_bundle(store, directory, assets, *, verify_files=True):
-    receipt = read_json(directory / MANIFEST)
+    # Manifests grow with the number of assets; the writer has no size cap.
+    receipt = read_json(directory / MANIFEST, limit=None)
     recorded = _receipt_assets(receipt)
     if assets is not None:
         if set(recorded) != set(assets):
@@ -101,22 +100,10 @@ def _check_bundle(store, directory, assets, *, verify_files=True):
         target = directory / name
         for parent in target.relative_to(directory).parents:
             require_directory(directory / parent)
-        # Reject symlinks and special files before the ordinary inspection API.
-        fd = open_regular(target)
-        try:
-            info = None if verify_files else os.fstat(fd)
-        finally:
-            os.close(fd)
-        if verify_files:
-            inspected = inspect_file(target, expected_sha256=spec['sha256'], expected_size=spec['size'])
-            if inspected.status != 'available':
-                raise inspected.error or FileValidationError(target, 'unavailable bundle asset')
-        else:
-            # Metadata only: an open, readable regular file of the recorded size.
-            if info.st_size != spec['size']:
-                raise FileValidationError(target, 'bundle asset size disagrees with manifest')
-            inspected = FileInspection(str(target), 'available', size=info.st_size, mtime=info.st_mtime)
-        files[name] = inspected
+        hashed = hash_file(target, spec, hash_contents=verify_files)
+        # Only a hash the caller supplied verifies a file; the manifest's own doesn't.
+        supplied = assets is not None and assets[name]['sha256'] is not None
+        files[name] = hashed.inspection(verified=verify_files and supplied)
     trusted = verify_files and assets is not None and all(spec['sha256'] for spec in assets.values())
     return BundleInspection(str(store.path), 'available', bool(trusted), str(directory), files)
 
@@ -171,35 +158,23 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
     path = Path(destination)
     store = BundleStore(path, 'bundle')
     inspection = inspect_bundle(path, expected, verify_files=verify_files)
-    if not force and inspection.status == 'available':
+    if store.can_reuse(inspection, force=force):
         return _paths(inspection)
-    if inspection.status == 'inaccessible':
-        raise inspection.error
-    if not force and inspection.status == 'invalid':
-        store.refuse_takeover()
-        raise FileValidationError(path, 'invalid bundle; use force=True to explicitly repair') from inspection.error
     if os.name != 'posix':
         raise NotImplementedError('Bundle installation requires a POSIX local filesystem')
     path.parent.mkdir(parents=True, exist_ok=True)
     with store.lock():
         store.create()
         inspection = inspect_bundle(path, expected, verify_files=verify_files)
-        if not force and inspection.status == 'available':
+        if store.can_reuse(inspection, force=force):
             return _paths(inspection)
-        if inspection.status == 'invalid' and not force:
-            raise FileValidationError(path, 'invalid bundle; use force=True to explicitly repair') from inspection.error
         # A resumable bundle keeps its private working directory across calls,
         # including completed assets. The registry identity selects it, and
         # different users never inherit each other's private partials.
         resumable = options.get('resume', False)
         staging_key = (hashlib.sha256(json.dumps(expected, sort_keys=True).encode()).hexdigest()
                        + '-%d' % os.getuid()) if resumable else uuid4().hex
-        working = path / ('.staging-' + staging_key)
-        working.mkdir(mode=0o700, exist_ok=resumable)
-        info = working.lstat()
-        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid()
-                or stat.S_IMODE(info.st_mode) & 0o077):
-            raise FileValidationError(working, 'bundle staging must be a private directory')
+        working = private_directory(path / ('.staging-' + staging_key))
         # The private parent protects unfinished bytes. The inner directory
         # already has its final sharing mode, so the bundle is readable by
         # others the moment it is renamed into place.
@@ -239,7 +214,7 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
             return {name: str(bundle / name) for name in expected}
         finally:
             if published or not resumable:
-                shutil.rmtree(working)
+                discard_private_directory(working)
 
 
 class VersionedDatasetRegistry:

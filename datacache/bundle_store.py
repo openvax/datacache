@@ -25,11 +25,14 @@ names, their hashes, and that a bundle holds exactly the files it should.
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import hashlib
+import logging
 import os
 from pathlib import Path
 import re
+import shutil
 import stat
 from typing import Optional
+import unicodedata
 from uuid import uuid4
 
 from filelock import FileLock
@@ -53,6 +56,8 @@ BUNDLE_NAME_FORMAT = '%Y-%m-%dT%H-%M-%SZ'
 # that report it separately must catch it first.
 INVALID_STORE_ERRORS = (OSError, ValueError, KeyError, TypeError, RecursionError)
 
+logger = logging.getLogger(__name__)
+
 
 class BundleStore:
     """The store directory for one dataset version, and the bundles in it.
@@ -66,10 +71,13 @@ class BundleStore:
         self.path = Path(path)
         self.kind = kind
         self.bundles = self.path / 'bundles'
-        # Beside the store, so it exists before the store does. Case-folded,
-        # so paths a case-insensitive filesystem treats as one share a lock.
-        key = hashlib.sha256(os.fsencode(self.path.name.casefold())).hexdigest()[:32]
-        self.lock_path = self.path.parent / ('.datacache-lock-' + key)
+        # Beside the store, so it exists before the store does. Named for the
+        # store's own name, case-folded and Unicode-normalized, so spellings a
+        # filesystem treats as one directory share a lock.
+        absolute = Path(os.path.abspath(self.path))
+        name = unicodedata.normalize('NFC', absolute.name.casefold())
+        key = hashlib.sha256(os.fsencode(name)).hexdigest()[:32]
+        self.lock_path = absolute.parent / ('.datacache-lock-' + key)
 
     def __repr__(self):
         return 'BundleStore(%r, %r)' % (str(self.path), self.kind)
@@ -79,6 +87,23 @@ class BundleStore:
         if os.name == 'posix':
             return file_lock(self.lock_path)
         return FileLock(str(self.lock_path))
+
+    def can_reuse(self, inspection, *, force):
+        """Whether an install can return the bundle it just inspected.
+
+        Raises when the install can't go ahead either: the store is
+        unreadable, or its current bundle is invalid and force=True wasn't
+        given. A directory this store may never take over says so, rather
+        than suggesting force=True.
+        """
+        if inspection.status == 'inaccessible':
+            raise inspection.error
+        if inspection.status == 'invalid' and not force:
+            self.refuse_takeover()
+            raise FileValidationError(
+                self.path, "the current bundle is damaged or doesn't match this request; "
+                "use force=True to install a new one") from inspection.error
+        return not force and inspection.status == 'available'
 
     def check(self):
         """Raise unless path holds this kind's store marker."""
@@ -169,10 +194,45 @@ class BundleStore:
         names = self.bundle_names()
         if names and name <= names[-1]:
             newest = datetime.strptime(names[-1], BUNDLE_NAME_FORMAT)
-            name = (newest + timedelta(seconds=1)).strftime(BUNDLE_NAME_FORMAT)
+            try:
+                name = (newest + timedelta(seconds=1)).strftime(BUNDLE_NAME_FORMAT)
+            except OverflowError:
+                raise FileValidationError(
+                    self.bundles / names[-1], 'this bundle is dated so late that no newer name exists') from None
         bundle = self.bundles / name
         os.replace(staged, bundle)
         return bundle
+
+
+def private_directory(path):
+    """Create path if needed as a directory only its owner can use, and check it.
+
+    Installs keep unfinished files here until they publish them. Windows has
+    no such modes, so there it only checks that path is a directory.
+    """
+    path = Path(path)
+    if not path_present(path):
+        path.mkdir(mode=0o700)
+    require_directory(path)
+    if os.name == 'posix':
+        info = path.lstat()
+        if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077:
+            raise FileValidationError(path, 'working directory must be private and owner-owned')
+    return path
+
+
+def discard_private_directory(path):
+    """Remove a private working directory, logging rather than raising on failure.
+
+    Cleanup never hides an install's real outcome: its error, or the bundle
+    it published.
+    """
+    try:
+        if path_present(path):
+            private_directory(path)  # Only ever remove a directory of our own.
+            shutil.rmtree(path)
+    except (OSError, ValueError) as error:
+        logger.warning('Could not remove the working directory %s: %s', path, error)
 
 
 def is_bundle_name(name):
@@ -367,12 +427,20 @@ def validate_path_component(name):
 def validate_distinct_paths(names):
     """Raise ValueError if names can't all exist together in one directory tree.
 
-    That is when two differ only by letter case, which case-insensitive
-    filesystems store as one file, or one is a directory of another.
+    That is when two paths, or any of their parent directories, differ only
+    by letter case, which case-insensitive filesystems store as one; or when
+    one name is a directory of another.
     """
-    folded = {name.casefold() for name in names}
-    if len(folded) != len(names) or folded & {name.casefold() for name in parent_directories(names)}:
-        raise ValueError('paths collide as files/directories or ignoring case')
+    seen = {}  # Case-folded path: (path as written, whether it is a file).
+    for name in names:
+        parts = name.split('/')
+        for depth in range(1, len(parts) + 1):
+            path, is_file = '/'.join(parts[:depth]), depth == len(parts)
+            key = path.casefold()
+            # Only the same directory, spelled the same way, may appear twice.
+            if key in seen and (is_file or seen[key] != (path, False)):
+                raise ValueError('paths collide as files/directories or ignoring case')
+            seen[key] = (path, is_file)
 
 
 def validate_no_sidecar_collisions(names):

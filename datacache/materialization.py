@@ -4,19 +4,17 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import hashlib
 import json
-import logging
 import os
 from pathlib import Path
 import shutil
-import stat
 from urllib.parse import urlsplit
 from urllib.request import url2pathname
 from uuid import uuid4
 
 from ._filesystem import open_regular, path_present, read_json, write_json
 from .bundle_store import (
-    CHUNK_SIZE, INVALID_STORE_ERRORS, MANIFEST, BundleStore, check_expected, check_tree, hash_file,
-    local_file_identity,
+    CHUNK_SIZE, INVALID_STORE_ERRORS, MANIFEST, BundleStore, check_expected, check_tree,
+    discard_private_directory, hash_file, local_file_identity, private_directory,
     parent_directories, require_directory, validate_distinct_paths, validate_file_record,
     validate_no_sidecar_collisions, validate_relative_name,
 )
@@ -27,8 +25,6 @@ from . import provenance
 
 INPUTS = '.datacache-inputs.json'
 FORMAT = 1
-
-logger = logging.getLogger(__name__)
 
 
 def _json_copy(value):
@@ -205,29 +201,18 @@ def _inspect_materialization(destination, expected, *, verify_files=True):
         return MaterializationInspection(str(path), 'invalid', error=error)
 
 
-def _private(path):
-    if not path_present(path):
-        path.mkdir(mode=0o700)
-    info = path.lstat()
-    if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or
-            stat.S_IMODE(info.st_mode) & 0o077):
-        raise FileValidationError(path, 'working directory must be private and owner-owned')
-
-
 def _input_directory(store, definition):
     return store / ('.inputs-%s-%d' % (_fingerprint(definition['sources']), os.getuid()))
 
 
 def _cleanup_inputs(store, definition, retain_sources):
-    directory = _input_directory(store, definition)
-    if not retain_sources and path_present(directory):
-        _private(directory)
-        shutil.rmtree(directory)
+    if not retain_sources:
+        discard_private_directory(_input_directory(store, definition))
 
 
 def _acquire_inputs(directory, definition, acquisition, options, *, force=False):
     from .download import fetch_file
-    _private(directory)
+    private_directory(directory)
     receipt_path = directory / INPUTS
     try:
         records = read_json(receipt_path, limit=None) if path_present(receipt_path) else {}
@@ -376,15 +361,8 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
         # whether the store is readable, not to hash the old outputs.
         return _inspect_materialization(path, definition, verify_files=verify_files and not force)
 
-    def check_hit(inspection):
-        if inspection.status == 'inaccessible':
-            raise inspection.error
-        if not force and inspection.status == 'invalid':
-            raise FileValidationError(path, 'invalid materialization; use force=True to refresh or repair') from inspection.error
-        return not force and inspection.status == 'available'
-
     inspection = inspect_current()
-    if check_hit(inspection):
+    if store.can_reuse(inspection, force=force):
         return {name: value.path for name, value in inspection.files.items()}
     if os.name != 'posix':
         raise NotImplementedError('Materialization requires a POSIX local filesystem')
@@ -392,12 +370,11 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
     with store.lock():
         store.create()
         inspection = inspect_current()
-        if check_hit(inspection):
+        if store.can_reuse(inspection, force=force):
             return {name: value.path for name, value in inspection.files.items()}
         inputs = _input_directory(path, definition)
         source_paths, records = _acquire_inputs(inputs, definition['sources'], acquisition, options, force=force)
-        working = path / ('.staging-%s-%d' % (_fingerprint(definition), os.getuid()))
-        _private(working)
+        working = private_directory(path / ('.staging-%s-%d' % (_fingerprint(definition), os.getuid())))
         # Only this user's installer-owned failed outputs are discarded.
         for entry in working.iterdir():
             if entry.is_dir() and not entry.is_symlink():
@@ -433,9 +410,4 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
             _cleanup_inputs(path, definition, retain_sources)
             return {name: str(bundle / name) for name in declared}
         finally:
-            # Cleanup never replaces the builder's error or fails a publication.
-            try:
-                _private(working)  # Only ever remove our own private directory.
-                shutil.rmtree(working)
-            except (OSError, ValueError) as error:
-                logger.warning("Could not remove the staging directory %s: %s", working, error)
+            discard_private_directory(working)

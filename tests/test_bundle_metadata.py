@@ -70,7 +70,14 @@ def test_fast_resolution_and_cache_hits_read_no_payloads_or_write(installed, mon
     monkeypatch.setattr(io, 'open', guarded_open)
     monkeypatch.setattr(os, 'open', tracked_os_open)
     monkeypatch.setattr(os, 'read', guarded_read)
-    monkeypatch.setattr(bundles, 'inspect_file', forbidden)
+    hash_file = bundles.hash_file
+
+    def sizes_only(*args, **kwargs):
+        if kwargs.get('hash_contents', True):
+            raise AssertionError('fast lookup tried full inspection')
+        return hash_file(*args, **kwargs)
+
+    monkeypatch.setattr(bundles, 'hash_file', sizes_only)
     monkeypatch.setattr(bundle_store.BundleStore, 'lock', forbidden)
     monkeypatch.setattr(bundles, 'write_json', forbidden)
     monkeypatch.setattr(bundle_store, 'write_json', forbidden)
@@ -178,14 +185,14 @@ def test_fast_lookup_retains_unverified_source_identity_checks(installed):
 
 def test_fast_lookup_reports_permission_errors(installed, monkeypatch):
     registry, assets, paths = installed
-    original = bundles.open_regular
+    original = bundle_store.open_regular
 
     def denied(path, *args, **kwargs):
         if str(path) == paths['records.txt']:
             raise PermissionError('payload is not readable')
         return original(path, *args, **kwargs)
 
-    monkeypatch.setattr(bundles, 'open_regular', denied)
+    monkeypatch.setattr(bundle_store, 'open_regular', denied)
     state = registry.inspect('reference', verify_files=False)
     assert state.status == 'inaccessible'
     assert isinstance(state.error, PermissionError)

@@ -120,8 +120,8 @@ Explicit inspection hashes every asset by default. With trusted registry
 metadata, `verified=True` means every file matched the supplied SHA-256 just now. Every bundle
 also has its own manifest recording sizes, observed SHA-256 digests, source URLs,
 and fetch time. `inspect_bundle(directory)` can check those recorded hashes
-without a registry or network, but returns `verified=False`: a local receipt is
-not an independent authority. Display URLs omit credentials, queries and
+without a registry or network, but returns `verified=False`, for the bundle and
+for each file: a local receipt is not an independent authority. Display URLs omit credentials, queries and
 fragments; a separate SHA-256 fingerprint identifies the full source URL without
 storing that omitted text. Paths are retained, so do not use secret-bearing URL
 paths.

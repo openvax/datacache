@@ -19,14 +19,13 @@ import json
 import os
 from pathlib import Path
 import shutil
-import stat
 import tarfile
 from uuid import uuid4
 
 from ._filesystem import open_regular, read_json, write_json
 from .bundle_store import (
-    CHUNK_SIZE, INVALID_STORE_ERRORS, MANIFEST, BundleStore, check_tree, hash_file, list_tree,
-    local_file_identity, source_fingerprint,
+    CHUNK_SIZE, INVALID_STORE_ERRORS, MANIFEST, BundleStore, check_tree, discard_private_directory,
+    hash_file, list_tree, local_file_identity, private_directory, source_fingerprint,
     validate_file_record, validate_path_component, validate_relative_name,
 )
 from .download import normal_creation_mode, validate_download_options
@@ -254,15 +253,13 @@ def _check_bundle(store, directory, definition, verify_files=True):
         "archive_size": archive["size"],
         "recorded_sha256": archive["sha256"],
     }
-    if not verify_files:
-        return ArchiveInspection(
-            str(store.path), "available", False, str(directory), **metadata)
-    hashed = check_tree(directory, files, directories, ignore=(MANIFEST,))
-    # Each file matched the SHA-256 its receipt records.
-    inspections = {name: value.inspection(verified=True) for name, value in hashed.items()}
+    # verify_files=False still checks the exact inventory and every size.
+    hashed = check_tree(directory, files, directories, ignore=(MANIFEST,), hash_contents=verify_files)
+    # Only hashes the caller supplied verify files; the manifest's own don't.
+    verified = bool(verify_files and definition and definition["trusted"])
+    inspections = {name: value.inspection(verified=verified) for name, value in hashed.items()}
     return ArchiveInspection(
-        str(store.path), "available", bool(definition and definition["trusted"]),
-        str(directory), inspections, **metadata)
+        str(store.path), "available", verified, str(directory), inspections, **metadata)
 
 
 def inspect_archive(
@@ -272,8 +269,9 @@ def inspect_archive(
 
     Omit ``sources`` for receipt-only consistency checking. Supplying sources
     checks the requested ordered archive identity or trusted content hashes.
-    ``verify_files=False`` validates publication and source metadata without
-    hashing the extracted tree; its result is never marked verified.
+    ``verify_files=False`` checks the manifest, source metadata, and every
+    extracted file's presence and size without hashing; its result is never
+    marked verified.
     """
     if not isinstance(verify_files, bool):
         raise ValueError("verify_files must be a boolean")
@@ -528,13 +526,8 @@ def install_archive(
     inspection = inspect_archive(
         path, sources, expected_sha256=expected_sha256,
         expected_size=expected_size, extra_files=extra_files)
-    if not force and inspection.status == "available":
+    if store.can_reuse(inspection, force=force):
         return Path(inspection.bundle)
-    if inspection.status == "inaccessible":
-        raise inspection.error
-    if not force and inspection.status == "invalid":
-        store.refuse_takeover()
-        raise FileValidationError(path, "invalid archive installation; use force=True to explicitly repair") from inspection.error
 
     path.parent.mkdir(parents=True, exist_ok=True)
     with store.lock():
@@ -542,19 +535,12 @@ def install_archive(
         inspection = inspect_archive(
             path, sources, expected_sha256=expected_sha256,
             expected_size=expected_size, extra_files=extra_files)
-        if not force and inspection.status == "available":
+        if store.can_reuse(inspection, force=force):
             return Path(inspection.bundle)
-        if inspection.status == "invalid" and not force:
-            raise FileValidationError(path, "invalid archive installation; use force=True to explicitly repair") from inspection.error
 
         resumable = options.get("resume", False)
-        working = path / (".staging-" + (_working_key(definition) if resumable else uuid4().hex))
-        working.mkdir(mode=0o700, exist_ok=resumable)
-        if os.name == "posix":
-            info = working.lstat()
-            if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or
-                    stat.S_IMODE(info.st_mode) & 0o077):
-                raise FileValidationError(working, "archive staging must be a private directory")
+        working = private_directory(
+            path / (".staging-" + (_working_key(definition) if resumable else uuid4().hex)))
         tree = working / "tree"
         if tree.exists():
             shutil.rmtree(tree)
@@ -591,14 +577,14 @@ def install_archive(
             }
             write_json(tree / MANIFEST, receipt, mode=normal_creation_mode(tree))
             # Every file was just hashed into the manifest: read it back and
-            # check it while the tree is private, without hashing again.
+            # check it against the tree, without hashing again.
             _check_bundle(store, tree, definition, verify_files=False)
             bundle = store.publish(tree)
             published = True
             return bundle
         finally:
             if published or not resumable:
-                shutil.rmtree(working)
+                discard_private_directory(working)
 
 
 class VersionedArchiveRegistry:

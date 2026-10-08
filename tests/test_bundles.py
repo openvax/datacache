@@ -407,7 +407,7 @@ def test_bundle_is_shared_and_current_once_renamed(tmp_path, assets, monkeypatch
 @pytest.mark.parametrize('names', [
     ('data', '.data.datacache.json'),
     ('dir/data', 'dir/.data.datacache.json'),
-    ('dir/DATA', 'DIR/.data.datacache.JSON'),
+    ('dir/DATA', 'dir/.data.datacache.JSON'),
     ('data', '.data.datacache.json/nested'),
 ])
 @pytest.mark.parametrize('reverse', [False, True])
@@ -505,6 +505,43 @@ def test_concurrent_initialization_of_precreated_directory_reuses_winner(tmp_pat
             resume_inspection.set()
         assert future.result() == winner
     assert len(list((dest / 'bundles').iterdir())) == 1
+
+
+def test_large_manifests_are_read(tmp_path, assets):
+    dest = tmp_path / 'bundle'
+    paths = install_bundle(dest, assets)
+    manifest = Path(inspect_bundle(dest).bundle) / bundles.MANIFEST
+    receipt = json.loads(manifest.read_text())
+    # Manifests grow with the number of assets; this one is over 1 MiB.
+    receipt['assets']['records.json']['url'] += '/' + 'x' * (2 ** 21)
+    manifest.write_text(json.dumps(receipt))
+    assert inspect_bundle(dest).status == 'available'
+    assert all(Path(path).is_file() for path in paths.values())
+
+
+def test_files_are_verified_only_by_hashes_the_caller_supplied(tmp_path, assets):
+    dest = tmp_path / 'bundle'
+    install_bundle(dest, assets)
+    assert all(item.verified for item in inspect_bundle(dest, assets).files.values())
+    # The bundle's own manifest checks the bytes but vouches for nothing.
+    receipt_only = inspect_bundle(dest)
+    assert receipt_only.status == 'available'
+    assert not any(item.verified for item in receipt_only.files.values())
+
+
+def test_cleanup_failure_after_publishing_is_logged_not_raised(tmp_path, assets, monkeypatch, caplog):
+    import shutil
+    rmtree = shutil.rmtree
+
+    def failing_rmtree(path, *args, **kwargs):
+        if Path(path).name.startswith('.staging-'):
+            raise OSError('busy')
+        return rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, 'rmtree', failing_rmtree)
+    paths = install_bundle(tmp_path / 'bundle', assets)
+    assert all(Path(path).is_file() for path in paths.values())
+    assert 'Could not remove the working directory' in caplog.text
 
 
 def test_the_newest_bundle_is_current(tmp_path, assets):

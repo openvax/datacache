@@ -1205,9 +1205,9 @@ Inspect the current archive bundle without writes, locks, repair, or
 network access. Omit `sources` for receipt-only consistency checking, which
 returns `verified=False`. Supply the same source definition, expectations, and
 consumer metadata used for installation to validate the requested identity.
-Set `verify_files=False` for a fast manifest and source-identity check
-that does not hash the extracted tree. Fast results have an empty `files`
-mapping and `verified=False`; use the default before asserting content integrity.
+Set `verify_files=False` for a fast check of the manifest, source identity,
+and every extracted file's presence and size, without hashing. Fast results
+have `verified=False`; use the default before asserting content integrity.
 
 ## ArchiveInspection
 
@@ -1215,9 +1215,9 @@ A frozen record with `path`, `status`, `verified`, `bundle`, `files`,
 `error`, `source_urls`, `fetched_at`, `archive_size`, and `recorded_sha256`.
 Status is `available`, `missing`, `invalid` or `inaccessible`. `bundle` is the
 extracted tree applications should use;
-`files` maps every installed relative file name to a `FileInspection`, or is
-empty for a fast `verify_files=False` inspection. Source URLs are redacted for
-display. The recorded digest is observed receipt data, not trusted verification.
+`files` maps every installed relative file name to a `FileInspection`; a file
+is `verified` only when a hash the caller supplied vouched for it. Source URLs
+are redacted for display. The recorded digest is observed receipt data, not trusted verification.
 
 ## VersionedArchiveRegistry
 

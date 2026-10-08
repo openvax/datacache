@@ -66,6 +66,15 @@ def test_only_canonical_utc_times_are_bundle_names(name, expected):
     assert is_bundle_name(name) is expected
 
 
+def test_a_bundle_dated_too_late_to_follow_is_reported(tmp_path):
+    store = BundleStore(tmp_path / 'store', 'bundle')
+    store.create()
+    (store.bundles / '9999-12-31T23-59-59Z').mkdir()
+    (store.path / '.staging').mkdir()
+    with pytest.raises(FileValidationError, match='no newer name'):
+        store.publish(store.path / '.staging')
+
+
 def test_other_entries_in_bundles_are_ignored(tmp_path):
     store = BundleStore(tmp_path / 'store', 'bundle')
     store.create()
@@ -112,9 +121,17 @@ def test_a_store_missing_bundles_has_nothing_installed_and_is_repaired(tmp_path)
     assert publish(store) == store.current_bundle()
 
 
-def test_paths_that_differ_only_by_case_share_a_lock(tmp_path):
-    assert BundleStore(tmp_path / 'GRCh38', 'bundle').lock_path == BundleStore(tmp_path / 'grch38', 'bundle').lock_path
-    assert BundleStore(tmp_path / 'a', 'bundle').lock_path.parent == tmp_path
+def test_spellings_of_one_directory_share_a_lock_beside_it(tmp_path, monkeypatch):
+    def lock(name):
+        return BundleStore(tmp_path / name, 'bundle').lock_path
+
+    assert lock('GRCh38') == lock('grch38')
+    assert lock('caf\u00e9') == lock('cafe\u0301')  # NFC and NFD, as macOS may report them.
+    assert lock('a') != lock('b') and lock('a').parent == tmp_path
+    # A store named "." still locks beside itself, never inside.
+    (tmp_path / 'store').mkdir()
+    monkeypatch.chdir(tmp_path / 'store')
+    assert BundleStore('.', 'archive').lock_path.parent == tmp_path
 
 
 def test_directories_with_files_are_never_taken_over(tmp_path):
@@ -219,7 +236,7 @@ def test_name_validation():
     with pytest.raises(ValueError, match='single path components'):
         validate_path_component('a/b')
     validate_distinct_paths(['a/b', 'a/c', 'd'])
-    for names in (['a', 'A'], ['a', 'a/b'], ['A', 'a/b']):
+    for names in (['a', 'A'], ['a', 'a/b'], ['A', 'a/b'], ['A/x', 'a/y'], ['x', 'x']):
         with pytest.raises(ValueError, match='collide'):
             validate_distinct_paths(names)
     validate_no_sidecar_collisions(['a.txt', 'dir/b.txt'])

@@ -272,7 +272,8 @@ def test_foreign_directory_never_adopted(tmp_path, sources, outputs, force):
     store = tmp_path / 'foreign'
     store.mkdir()
     (store / 'precious').write_text('keep')
-    with pytest.raises((FileValidationError, OSError)):
+    # Never a suggestion to use force=True, which can't help here.
+    with pytest.raises(FileValidationError, match='never taken over'):
         install(store, sources, outputs, force=force)
     assert (store / 'precious').read_text() == 'keep'
 
@@ -839,4 +840,4 @@ def test_cleanup_failure_never_masks_the_outcome(tmp_path, sources, outputs, mon
             install(store, sources, outputs, builder=failing_build)
     else:
         assert Path(install(store, sources, outputs)['dna.fa']).read_bytes() == DATA
-    assert 'Could not remove the staging directory' in caplog.text
+    assert 'Could not remove the working directory' in caplog.text

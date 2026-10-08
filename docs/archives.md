@@ -96,7 +96,7 @@ MHCflurry should treat a fast
 `inspect_archive(..., verify_files=False).status == "available"` using the same
 sources and `extra_files` as installed, not mere destination existence. Its
 `get_path` adapter should append member paths to `state.bundle`. The fast
-check validates the atomic publication receipt and requested source identity
+check validates the manifest, requested source identity and every file's size
 without hashing large model files on every path lookup. Explicit diagnostics can
 use the default `verify_files=True` for complete tree verification. This prevents
 an initialized store or interrupted install from being mistaken for a complete
@@ -172,8 +172,9 @@ consistency against observed receipts and requires the same ordered full source
 identities, but `ArchiveInspection.verified` remains false.
 
 A valid cache hit is entirely read-only. `inspect_archive` hashes the complete
-tree by default; `verify_files=False` provides a receipt/source-identity-only
-path lookup and never reports `verified=True`. Invalid installations require an
+tree by default; `verify_files=False` checks the manifest, source identity and
+every file's presence and size without hashing, and never reports
+`verified=True`. Invalid installations require an
 explicit `force=True`; inaccessible installations propagate their permission
 error. Consumer metadata is part of the requested archive's identity, so a
 different, added, or removed metadata entry requires an explicit refresh.

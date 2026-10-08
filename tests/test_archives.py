@@ -84,21 +84,31 @@ def test_install_inspect_and_read_only_reuse(tmp_path, archive_file, monkeypatch
     assert inspected.fetched_at.endswith("+00:00")
     assert inspect_archive(destination).status == "available"
     assert not inspect_archive(destination).verified
+    # Files are verified only by hashes the caller supplied, never the manifest's own.
+    assert all(item.verified for item in inspected.files.values())
+    assert not any(item.verified for item in inspect_archive(destination).files.values())
     fast = inspect_archive(
         destination, sources, expected_sha256=digest, expected_size=len(data),
         extra_files={"DOWNLOAD_INFO.csv": receipt}, verify_files=False)
-    assert fast.status == "available" and not fast.verified
-    assert fast.files == {} and Path(fast.bundle) == bundle
+    assert fast.status == "available" and not fast.verified and Path(fast.bundle) == bundle
+    # Every file is listed with its size, but none is hashed or marked verified.
+    assert set(fast.files) == set(inspected.files)
+    assert all(not item.verified and item.size is not None for item in fast.files.values())
 
-    check_tree = archives.check_tree
-    monkeypatch.setattr(
-        archives, "check_tree",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            AssertionError("fast inspection hashed the tree")))
+    hash_file = bundle_store.hash_file
+
+    def size_only(*args, **kwargs):
+        assert kwargs.get("hash_contents") is False, "fast inspection hashed the tree"
+        return hash_file(*args, **kwargs)
+
+    monkeypatch.setattr(bundle_store, "hash_file", size_only)
     assert inspect_archive(
         destination, sources, extra_files={"DOWNLOAD_INFO.csv": receipt},
         verify_files=False).status == "available"
-    monkeypatch.setattr(archives, "check_tree", check_tree)
+    monkeypatch.setattr(bundle_store, "hash_file", hash_file)
+    (bundle / "README.txt").unlink()
+    assert inspect_archive(destination, verify_files=False).status == "invalid"
+    (bundle / "README.txt").write_bytes(b"released weights\n")
 
     refreshed = install_archive(
         destination, sources, expected_sha256=digest, expected_size=len(data),
@@ -138,10 +148,14 @@ def test_install_hashes_the_extracted_tree_once(tmp_path, archive_file, monkeypa
     source, data, digest = archive_file
     destination = tmp_path / "download"
 
-    def forbidden(*args, **kwargs):
-        raise AssertionError("hashed the extracted tree a second time")
+    hash_file = bundle_store.hash_file
 
-    monkeypatch.setattr(archives, "check_tree", forbidden)
+    def size_only(*args, **kwargs):
+        # The tree's own check; the manifest's hashing uses archives.hash_file.
+        assert kwargs.get("hash_contents") is False, "hashed the extracted tree a second time"
+        return hash_file(*args, **kwargs)
+
+    monkeypatch.setattr(bundle_store, "hash_file", size_only)
     install_archive(destination, source, expected_sha256=digest, expected_size=len(data))
     monkeypatch.undo()
     assert inspect_archive(destination, source, expected_sha256=digest, expected_size=len(data)).verified
