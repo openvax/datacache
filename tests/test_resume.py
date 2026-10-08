@@ -373,14 +373,14 @@ def test_failed_bundle_rename_keeps_private_resumable_work(server, tmp_path, mon
     assets = {'data': dict(url=url, sha256=DIGEST, size=len(PAYLOAD))}
     replace = os.replace
 
-    def fail_generation_rename(source, target):
-        if Path(target).parent == dest / 'generations':
+    def fail_bundle_rename(source, target):
+        if Path(target).parent == dest / 'bundles':
             assert Path(source).parent.stat().st_mode & 0o077 == 0
-            raise OSError('cannot publish generation')
+            raise OSError('cannot publish bundle')
         return replace(source, target)
 
-    monkeypatch.setattr(os, 'replace', fail_generation_rename)
-    with pytest.raises(OSError, match='cannot publish generation'):
+    monkeypatch.setattr(os, 'replace', fail_bundle_rename)
+    with pytest.raises(OSError, match='cannot publish bundle'):
         install_bundle(dest, assets, download_options=dict(resume=True, chunk_size=8))
     working = next(dest.glob('.staging-*'))
     assert working.stat().st_mode & 0o077 == 0

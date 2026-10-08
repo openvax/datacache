@@ -63,7 +63,7 @@ guides; their old links land on the guide that replaced them.
 - <a id="versioned-datasets-and-large-downloads"></a>[Pinned bundles](https://github.com/openvax/datacache/blob/master/docs/bundles.md), [archive trees](https://github.com/openvax/datacache/blob/master/docs/archives.md) and the [legacy file registry](https://github.com/openvax/datacache/blob/master/docs/file_registry.md)
 - <a id="choose-the-right-api"></a><a id="guarantees-and-limits"></a>[Interface selection and guarantees](https://github.com/openvax/datacache/blob/master/docs/reference/choosing.md)
 - [Derived-artifact materialization](https://github.com/openvax/datacache/blob/master/docs/materialization.md): caller-owned
-  builders, atomic output generations, dependency receipts and resumable inputs.
+  builders, outputs published together as one bundle, dependency receipts and resumable inputs.
 - [Complete API reference](https://github.com/openvax/datacache/blob/master/docs/api.md)
 - [Downstream integration](https://github.com/openvax/datacache/blob/master/docs/integration.md): contracts for consuming libraries.
 - [Release notes](https://github.com/openvax/datacache/blob/master/CHANGELOG.md) and [release procedure](https://github.com/openvax/datacache/blob/master/RELEASING.md).

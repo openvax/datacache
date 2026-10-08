@@ -12,7 +12,7 @@ import threading
 import pytest
 
 from datacache import FileValidationError, VersionedDatasetRegistry, inspect_bundle, install_bundle
-from datacache import bundles, download, generation_store
+from datacache import bundle_store, bundles, download
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='POSIX bundle installation')
 
@@ -40,7 +40,7 @@ def test_fast_resolution_and_cache_hits_read_no_payloads_or_write(installed, mon
         assets = {name: {'url': spec['url']} for name, spec in assets.items()}
         registry = VersionedDatasetRegistry(
             {'reference': dict(default_version='v1', versions={'v1': assets})},
-            cache_root=registry.bundle_path('reference').parents[1], verified=False)
+            cache_root=registry.store_path('reference').parents[1], verified=False)
     payloads = set(map(Path, paths.values()))
     original_open, original_os_open, original_read = builtins.open, os.open, os.read
     payload_fds = set()
@@ -73,21 +73,21 @@ def test_fast_resolution_and_cache_hits_read_no_payloads_or_write(installed, mon
     monkeypatch.setattr(bundles, 'inspect_file', forbidden)
     monkeypatch.setattr(bundles, 'file_lock', forbidden)
     monkeypatch.setattr(bundles, 'write_json', forbidden)
-    monkeypatch.setattr(generation_store, 'write_json', forbidden)
+    monkeypatch.setattr(bundle_store, 'write_json', forbidden)
     monkeypatch.setattr(download, 'fetch_file', forbidden)
     monkeypatch.setattr(Path, 'mkdir', forbidden)
     state = registry.inspect('reference', verify_files=False)
     assert state.status == 'available' and not state.verified
     assert {name: item.path for name, item in state.files.items()} == paths
     assert all(not item.verified and item.size is not None for item in state.files.values())
-    assert registry.local_path('reference', verify_files=False) == Path(state.generation)
+    assert registry.local_path('reference', verify_files=False) == Path(state.bundle)
     assert registry.local_path(
         'reference', asset='records.txt', verify_files=False) == Path(paths['records.txt'])
     assert registry.is_cached('reference', verify_files=False)
     assert not registry.status(verify_files=False)[0]['inspection'].verified
     assert registry.download('reference', verify_files=False) == paths
-    assert registry.ensure('reference', verify_files=False) == Path(state.generation)
-    assert inspect_bundle(registry.bundle_path('reference'), verify_files=False).status == 'available'
+    assert registry.ensure('reference', verify_files=False) == Path(state.bundle)
+    assert inspect_bundle(registry.store_path('reference'), verify_files=False).status == 'available'
     with pytest.raises(AssertionError, match='full inspection'):
         registry.inspect('reference')
 
@@ -115,7 +115,7 @@ def test_defaults_agree_on_same_size_corruption_that_only_fast_checks_miss(insta
 
 def test_fast_resolution_on_a_read_only_store(installed):
     registry, assets, paths = installed
-    store = registry.bundle_path('reference')
+    store = registry.store_path('reference')
     entries = [store, *store.rglob('*')]
     modes = {path: path.stat().st_mode & 0o777 for path in entries}
     try:
@@ -123,7 +123,7 @@ def test_fast_resolution_on_a_read_only_store(installed):
             path.chmod(0o555 if path.is_dir() else 0o444)
         state = registry.inspect('reference', verify_files=False)
         assert state.status == 'available' and not state.verified
-        assert registry.local_path('reference', verify_files=False) == Path(state.generation)
+        assert registry.local_path('reference', verify_files=False) == Path(state.bundle)
         assert registry.is_cached('reference', verify_files=False)
         assert registry.status(verify_files=False)[0]['inspection'].status == 'available'
         assert registry.download('reference', verify_files=False) == paths
@@ -133,13 +133,13 @@ def test_fast_resolution_on_a_read_only_store(installed):
 
 
 @pytest.mark.parametrize('damage', ['missing', 'size', 'symlink', 'hardlink', 'fifo',
-                                  'parent-link', 'pointer', 'manifest', 'inventory', 'expectations'])
+                                  'parent-link', 'newest-link', 'manifest', 'inventory', 'expectations'])
 def test_fast_lookup_rejects_invalid_metadata_and_unsafe_files(installed, tmp_path, damage):
     registry, assets, paths = installed
-    store = registry.bundle_path('reference')
+    store = registry.store_path('reference')
     target = Path(paths['records.txt'])
-    generation = target.parent
-    manifest = generation / bundles.MANIFEST
+    bundle = target.parent
+    manifest = bundle / bundles.MANIFEST
     if damage == 'missing':
         target.unlink()
     elif damage == 'size':
@@ -153,11 +153,11 @@ def test_fast_lookup_rejects_invalid_metadata_and_unsafe_files(installed, tmp_pa
         target.unlink()
         os.mkfifo(target)
     elif damage == 'parent-link':
-        nested = generation / 'nested'
-        nested.rename(generation / 'original-nested')
-        nested.symlink_to(generation / 'original-nested', target_is_directory=True)
-    elif damage == 'pointer':
-        (store / generation_store.CURRENT).write_text(json.dumps({'generation': '../outside'}))
+        nested = bundle / 'nested'
+        nested.rename(bundle / 'original-nested')
+        nested.symlink_to(bundle / 'original-nested', target_is_directory=True)
+    elif damage == 'newest-link':
+        (store / 'bundles' / '2999-01-01T00-00-00Z').symlink_to(tmp_path / 'upstream', target_is_directory=True)
     elif damage == 'manifest':
         manifest.write_text('{')
     elif damage == 'inventory':
@@ -173,7 +173,7 @@ def test_fast_lookup_retains_unverified_source_identity_checks(installed):
     registry, assets, paths = installed
     untrusted = {name: dict(url=spec['url']) for name, spec in assets.items()}
     untrusted['records.txt']['url'] = 'https://different.invalid/records.txt'
-    assert inspect_bundle(registry.bundle_path('reference'), untrusted, verify_files=False).status == 'invalid'
+    assert inspect_bundle(registry.store_path('reference'), untrusted, verify_files=False).status == 'invalid'
 
 
 def test_fast_lookup_reports_permission_errors(installed, monkeypatch):
@@ -191,10 +191,10 @@ def test_fast_lookup_reports_permission_errors(installed, monkeypatch):
     assert isinstance(state.error, PermissionError)
 
 
-def test_fast_install_flag_never_weakens_new_generation_validation(installed, monkeypatch):
+def test_fast_install_flag_never_weakens_new_bundle_validation(installed, monkeypatch):
     registry, assets, paths = installed
-    store = registry.bundle_path('reference')
-    pointer = (store / generation_store.CURRENT).read_bytes()
+    store = registry.store_path('reference')
+    old_bundle = inspect_bundle(store).bundle
 
     def bad_download(url, *, destination, **kwargs):
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -204,38 +204,23 @@ def test_fast_install_flag_never_weakens_new_generation_validation(installed, mo
     monkeypatch.setattr(download, 'fetch_file', bad_download)
     with pytest.raises(FileValidationError, match='SHA-256'):
         registry.download('reference', force=True, verify_files=False)
-    assert (store / generation_store.CURRENT).read_bytes() == pointer
+    assert inspect_bundle(store).bundle == old_bundle
     assert registry.local_path('reference', asset='records.txt') == Path(paths['records.txt'])
 
 
-def test_fast_install_flag_never_weakens_recovery_validation(installed, monkeypatch):
-    registry, assets, paths = installed
-    store = registry.bundle_path('reference')
-    (store / generation_store.CURRENT).unlink()
-    Path(paths['records.txt']).write_bytes(b'changed')
-    assert registry.inspect('reference', verify_files=False).status == 'recovery-required'
-
-    def forbidden(*args, **kwargs):
-        raise RuntimeError('recovery rejected corrupted bytes and attempted acquisition')
-
-    monkeypatch.setattr(download, 'fetch_file', forbidden)
-    with pytest.raises(RuntimeError, match='recovery rejected'):
-        registry.download('reference', verify_files=False)
-    assert not (store / generation_store.CURRENT).exists()
-
-
-def test_fast_readers_resolve_one_generation_during_refresh(installed, monkeypatch):
+def test_fast_readers_resolve_one_bundle_during_refresh(installed, monkeypatch):
     registry, assets, paths = installed
     entered, release = threading.Event(), threading.Event()
-    original = generation_store.write_json
+    replace = os.replace
+    bundles_directory = registry.store_path('reference') / 'bundles'
 
-    def paused(path, value, **kwargs):
-        if Path(path).name == generation_store.CURRENT:
+    def paused(source, target):
+        if Path(target).parent == bundles_directory:
             entered.set()
             assert release.wait(5)
-        return original(path, value, **kwargs)
+        return replace(source, target)
 
-    monkeypatch.setattr(generation_store, 'write_json', paused)
+    monkeypatch.setattr(os, 'replace', paused)
     with ThreadPoolExecutor() as pool:
         future = pool.submit(registry.download, 'reference', force=True)
         assert entered.wait(5)
@@ -263,10 +248,10 @@ def test_nonboolean_verification_modes_fail_without_creating_paths(tmp_path, fla
 
 def test_ensure_returns_the_downloaded_snapshot_without_inspecting_again(installed, monkeypatch):
     registry, assets, paths = installed
-    generation = Path(paths['records.txt']).parent
+    bundle = Path(paths['records.txt']).parent
     monkeypatch.setattr(registry, 'inspect', lambda *args, **kwargs: pytest.fail('inspected again'))
     monkeypatch.setattr(bundles, 'install_bundle', lambda *args, **kwargs: paths)
-    assert registry.ensure('reference') == generation
+    assert registry.ensure('reference') == bundle
     single = {'records.txt': paths['records.txt']}
     monkeypatch.setattr(bundles, 'install_bundle', lambda *args, **kwargs: single)
     assert registry.ensure('reference') == Path(paths['records.txt'])

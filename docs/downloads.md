@@ -277,7 +277,7 @@ files and trusted integrity metadata; these individual-file helpers do not
 discover versions. Symlinks are followed as in ordinary file access. Inventory
 is not a snapshot across concurrent external changes or a multi-file
 installation mechanism. Use [versioned bundles](bundles.md) for atomic
-multi-file installation and inspection of one complete generation.
+multi-file installation and inspection of one complete bundle.
 
 `cache_root` accepts a string or `pathlib.Path` and names the actual directory
 containing cached files, overriding the platform location selected by `subdir`.

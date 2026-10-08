@@ -26,31 +26,25 @@ from uuid import uuid4
 from filelock import FileLock
 
 from ._filesystem import open_regular, read_json, write_json
-from .download import validate_download_options
-from .generation_store import (
-    INVALID_STORE_ERRORS, GenerationStore, StoreKind, check_tree, list_tree, local_file_identity,
-    normal_creation_mode, observe_file, validate_file_record, validate_path_component, validate_relative_name,
+from .bundle_store import (
+    INVALID_STORE_ERRORS, MANIFEST, BundleStore, check_tree, hash_file, list_tree, local_file_identity,
+    validate_file_record, validate_path_component, validate_relative_name,
 )
+from .download import normal_creation_mode, validate_download_options
 from .integrity import FileValidationError, _validate_expectations
 from .provenance import redact_url
 
 
-STORE = ".datacache-archive-store.json"
-MANIFEST = ".datacache-archive-manifest.json"
 FORMAT = 1
 CHUNK_SIZE = 2 ** 20
-# An existing directory, even an empty one, may be an application's legacy
-# install; archive stores never take one over.
-ARCHIVE_STORE = StoreKind(
-    name="archive", marker=STORE, marker_contents={"format": FORMAT, "kind": "archive-tree"},
-    receipt=MANIFEST, created_at="fetched_at", adopts_empty_directory=False)
 
 
 @dataclass(frozen=True)
 class ArchiveInspection:
-    """Read-only status for one installed archive-tree generation.
+    """Read-only status of an archive store's current bundle, the extracted tree.
 
-    ``verified`` means caller-supplied trusted archive or part hashes identified
+    ``status`` is available, missing, invalid or inaccessible. ``bundle`` is
+    the extracted tree's directory. ``verified`` means caller-supplied trusted archive or part hashes identified
     the installed bytes. Receipt-only inspection still hashes every installed
     file, but an observed receipt is not an independent source of trust.
     """
@@ -58,7 +52,7 @@ class ArchiveInspection:
     path: str
     status: str
     verified: bool = False
-    generation: object = None
+    bundle: object = None
     files: dict = field(default_factory=dict)
     error: object = None
     source_urls: tuple = ()
@@ -253,8 +247,8 @@ def _matches_definition(receipt_archive, receipt_sources, receipt_extras, defini
             raise FileValidationError(name, "extra file disagrees with requested content")
 
 
-def _inspect_tree(store, directory, definition, verify_files=True):
-    """Check one generation, or a tree staged to become one, against its receipt."""
+def _check_bundle(store, directory, definition, verify_files=True):
+    """Check one bundle, or a tree staged to become one, against its manifest."""
     # Tree inventories grow with the archive; the writer has no fixed size cap.
     receipt = read_json(directory / MANIFEST, limit=None)
     archive, sources, files, directories, fetched_at, extras = _manifest(receipt)
@@ -269,9 +263,9 @@ def _inspect_tree(store, directory, definition, verify_files=True):
     if not verify_files:
         return ArchiveInspection(
             str(store.path), "available", False, str(directory), **metadata)
-    observed = check_tree(directory, files, directories, ignore=(MANIFEST,))
+    hashed = check_tree(directory, files, directories, ignore=(MANIFEST,))
     # Each file matched the SHA-256 its receipt records.
-    inspections = {name: value.inspection(verified=True) for name, value in observed.items()}
+    inspections = {name: value.inspection(verified=True) for name, value in hashed.items()}
     return ArchiveInspection(
         str(store.path), "available", bool(definition and definition["trusted"]),
         str(directory), inspections, **metadata)
@@ -280,7 +274,7 @@ def _inspect_tree(store, directory, definition, verify_files=True):
 def inspect_archive(
         destination, sources=None, *, expected_sha256=None, expected_size=None,
         extra_files=None, verify_files=True):
-    """Inspect one installed archive tree without writes, locks, or network.
+    """Check the current archive bundle without writes, locks, or network.
 
     Omit ``sources`` for receipt-only consistency checking. Supplying sources
     checks the requested ordered archive identity or trusted content hashes.
@@ -297,12 +291,12 @@ def inspect_archive(
     elif any(value is not None for value in (expected_sha256, expected_size, extra_files)):
         raise ValueError("sources are required with archive expectations or extra_files")
     path = Path(destination)
-    store = GenerationStore(path, ARCHIVE_STORE)
+    store = BundleStore(path, "archive")
     try:
-        state = store.read_state()
-        if state.generation is None:
-            return ArchiveInspection(str(path), state.status)
-        return _inspect_tree(store, state.generation, definition, verify_files=verify_files)
+        bundle = store.current_bundle()
+        if bundle is None:
+            return ArchiveInspection(str(path), "missing")
+        return _check_bundle(store, bundle, definition, verify_files=verify_files)
     except PermissionError as error:
         return ArchiveInspection(str(path), "inaccessible", error=error)
     except INVALID_STORE_ERRORS as error:
@@ -512,7 +506,7 @@ def install_archive(
         destination, sources, *, expected_sha256=None, expected_size=None,
         extra_files=None, force=False, verified=True, download_options=None,
         max_members=None, max_extracted_size=None):
-    """Safely install a complete tar archive tree as one immutable generation.
+    """Safely extract a complete tar archive and publish the tree as a new bundle.
 
     ``sources`` is one URL/path or an ordered sequence. Source mappings accept
     ``url``, ``path``, ``sha256``, and ``size``; supplying both URL and path uses
@@ -536,16 +530,16 @@ def install_archive(
                 raise ValueError("resumable archive parts require sha256 and size")
 
     path = Path(destination)
-    store = GenerationStore(path, ARCHIVE_STORE)
+    store = BundleStore(path, "archive")
     inspection = inspect_archive(
         path, sources, expected_sha256=expected_sha256,
         expected_size=expected_size, extra_files=extra_files)
     if not force and inspection.status == "available":
-        return Path(inspection.generation)
+        return Path(inspection.bundle)
     if inspection.status == "inaccessible":
         raise inspection.error
     if not force and inspection.status == "invalid":
-        store.refuse_foreign_directory()
+        store.refuse_takeover()
         raise FileValidationError(path, "invalid archive installation; use force=True to explicitly repair") from inspection.error
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -556,13 +550,9 @@ def install_archive(
             path, sources, expected_sha256=expected_sha256,
             expected_size=expected_size, extra_files=extra_files)
         if not force and inspection.status == "available":
-            return Path(inspection.generation)
+            return Path(inspection.bundle)
         if inspection.status == "invalid" and not force:
             raise FileValidationError(path, "invalid archive installation; use force=True to explicitly repair") from inspection.error
-        if inspection.status in ("missing", "recovery-required", "invalid"):
-            recovered = store.recover(lambda generation: _inspect_tree(store, generation, definition))
-            if recovered is not None:
-                return Path(recovered.generation)
 
         resumable = options.get("resume", False)
         working = path / (".staging-" + (_working_key(definition) if resumable else uuid4().hex))
@@ -595,7 +585,7 @@ def install_archive(
                 with os.fdopen(descriptor, "wb") as output:
                     output.write(value)
             listing = list_tree(tree)
-            files = {name: observe_file(file_path).record for name, file_path in listing.files.items()}
+            files = {name: hash_file(file_path).record for name, file_path in listing.files.items()}
             receipt = {
                 "format": FORMAT,
                 "kind": "archive-tree",
@@ -607,12 +597,11 @@ def install_archive(
                 "directories": listing.directories,
             }
             write_json(tree / MANIFEST, receipt, mode=normal_creation_mode(tree))
-            # Read back and validate the receipt and complete tree while private.
-            _inspect_tree(store, tree, definition)
-            generation = store.add_generation(tree)
+            # Read back and check the manifest and complete tree while private.
+            _check_bundle(store, tree, definition)
+            bundle = store.publish(tree)
             published = True
-            store.publish(generation)
-            return generation
+            return bundle
         finally:
             if published or not resumable:
                 shutil.rmtree(working)
@@ -744,7 +733,7 @@ class VersionedArchiveRegistry:
     def download(
             self, name, version=None, *, force=False, source_paths=None,
             **download_options):
-        """Install/reuse one version and return its immutable extracted root."""
+        """Install/reuse one version and return its current bundle, the extracted tree."""
         version, definition = self._version(name, version)
         sources = self._local_sources(definition["sources"], source_paths)
         return install_archive(
@@ -757,7 +746,7 @@ class VersionedArchiveRegistry:
             max_extracted_size=definition["max_extracted_size"])
 
     def local_path(self, name, version=None, *, verify_files=False):
-        """Return an installed generation without downloading or repairing."""
+        """Return the current bundle without downloading or repairing."""
         inspected = self.inspect(name, version, verify_files=verify_files)
         if inspected.status == "missing":
             raise FileNotFoundError(inspected.path)
@@ -766,14 +755,14 @@ class VersionedArchiveRegistry:
         if inspected.status != "available":
             raise FileValidationError(
                 inspected.path, "archive installation is %s" % inspected.status)
-        return Path(inspected.generation)
+        return Path(inspected.bundle)
 
     def ensure(self, name, version=None, **download_options):
-        """Install if needed, then return the extracted generation path."""
+        """Install if needed, then return the current bundle's path."""
         return self.download(name, version, **download_options)
 
     def is_cached(self, name, version=None, *, verify_files=False):
-        """Whether one version has an available published generation."""
+        """Whether one version has an available current bundle."""
         return self.inspect(
             name, version, verify_files=verify_files).status == "available"
 
@@ -804,7 +793,7 @@ class VersionedArchiveRegistry:
                     "sources": [redact_url(identity) for identity in identities],
                     "downloaded_sources": list(inspection.source_urls),
                     "path": str(self.store_path(archive_name, version)),
-                    "generation": inspection.generation,
+                    "bundle": inspection.bundle,
                     "status": inspection.status,
                     "cached": inspection.status == "available",
                     "fetched_at": inspection.fetched_at,

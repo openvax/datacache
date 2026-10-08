@@ -14,23 +14,19 @@ from urllib.request import url2pathname
 from uuid import uuid4
 
 from ._filesystem import file_lock, open_regular, path_present, read_json, write_json
-from .download import validate_download_options
-from .generation_store import (
-    INVALID_STORE_ERRORS, GenerationStore, StoreKind, check_expected, check_tree, local_file_identity,
-    normal_creation_mode, observe_file, parent_directories, require_directory, validate_distinct_paths,
-    validate_file_record, validate_no_sidecar_collisions, validate_relative_name,
+from .bundle_store import (
+    INVALID_STORE_ERRORS, MANIFEST, BundleStore, check_expected, check_tree, hash_file, local_file_identity,
+    parent_directories, require_directory, validate_distinct_paths, validate_file_record,
+    validate_no_sidecar_collisions, validate_relative_name,
 )
+from .download import normal_creation_mode, validate_download_options
 from .integrity import FileValidationError, _validate_expectations
 from .progress import Progress
 from . import provenance
 
-STORE = '.datacache-materialization.json'
-MANIFEST = '.datacache-manifest.json'
 INPUTS = '.datacache-inputs.json'
 FORMAT = 1
 CHUNK_SIZE = 2 ** 20
-MATERIALIZATION_STORE = StoreKind(name='materialization', marker=STORE, marker_contents={'format': FORMAT},
-                                  receipt=MANIFEST, created_at='created_at')
 
 logger = logging.getLogger(__name__)
 
@@ -139,22 +135,23 @@ def _source_records(value, definition):
 
 @dataclass(frozen=True)
 class MaterializationInspection:
-    """One read-only snapshot, including source provenance and transform identity.
+    """Read-only status of the current bundle of built outputs, with its sources.
 
-    verified refers only to outputs matched against caller-trusted hashes now.
+    status is available, missing, invalid or inaccessible. bundle is the
+    current bundle's directory. verified refers only to outputs matched against caller-trusted hashes now.
     Source records distinguish acquisition-time trusted hashes from observation.
     """
     path: str
     status: str
     verified: bool = False
-    generation: object = None
+    bundle: object = None
     files: dict = field(default_factory=dict)
     sources: dict = field(default_factory=dict)
     transform: object = None
     error: object = None
 
 
-def _inspect_tree(store, directory, expected=None, *, verify_files=True, show_progress=False):
+def _check_bundle(store, directory, expected=None, *, verify_files=True, show_progress=False):
     receipt = read_json(directory / MANIFEST, limit=None)
     if not isinstance(receipt, dict) or receipt.get('format') != FORMAT:
         raise ValueError('unrecognized materialization receipt')
@@ -168,18 +165,18 @@ def _inspect_tree(store, directory, expected=None, *, verify_files=True, show_pr
     for name, record in outputs.items():
         check_expected(name, validate_file_record(record), definition['outputs'][name])
     trusted = expected['outputs'] if expected is not None else None
-    observed = check_tree(directory, outputs, parent_directories(outputs), ignore=(MANIFEST,),
-                          read_contents=verify_files, show_progress=show_progress)
+    hashed = check_tree(directory, outputs, parent_directories(outputs), ignore=(MANIFEST,),
+                        hash_contents=verify_files, show_progress=show_progress)
     # Only a hash the caller supplied verifies an output; the receipt's own doesn't.
     files = {name: value.inspection(verified=bool(verify_files and trusted and trusted[name]['sha256']))
-             for name, value in observed.items()}
+             for name, value in hashed.items()}
     verified = verify_files and trusted is not None and all(spec['sha256'] for spec in trusted.values())
     return MaterializationInspection(str(store.path), 'available', bool(verified), str(directory),
                                       files, sources, definition['transform'])
 
 
 def inspect_materialization(destination, sources=None, *, transform=None, outputs=None, verify_files=True):
-    """Inspect offline without writes, locks, source access or automatic recovery.
+    """Check the current bundle offline, without writes, locks or source access.
 
     Supply all of sources/transform/outputs to check dependency identity; omit
     all three for receipt-only consistency checks. Metadata-only inspection
@@ -196,12 +193,12 @@ def inspect_materialization(destination, sources=None, *, transform=None, output
 
 def _inspect_materialization(destination, expected, *, verify_files=True):
     path = Path(destination)
-    store = GenerationStore(path, MATERIALIZATION_STORE)
+    store = BundleStore(path, 'materialization')
     try:
-        state = store.read_state()
-        if state.generation is None:
-            return MaterializationInspection(str(path), state.status)
-        return _inspect_tree(store, state.generation, expected, verify_files=verify_files)
+        bundle = store.current_bundle()
+        if bundle is None:
+            return MaterializationInspection(str(path), 'missing')
+        return _check_bundle(store, bundle, expected, verify_files=verify_files)
     except PermissionError as error:
         return MaterializationInspection(str(path), 'inaccessible', error=error)
     except INVALID_STORE_ERRORS as error:
@@ -265,7 +262,7 @@ def _acquire_inputs(directory, definition, acquisition, options, *, force=False)
         if name in records:
             try:
                 _source_records({name: records[name]}, {name: spec})
-                observe_file(target, records[name])
+                hash_file(target, records[name])
             except (FileNotFoundError, ValueError) as error:
                 if not force:
                     raise FileValidationError(
@@ -291,7 +288,7 @@ def _acquire_inputs(directory, definition, acquisition, options, *, force=False)
                 target.unlink()
             else:
                 try:
-                    observe_file(target, spec)
+                    hash_file(target, spec)
                 except FileValidationError:
                     if not force:
                         raise FileValidationError(target, 'invalid private input; use force=True to repair')
@@ -325,8 +322,8 @@ def _acquire_inputs(directory, definition, acquisition, options, *, force=False)
         if copied is not None:
             observed, info = copied, os.stat(target)
         else:
-            acquired = observe_file(target, spec, show_progress=options['show_progress'])
-            observed, info = acquired.record, acquired.info
+            hashed = hash_file(target, spec, show_progress=options['show_progress'])
+            observed, info = hashed.record, hashed.info
         origin_record = provenance.read(target, info) or {}
         record = dict(observed, origin=spec['origin'], identity=spec['identity'],
                       verified=spec['sha256'] is not None,
@@ -341,21 +338,21 @@ def _acquire_inputs(directory, definition, acquisition, options, *, force=False)
 
 def materialize(destination, sources, *, transform, outputs, builder, force=False,
                 retain_sources=False, verify_files=True, download_options=None):
-    """Build all declared outputs and their receipt as one immutable generation.
+    """Build all declared outputs, then publish them together as a new bundle.
 
     builder(source_paths, output_paths) must create/close exactly the declared
     outputs and leave inputs unchanged. Source definitions contain url or path
     plus optional raw sha256/size; outputs map names to optional sha256/size.
     transform is {version: nonempty string, options: opaque JSON value}.
-    Changed dependencies and corrupt generations require explicit force=True.
+    Changed dependencies and a corrupt bundle require explicit force=True.
     Force rebuilds outputs while reusing any complete matching private inputs.
 
     Inputs survive failures, including without HTTP resume. resume=True enables
     existing raw HTTP resume rules for remote sources; local inputs are copied.
     Successful publication removes owned inputs unless retain_sources=True.
-    Caller-owned inputs and old output generations are never deleted. Cache
-    hits are offline and read-only; verify_files=False skips payload hashing
-    only on reuse. New publication and explicit recovery always check bytes.
+    Caller-owned inputs and old bundles are never deleted. Cache hits are
+    offline and read-only; verify_files=False skips payload hashing only on
+    reuse. New outputs are always hashed before publication.
     Download/copy/verification progress is on by default; builder progress is
     caller-owned. Installation requires POSIX locks and atomic local renames.
     """
@@ -372,7 +369,7 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
             if kind == 'url':
                 validate_resume(source, definition['sources'][name]['sha256'], definition['sources'][name]['size'])
     path = Path(destination).absolute()
-    store = GenerationStore(path, MATERIALIZATION_STORE)
+    store = BundleStore(path, 'materialization')
 
     def inspect_current():
         # A forced refresh rebuilds whatever is there; it only needs to know
@@ -398,11 +395,6 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
         inspection = inspect_current()
         if check_hit(inspection):
             return {name: value.path for name, value in inspection.files.items()}
-        if not force and inspection.status in ('missing', 'recovery-required'):
-            recovered = store.recover(lambda generation: _inspect_tree(store, generation, definition))
-            if recovered is not None:
-                _cleanup_inputs(path, definition, retain_sources)
-                return {name: value.path for name, value in recovered.files.items()}
         inputs = _input_directory(path, definition)
         source_paths, records = _acquire_inputs(inputs, definition['sources'], acquisition, options, force=force)
         working = path / ('.staging-%s-%d' % (_fingerprint(definition), os.getuid()))
@@ -423,27 +415,24 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
             # Builder callbacks are trusted code, not a sandbox; enforce their
             # read-only-input contract before creating a dependency receipt.
             for name, source in source_paths.items():
-                observe_file(source, records[name])
+                hash_file(source, records[name])
             # Reject extras/links/specials before hashing any declared output.
             declared = definition['outputs']
-            check_tree(staged, declared, parent_directories(declared), read_contents=False)
+            check_tree(staged, declared, parent_directories(declared), hash_contents=False)
             mode = normal_creation_mode(staged)
             observed = {}
             for name, target in output_paths.items():
-                observed[name] = observe_file(target, declared[name], show_progress=options['show_progress']).record
+                observed[name] = hash_file(target, declared[name], show_progress=options['show_progress']).record
                 os.chmod(target, mode)
             receipt = dict(format=FORMAT, created_at=datetime.now(timezone.utc).isoformat(),
                            definition=definition, sources=records, outputs=observed)
             write_json(staged / MANIFEST, receipt, mode=mode)
-            # The outputs were just hashed into the receipt; check its structure,
-            # inventory and sizes without hashing them again.
-            _inspect_tree(store, staged, definition, verify_files=False)
-            generation = store.add_generation(staged)
-            # Remap only after validating the receipt in its private staging.
-            candidate = _inspect_tree(store, generation, definition, verify_files=False)
-            store.publish(generation)
+            # The outputs were just hashed into the manifest; check its
+            # structure, inventory and sizes without hashing them again.
+            _check_bundle(store, staged, definition, verify_files=False)
+            bundle = store.publish(staged)
             _cleanup_inputs(path, definition, retain_sources)
-            return {name: value.path for name, value in candidate.files.items()}
+            return {name: str(bundle / name) for name in declared}
         finally:
             # Cleanup never replaces the builder's error or fails a publication.
             try:

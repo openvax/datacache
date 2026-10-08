@@ -1,6 +1,6 @@
 """Fixed-path single-file registry for applications with established caches.
 
-Unlike generation bundles, this preserves legacy files and a root manifest.
+Unlike bundle stores, this preserves legacy files and a root manifest.
 The caller owns trusted dataset definitions; writers serialize per root. Use bundles for transactional multi-file data.
 """
 

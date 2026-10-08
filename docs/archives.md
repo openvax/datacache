@@ -31,10 +31,10 @@ state = inspect_archive(
 assert state.status == "available" and state.verified
 ```
 
-The destination is a managed store, not the extracted directory. Installation
-returns the immutable generation containing the archive's paths. Consumers must
-resolve the generation once and use that returned path for an operation; they
-must not construct `<destination>/<archive member>` directly.
+The destination is a store, not the extracted directory. Installation returns
+the current bundle: the directory holding the extracted tree. Resolve it once
+and use that returned path for an operation; never construct
+`<destination>/<archive member>` directly.
 
 ## Ordered split archives and local inputs
 
@@ -95,7 +95,7 @@ tree = install_archive(
 MHCflurry should treat a fast
 `inspect_archive(..., verify_files=False).status == "available"` using the same
 sources and `extra_files` as installed, not mere destination existence. Its
-`get_path` adapter should append member paths to `state.generation`. The fast
+`get_path` adapter should append member paths to `state.bundle`. The fast
 check validates the atomic publication receipt and requested source identity
 without hashing large model files on every path lookup. Explicit diagnostics can
 use the default `verify_files=True` for complete tree verification. This prevents
@@ -125,8 +125,8 @@ rows = registry.status("models_class1_presentation")
 covering MHCflurry's `--already-downloaded-dir` mode without changing source
 identity or bypassing transactional extraction.
 
-Existing MHCflurry directories are deliberately not adopted or overwritten,
-whether empty, complete, partial, or unreceipted. A migration can continue to
+Existing MHCflurry directories with files in them are never adopted or
+overwritten, whether complete, partial, or unreceipted. A migration can continue to
 read a legacy directory and use archive stores only for new installations, or
 explicitly validate/import legacy content in application code. DataCache never
 claims it silently, including with `force=True`.
@@ -154,7 +154,7 @@ The member count includes root directory entries even though they are not
 extracted. Local sources must be regular files; links and special inputs such
 as FIFOs are rejected without waiting for a writer.
 
-After extraction, the generation receipt records the assembled archive's
+After extraction, the bundle's manifest records the assembled archive's
 observed hash and size, every part's observed hash, ordered source fingerprints,
 and a sorted hash/size manifest of every installed file. The complete consumer
 `extra_files` inventory is recorded separately. Manifest reading supports the
@@ -175,25 +175,21 @@ A valid cache hit is entirely read-only. `inspect_archive` hashes the complete
 tree by default; `verify_files=False` provides a receipt/source-identity-only
 path lookup and never reports `verified=True`. Invalid installations require an
 explicit `force=True`; inaccessible installations propagate their permission
-error. Consumer metadata is part of the requested generation identity, so a
+error. Consumer metadata is part of the requested archive's identity, so a
 different, added, or removed metadata entry requires an explicit refresh.
 
-## Publication, recovery and platforms
+## Publication and platforms
 
-Writers serialize on a permanent sibling lock. Downloads, concatenation,
-extraction, consumer metadata and the DataCache receipt complete in private
-staging. The finished tree is renamed to `generations/<id>` and `current.json`
-is atomically replaced only after the complete tree and its written receipt
-have been read back and validated in staging. A failed refresh
-leaves the previous pointer and generation active. On a first installation, an
-interruption between the generation rename and pointer update is reported as
-`recovery-required`; the next explicit installation recovers matching local
-content without network access. If a refresh is interrupted at that point, the
-old generation remains active and the completed unreferenced generation is
-retained; an explicit retry with `force=True` performs the requested refresh.
+Archive stores use the same layout as [bundles](bundles.md#how-bundles-are-stored):
+each install is a bundle in `bundles/`, named for its UTC install time, and the
+newest is the current one. Installs into one store take turns on a lock file
+beside the store. Downloads, concatenation, extraction, consumer metadata and
+the manifest are completed in private staging and read back and checked there.
+Only then is the tree renamed into `bundles/`, which publishes it in one step.
+A failed or interrupted install leaves the previous bundle current.
 
-Generations are retained so paths already returned to readers remain valid.
-DataCache does not garbage-collect them. Publication uses the cross-platform
+Old bundles are kept so paths already returned to readers remain valid.
+DataCache never deletes them itself. Publication uses the cross-platform
 `filelock` lock plus same-filesystem atomic renames and supports ordinary local
 filesystems on Linux, macOS and Windows. Distributed coordination, arbitrary
 network-filesystem semantics, and durability after sudden power loss are outside
