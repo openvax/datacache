@@ -3,6 +3,7 @@
 from hashlib import sha256
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
+from pathlib import Path
 import threading
 
 import pytest
@@ -42,15 +43,15 @@ def server():
 
 
 def plain(url, tmp_path):
-    return open(fetch_file(url, destination=tmp_path / "plain", raw=True,
-                           max_retries=0), "rb").read()
+    return Path(fetch_file(url, destination=tmp_path / "plain", raw=True,
+                           max_retries=0)).read_bytes()
 
 
 def resumable(url, tmp_path):
-    return open(fetch_file(url, destination=tmp_path / "resumed", raw=True,
+    return Path(fetch_file(url, destination=tmp_path / "resumed", raw=True,
                            resume=True, expected_size=len(PAYLOAD),
                            expected_sha256=sha256(PAYLOAD).hexdigest(),
-                           max_retries=0), "rb").read()
+                           max_retries=0)).read_bytes()
 
 
 def in_memory(url, tmp_path):
