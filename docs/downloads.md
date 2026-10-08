@@ -171,6 +171,11 @@ reuse and read-only inspection make no requests and do not wait. Existing
 pyensembl calls through `_download_and_decompress_if_necessary` receive the same
 default policy without changes to downstream code.
 
+Every HTTP and HTTPS request, including resumed range requests and
+`fetch_bytes`, sends `User-Agent: datacache/<version>
+(+https://github.com/openvax/datacache)`. Some hosts, IEDB among them, refuse
+Requests' default `python-requests` User-Agent.
+
 Progress byte counts describe the current attempt and may decrease after a
 restart. The same `timeout` is passed to each request; Requests timeouts govern
 connection/read inactivity, not an overall elapsed-time deadline. Retry count

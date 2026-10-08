@@ -11,6 +11,7 @@ import time
 from urllib.parse import urlsplit
 
 from ._filesystem import file_lock, open_regular, path_present, read_json, write_json
+from .common import USER_AGENT
 from .integrity import FileValidationError, _validate_expectations, validate_file
 from .progress import Progress
 from .retries import error_description, is_retryable_http_error, retry_delay
@@ -158,7 +159,7 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
                     try:
                         # One protocol restart per attempt, independent of retries.
                         for restart in range(2):
-                            headers = {'Accept-Encoding': 'identity'}
+                            headers = {'Accept-Encoding': 'identity', 'User-Agent': USER_AGENT}
                             validator = metadata.get('validator')
                             if offset:
                                 headers['Range'] = 'bytes=%d-' % offset

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.19.1
+
+- Identify every HTTP and HTTPS request as
+  `datacache/<version> (+https://github.com/openvax/datacache)` instead of
+  Requests' default `python-requests/<version>`, which some hosts refuse. IEDB
+  returned 403 for pepdata's allele list downloads (#104).
+
 ## 1.19.0
 
 - Add `materialize` and offline `inspect_materialization` for caller-built

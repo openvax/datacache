@@ -20,7 +20,14 @@ from urllib.parse import parse_qsl, urlsplit
 from shutil import rmtree
 import appdirs
 
+from .version import __version__
+
 COMPRESSION_SUFFIXES = (".gz", ".zip")
+
+# Sent on every HTTP(S) request. Some data hosts (IEDB among them) reject any
+# User-Agent containing Requests' default "python-requests" token, so this
+# names datacache alone rather than extending that default.
+USER_AGENT = "datacache/%s (+https://github.com/openvax/datacache)" % __version__
 
 # Longest file name ext4 accepts, in UTF-8 bytes. APFS and NTFS instead limit
 # characters or UTF-16 units, which a UTF-8 byte count never undercounts.

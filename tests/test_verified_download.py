@@ -376,7 +376,7 @@ def test_http_timeout_progress_and_response_cleanup(tmp_path, monkeypatch, faile
 
     response = Response()
 
-    def get(url, timeout, stream):
+    def get(url, headers, timeout, stream):
         assert timeout == 3
         assert stream is True
         return response
