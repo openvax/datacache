@@ -443,6 +443,8 @@
       
         
       
+        
+      
     
     
     
@@ -528,6 +530,34 @@
     
   
     Install archive trees
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../materialization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build derived files
   
 
     
@@ -1386,6 +1416,39 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#materialize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        materialize
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inspect_materialization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        inspect_materialization
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#materializationinspection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MaterializationInspection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#versionedfileregistry" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2185,6 +2248,39 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#materialize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        materialize
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inspect_materialization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        inspect_materialization
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#materializationinspection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MaterializationInspection
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#versionedfileregistry" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2217,7 +2313,7 @@
 
 <h1 id="public-api-reference">Public API reference<a class="headerlink" href="#public-api-reference" title="Permanent link">&para;</a></h1>
 <p>This reference covers every name exported in <code>datacache.__all__</code> and every
-public <code>Cache</code> method in DataCache 1.19.0. Import these names from <code>datacache</code>.
+public <code>Cache</code> method in DataCache 1.19.1. Import these names from <code>datacache</code>.
 Signatures below show all defaults; arguments after <code>*</code> are keyword-only.
 Method signatures omit <code>self</code> and are called on a <code>Cache</code> instance.</p>
 <p>Start with the <a href="../#cache-and-verify-a-file">quickstart</a> for a first download.
@@ -2244,6 +2340,10 @@ explain the longer workflows and compatibility guarantees.</p>
 <tr>
 <td>Versioned file bundles</td>
 <td><a href="#install_bundle">install_bundle</a>, <a href="#inspect_bundle">inspect_bundle</a>, <a href="#bundleinspection">BundleInspection</a>, <a href="#versioneddatasetregistry">VersionedDatasetRegistry</a>, <a href="#versionedfileregistry">VersionedFileRegistry</a></td>
+</tr>
+<tr>
+<td>Derived artifacts</td>
+<td><a href="#materialize">materialize</a>, <a href="#inspect_materialization">inspect_materialization</a>, <a href="#materializationinspection">MaterializationInspection</a></td>
 </tr>
 <tr>
 <td>Paths and presence</td>
@@ -3469,6 +3569,41 @@ The <a href="../bundles/">bundle guide</a> includes an example and downstream mi
 </tr>
 </tbody>
 </table>
+<h2 id="materialize">materialize<a class="headerlink" href="#materialize" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>materialize(destination, sources, *, transform, outputs, builder, force=False,
+            retain_sources=False, verify_files=True, download_options=None)
+</code></pre></div>
+<p>Install caller-built outputs and their dependency receipt as one immutable
+generation. Sources map relative names to <code>{url: ...}</code> or <code>{path: ...}</code>, plus
+optional raw-byte <code>sha256</code>/<code>size</code>; outputs map names to optional output-byte
+<code>sha256</code>/<code>size</code>. Transform is <code>{version: nonempty_string, options: JSON_value}</code>.
+The builder receives private <code>(source_paths, output_paths)</code> mappings, must leave
+inputs unchanged and create/close exactly the declared regular output files.
+Returns name-to-string snapshot paths; builder return values are ignored.</p>
+<p>Dependency mismatch/corruption requires explicit <code>force=True</code>. Completed inputs
+survive failures; successful publication removes owned inputs unless retention
+is requested. Caller-owned local inputs and old generations are never deleted.
+Cache hits are offline/read-only. Fast reuse is opt-in; new publication/recovery
+always hash files. Download/copy/verification progress defaults on, configurable
+through download options. Installation initially requires POSIX local storage.
+See the <a href="../materialization/">materialization guide</a> for receipts, resume, callback
+contracts, retention, recovery and peak/retained disk use.</p>
+<h2 id="inspect_materialization">inspect_materialization<a class="headerlink" href="#inspect_materialization" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>inspect_materialization(destination, sources=None, *, transform=None, outputs=None,
+                        verify_files=True)
+</code></pre></div>
+<p>Return <code>MaterializationInspection</code> offline without writes, locks, original
+input access or repair. Supply all of sources/transform/outputs for requested
+dependency checks, or omit all three for receipt-only consistency checks.
+<code>verify_files=False</code> validates inventory, types and sizes without payload reads
+and never claims trusted verification.</p>
+<h2 id="materializationinspection">MaterializationInspection<a class="headerlink" href="#materializationinspection" title="Permanent link">&para;</a></h2>
+<p>A read-only snapshot with <code>path</code>, <code>status</code>, <code>verified</code>, <code>generation</code>, <code>files</code>,
+<code>sources</code>, <code>transform</code> and <code>error</code>. Status is available, missing, invalid,
+inaccessible or recovery-required. <code>verified</code> means all output files matched
+caller-trusted hashes now. Source records separately report raw observed hashes,
+sizes, redacted origins, identity, acquisition time, acquisition-time trusted
+verification and available validated transport metadata.</p>
 <h2 id="versionedfileregistry">VersionedFileRegistry<a class="headerlink" href="#versionedfileregistry" title="Permanent link">&para;</a></h2>
 <p><code>VersionedFileRegistry(datasets, *, cache_dir, error_cls=RuntimeError)</code></p>
 <p>Fixed-path single-file compatibility registry. Definitions contain <code>filename</code>,

@@ -567,6 +567,8 @@
       
         
       
+        
+      
     
     
     
@@ -652,6 +654,34 @@
     
   
     Install archive trees
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../materialization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build derived files
   
 
     
@@ -1236,6 +1266,10 @@ are not retried. Local file and FTP transfers remain single attempts. Cache
 reuse and read-only inspection make no requests and do not wait. Existing
 pyensembl calls through <code>_download_and_decompress_if_necessary</code> receive the same
 default policy without changes to downstream code.</p>
+<p>Every HTTP and HTTPS request, including resumed range requests and
+<code>fetch_bytes</code>, sends <code>User-Agent: datacache/&lt;version&gt;
+(+https://github.com/openvax/datacache)</code>. Some hosts, IEDB among them, refuse
+Requests' default <code>python-requests</code> User-Agent.</p>
 <p>Progress byte counts describe the current attempt and may decrease after a
 restart. The same <code>timeout</code> is passed to each request; Requests timeouts govern
 connection/read inactivity, not an overall elapsed-time deadline. Retry count
