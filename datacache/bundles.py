@@ -12,8 +12,8 @@ from uuid import uuid4
 
 from ._filesystem import path_present, read_json, write_json
 from .bundle_store import (
-    INVALID_STORE_ERRORS, MANIFEST, BundleStore, discard_private_directory, hash_file, private_directory,
-    require_directory, source_fingerprint, user_key, validate_distinct_paths, validate_no_sidecar_collisions,
+    INVALID_STORE_ERRORS, MANIFEST, BundleStore, discard_private_directory, hash_file, local_file_identity,
+    private_directory, prune_bundles, require_directory, source_fingerprint, user_key, validate_distinct_paths, validate_no_sidecar_collisions,
     validate_path_component, validate_relative_name,
 )
 from .download import normal_creation_mode, validate_download_options, validate_size_within_limit
@@ -33,10 +33,15 @@ def _assets(assets, verified=True):
             spec = {'url': spec}
         if not isinstance(spec, dict):
             raise ValueError('asset metadata must be a mapping')
-        unknown = set(spec) - {'url', 'sha256', 'size', 'decompress'}
+        unknown = set(spec) - {'url', 'path', 'sha256', 'size', 'decompress'}
         if unknown:
             raise ValueError('unknown asset options: %s' % sorted(unknown))
-        url = spec.get('url')
+        if ('url' in spec) == ('path' in spec):
+            raise ValueError('each asset needs exactly one of url or path')
+        if 'path' in spec and (not isinstance(spec['path'], (str, os.PathLike)) or not os.fspath(spec['path'])):
+            raise ValueError('asset path must be a nonempty path')
+        # A local file is identified by its file:// URL, like any other source.
+        url = spec['url'] if 'url' in spec else local_file_identity(spec['path'])
         if not isinstance(url, str) or not url:
             raise ValueError('each asset requires a nonempty URL')
         digest, size = spec.get('sha256'), spec.get('size')
@@ -133,15 +138,40 @@ def inspect_bundle(destination, assets=None, *, verify_files=True):
         return BundleInspection(str(path), 'invalid', error=error)
 
 
+def _local_sources(source_paths, assets):
+    """source_paths as absolute Paths, checked against the assets they replace."""
+    if source_paths is None:
+        return {}
+    if not isinstance(source_paths, dict):
+        raise ValueError('source_paths must map asset names to local files')
+    unknown = set(source_paths) - set(assets)
+    if unknown:
+        raise ValueError('source_paths names unknown assets: %s' % sorted(unknown))
+    result = {}
+    for name, path in source_paths.items():
+        if not isinstance(path, (str, os.PathLike)) or not os.fspath(path):
+            raise ValueError('source_paths[%r] must be a path' % name)
+        path = Path(path).absolute()
+        if assets[name]['decompress'] and path.suffix.lower() not in ('.gz', '.zip'):
+            raise ValueError('source_paths[%r] must end in .gz or .zip to be decompressed' % name)
+        result[name] = path
+    return result
+
+
 def _paths(inspection):
     return {name: value.path for name, value in inspection.files.items()}
 
 
-def install_bundle(destination, assets, *, force=False, verified=True, verify_files=True, download_options=None):
+def install_bundle(destination, assets, *, force=False, verified=True, verify_files=True, download_options=None,
+                   source_paths=None):
     """Download every asset, then publish them together as a new bundle.
 
-    assets maps relative names to {url, sha256, size, decompress?}. Trusted
-    sha256 and size are mandatory unless verified=False is explicit. On a
+    assets maps relative names to {url, sha256, size, decompress?}; path in
+    place of url names a local file. Trusted sha256 and size are mandatory
+    unless verified=False is explicit. source_paths maps asset names to local
+    files to read instead of downloading, such as files already downloaded by
+    hand; each asset keeps its declared URL as its identity, so later
+    installs treat the bundle exactly as if it had been downloaded. On a
     valid cache hit this is read-only, including on a read-only filesystem.
     An invalid current bundle requires force=True, which installs a new one.
 
@@ -156,12 +186,15 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
         raise ValueError('verified, force and verify_files must be booleans')
     expected = _assets(assets, verified)
     options = validate_download_options(download_options, 'bundle')
+    local_sources = _local_sources(source_paths, expected)
     for name, spec in expected.items():
         validate_size_within_limit(spec['size'], options.get('max_bytes'), '%s size' % name)
     if options.get('resume'):
         # Check before creating anything: a resumable install keeps its staging.
         from .resume import validate_resume
         for name, spec in expected.items():
+            if name in local_sources:
+                continue  # Copied, not downloaded.
             validate_resume(spec['url'], spec['sha256'], spec['size'])
             if spec['decompress']:
                 raise ValueError('resume=True supports raw downloads only; %s has decompress=True' % name)
@@ -197,14 +230,20 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
                 target = staged / name
                 fetch_options = dict(options, destination=target, decompress=spec['decompress'],
                                      expected_sha256=spec['sha256'], expected_size=spec['size'])
+                source = spec['url']
+                if name in local_sources:
+                    # Read the local copy; the manifest keeps the declared URL.
+                    source = local_sources[name].as_uri()
+                    fetch_options.pop('resume', None)
+                    fetch_options['raw'] = not spec['decompress']
                 try:
-                    fetch_file(spec['url'], **fetch_options)
+                    fetch_file(source, **fetch_options)
                 except FileValidationError:
                     if not resumable or not target.is_file():
                         raise
                     # This is private, unpublished working state, not a user's
                     # installed bundle. Explicit installation may repair it.
-                    fetch_file(spec['url'], force=True, **fetch_options)
+                    fetch_file(source, force=True, **fetch_options)
                 # fetch_file already checked a trusted hash; hash only the rest.
                 hashed = hash_file(target, hash_contents=spec['sha256'] is None)
                 recorded[name] = dict(url=redact_url(spec['url']), sha256=hashed.sha256 or spec['sha256'],
@@ -324,12 +363,21 @@ class VersionedDatasetRegistry:
         return inspect_bundle(self.store_path(name, version), self._datasets[name]['versions'][version],
                               verify_files=verify_files)
 
-    def download(self, name, version=None, *, force=False, verify_files=True, **download_options):
-        """Install if needed (or always, with force=True); return asset paths in the current bundle."""
+    def download(self, name, version=None, *, force=False, verify_files=True, source_paths=None,
+                 **download_options):
+        """Install if needed (or always, with force=True); return asset paths in the current bundle.
+
+        source_paths maps asset names to local files to read instead of
+        downloading; the declared URLs remain the assets' identity.
+        """
         version = self.resolve_version(name, version)
         return install_bundle(self.store_path(name, version), self._datasets[name]['versions'][version],
                               force=force, verified=self.verified, verify_files=verify_files,
-                              download_options=download_options)
+                              download_options=download_options, source_paths=source_paths)
+
+    def prune(self, name, version=None, *, keep=1):
+        """Delete all but the newest keep bundles of one version; see prune_bundles."""
+        return prune_bundles(self.store_path(name, version), keep=keep)
 
     def local_path(self, name, version=None, *, asset=None, verify_files=True):
         """Resolve the current bundle; no writes or network. Missing raises.

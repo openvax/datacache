@@ -146,7 +146,9 @@ After a successful publication, owned inputs for that source definition are
 removed by default. `retain_sources=True` keeps them privately for future
 builds. Cache hits never perform cleanup: a crash between publication and
 cleanup may leave inputs for an explicit later refresh. Inputs for other source
-definitions/users and old bundles are never removed implicitly. Abandoned input/staging variants require deliberate operator
+definitions/users and old bundles are never removed implicitly; use
+`prune_bundles` to delete old bundles (see
+[removing old bundles](bundles.md#removing-old-bundles)). Abandoned input/staging variants require deliberate operator
 cleanup; general inventory/pruning is separate work. Retention is installation
 policy, not output identity, so toggling it on a cache hit does not mutate disk.
 

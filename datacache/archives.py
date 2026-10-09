@@ -25,7 +25,8 @@ from uuid import uuid4
 from ._filesystem import open_regular, read_json, write_json
 from .bundle_store import (
     CHUNK_SIZE, INVALID_STORE_ERRORS, MANIFEST, BundleStore, check_tree, discard_private_directory,
-    hash_file, list_tree, local_file_identity, private_directory, source_fingerprint, validate_distinct_paths,
+    hash_file, list_tree, local_file_identity, private_directory, prune_bundles, source_fingerprint,
+    validate_distinct_paths,
     validate_file_record, validate_path_component, validate_relative_name,
 )
 from .download import normal_creation_mode, validate_download_options, validate_limit, validate_size_within_limit
@@ -721,6 +722,10 @@ class VersionedArchiveRegistry:
             verified=self.verified, download_options=download_options,
             max_members=definition["max_members"],
             max_extracted_size=definition["max_extracted_size"])
+
+    def prune(self, name, version=None, *, keep=1):
+        """Delete all but the newest keep bundles of one version; see prune_bundles."""
+        return prune_bundles(self.store_path(name, version), keep=keep)
 
     def local_path(self, name, version=None, *, verify_files=False):
         """Return the current bundle without downloading or repairing."""

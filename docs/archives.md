@@ -189,8 +189,9 @@ the manifest are completed in private staging and read back and checked there.
 Only then is the tree renamed into `bundles/`, which publishes it in one step.
 A failed or interrupted install leaves the previous bundle current.
 
-Old bundles are kept so paths already returned to readers remain valid.
-DataCache never deletes them itself. Installs lock a file beside the store
+Old bundles are kept so paths already returned to readers remain valid, until
+you delete them with `prune_bundles` or `registry.prune`; see
+[removing old bundles](bundles.md#removing-old-bundles). Installs lock a file beside the store
 (`flock` on POSIX, the `filelock` package on Windows) and publish with
 same-filesystem atomic renames, supporting ordinary local filesystems on Linux,
 macOS and Windows. Distributed coordination, arbitrary

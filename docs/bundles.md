@@ -185,9 +185,10 @@ locks or write permission. Installs into one store take turns, using a lock
 file beside the store.
 
 Old bundles are kept, so paths returned by one install keep working after later
-installs. Forced refreshes therefore use more disk space; DataCache never deletes
-bundles itself. Never modify files in a bundle. Resolve paths once for a
-multi-file operation: a later lookup can return a newer bundle.
+installs. Forced refreshes therefore use more disk space until you
+[remove old bundles](#removing-old-bundles); DataCache never deletes them on its
+own. Never modify files in a bundle. Resolve paths once for a multi-file
+operation: a later lookup can return a newer bundle.
 
 Installation works on local filesystems with atomic sibling renames, on Linux,
 macOS and Windows; resumable downloads (`resume=True`) need POSIX. Shared caches use normal umask-derived
@@ -200,6 +201,53 @@ process interruption, not guaranteed durability after power loss. Distributed
 coordination and arbitrary network filesystem semantics are outside this API.
 An unhandled termination can leave staging directories; only complete bundles
 are ever returned to callers.
+
+## Removing old bundles
+
+Every forced refresh adds a complete bundle and keeps the old ones, so a
+multi-GB reference refreshed three times takes four times the space. Delete the
+old ones explicitly when nothing still uses them:
+
+```python
+from datacache import list_bundles, prune_bundles
+
+list_bundles(store)                 # Every bundle, oldest first; the last is current.
+prune_bundles(store)                # Keep only the current bundle.
+prune_bundles(store, keep=2)        # Keep the current bundle and the one before it.
+registry.prune("reference", "110")  # The same, through a registry.
+```
+
+`prune_bundles` returns the paths it deleted. The current bundle is always
+kept. Paths into deleted bundles stop working, so prune when no running program
+still uses them, for example from a cleanup command rather than during an
+analysis. Pruning takes the store's lock, so it never races an install. It works
+the same for archive and materialization stores.
+
+## Local and predownloaded files
+
+An asset can name a local file with `path` instead of `url`; its identity is the
+file's `file://` URL:
+
+```python
+assets = {"genes.gtf": {"path": "/data/custom/genes.gtf", "sha256": genes_sha256, "size": genes_size}}
+```
+
+To install from files someone already downloaded, while keeping the declared
+URLs as the assets' identity, pass `source_paths`:
+
+```python
+paths = registry.download(
+    "reference", "110",
+    source_paths={"genes.gtf": "/downloads/Homo_sapiens.GRCh38.110.gtf"},
+)
+```
+
+Each local file is checked against the asset's trusted hash and size exactly as
+a download would be, and copied in; the original stays where it is. The
+manifest records the declared URL, so later installs and inspections treat the
+bundle as if it had been downloaded, including assets without trusted hashes.
+For an asset with `decompress=True`, the local file must keep its `.gz` or
+`.zip` suffix.
 
 ## Large raw assets
 

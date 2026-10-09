@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.23.0
+
+- Add `prune_bundles(destination, keep=1)` and `list_bundles(destination)`,
+  and `prune` on both registries, to list the bundles in any store and delete
+  all but the newest (#91). The current bundle is always kept, and pruning
+  holds the store's lock, so it never races an install.
+- Bundle assets can name a local file with `path` instead of `url`, and
+  `install_bundle` and `VersionedDatasetRegistry.download` take
+  `source_paths` to read named assets from files already downloaded, keeping
+  their declared URLs as identity (#94).
+- Add design notes for caller-declared source identity (#92) and shared
+  storage across consumers (#95) under `docs/design/`.
+
 ## 1.22.0
 
 - `install_bundle`, `VersionedDatasetRegistry` and `materialize` work on
