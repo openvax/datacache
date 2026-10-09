@@ -9,6 +9,9 @@
   platform cache directory. Empty folders and files operating systems leave
   behind don't count as data. This replaces the root resolvers several OpenVax
   packages keep. The shared-caches guide shows the pattern.
+- Drop the `typechecks` dependency: three small checks in the SQLite code
+  replace it, raising the same `TypeError`s. One fewer package to install for
+  libraries that only download.
 
 ## 1.23.0
 

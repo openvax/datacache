@@ -19,18 +19,14 @@ import stat
 from os.path import splitext, lexists
 import logging
 
-from typechecks import (
-    require_string,
-    require_integer,
-    require_iterable_of
-)
-
 from .common import MAX_NAME_BYTES, build_local_filename, name_digest, name_length, resolve_path
 from .download import (
     fetch_csv_dataframe, _open_staging_file, normal_creation_mode,
     _remove_staging_file,
 )
-from .database import METADATA_TABLE_NAME, Database, fold_identifier, tables_exist
+from .database import (
+    METADATA_TABLE_NAME, Database, fold_identifier, require_integer, require_iterable_of, require_string, tables_exist,
+)
 from .database_table import DatabaseTable, validate_column_names
 from .database_types import db_type
 from .inspection import path_exists
