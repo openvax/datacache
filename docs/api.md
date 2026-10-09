@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.23.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.24.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -396,22 +396,36 @@ selected_root = dc.get_data_dir("my-project", envkey="MY_PROJECT_CACHE_ROOT")
 ### `get_cache_root`
 
 ```text
-get_cache_root(name, *envkeys)
+get_cache_root(name, *envkeys, override=None, legacy=())
 ```
 
-Select a cache root that several packages can share, without creating it. The
-first environment variable in `envkeys` that is set to a non-blank value is the
-root itself, trimmed and with `~` expanded. Otherwise the result is the platform
-cache directory for `name`, the same directory `get_data_dir(name)` selects.
-Unlike `get_data_dir(subdir, envkey)`, nothing is appended to an environment
-value, so every package that reads the same variable agrees on one location.
-List a package-specific variable first to let it override a shared one. Pass
-the result as `cache_root`. A relative value stays relative to the working
-directory.
+Find where a package's cached data lives, without creating anything. The first
+of these that applies is the root, with `~` expanded:
+
+1. `override`, when not `None`: an explicit choice, such as a command-line flag;
+2. the first environment variable in `envkeys` set to a non-blank value;
+3. the platform cache directory for `name` (the one `get_data_dir(name)`
+   selects), when it already holds data;
+4. the first path in `legacy` that already holds data, so a cache made before a
+   move keeps working;
+5. the platform cache directory for `name`.
+
+A directory holds data when it contains a file anywhere inside, other than
+files operating systems or DataCache leave on their own (`.DS_Store`,
+`Thumbs.db`, `desktop.ini`, `.datacache-*`); empty folders don't count, and
+unreadable entries are skipped. `legacy` paths must be absolute. The legacy
+check reads the disk, so resolve the root once and pass it on.
+
+Nothing is appended to an environment value, unlike `get_data_dir(subdir,
+envkey)`, so every package that reads the same variable agrees on one
+location. List a package-specific variable before a shared one so it can
+override it. Pass the result as `cache_root`. A relative value stays relative
+to the working directory. See [choosing where data lives](shared-caches.md#choosing-where-data-lives).
 
 **Returns:** directory path string. **Raises:** `ValueError` for an empty
-`name` or a non-string or empty variable name, and platform directory lookup
-errors from appdirs.
+`name`, a non-string or empty variable name, an empty or non-text `override`,
+or a non-text, empty or relative `legacy` path (checked whichever rule
+applies), and platform directory lookup errors.
 
 ```python
 os.environ["EXAMPLE_SHARED"] = str(root / "shared")

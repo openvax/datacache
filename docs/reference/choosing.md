@@ -19,7 +19,7 @@ lists every public signature, default, return value, exception, and example.
 | Inspect an installed archive tree | `inspect_archive(...)` | `ArchiveInspection` |
 | Discard retained partial download bytes | `discard_partial(destination)` | Installed file unchanged |
 | Compute a path without filesystem access | `expected_path(...)`, `Cache.local_path(...)` | Path string |
-| Choose a root shared by several packages | `get_cache_root(name, *envkeys)` | Path string |
+| Choose where a package keeps its data, shared or not | `get_cache_root(name, *envkeys, override=..., legacy=...)` | Path string |
 | Check presence | `file_exists(...)`, `Cache.exists(...)` | Boolean; does not establish integrity |
 | Validate bytes, raising on failure | `validate_file(...)` | Path string |
 | Inspect without repair or network access | `inspect_file(...)`, `Cache.inspect(...)` | `FileInspection` |
