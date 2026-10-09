@@ -576,10 +576,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#publication-and-path-lifetime" class="md-nav__link">
+  <a href="#how-bundles-are-stored" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Publication and path lifetime
+        How bundles are stored
       
     </span>
   </a>
@@ -1021,10 +1021,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#publication-and-path-lifetime" class="md-nav__link">
+  <a href="#how-bundles-are-stored" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Publication and path lifetime
+        How bundles are stored
       
     </span>
   </a>
@@ -1108,7 +1108,7 @@ APIs work independently; adopting a registry is optional.</p>
 <span class="p">)</span>
 
 <span class="c1"># No directory creation, locks, network requests, or repairs:</span>
-<span class="n">store</span> <span class="o">=</span> <span class="n">registry</span><span class="o">.</span><span class="n">bundle_path</span><span class="p">(</span><span class="s2">"reference"</span><span class="p">)</span>
+<span class="n">store</span> <span class="o">=</span> <span class="n">registry</span><span class="o">.</span><span class="n">store_path</span><span class="p">(</span><span class="s2">"reference"</span><span class="p">)</span>
 <span class="n">state</span> <span class="o">=</span> <span class="n">registry</span><span class="o">.</span><span class="n">inspect</span><span class="p">(</span><span class="s2">"reference"</span><span class="p">)</span>
 
 <span class="c1"># Download if missing; verify and reuse if already installed:</span>
@@ -1132,10 +1132,10 @@ DataCache never resolves a remote <code>latest</code> alias.</p>
 the bundle, collide as files/directories or by letter case, or occupy DataCache's
 reserved metadata names. A file or directory at another asset's automatic
 provenance sidecar path is also rejected before installation starts. Source
-directories are managed stores: an existing empty directory is reported as
-<code>missing</code> and can be initialized without <code>force=True</code>, preserving its access
-mode. Installation refuses to take over a nonempty directory without its
-ownership marker, even with <code>force=True</code>. Store generated indices and other derived
+directories are stores: an existing empty directory is reported as <code>missing</code>
+and becomes the store on the first install, in place, so it keeps its owner,
+group and permissions. Installation never takes over a directory with files in
+it unless it is already a bundle store, even with <code>force=True</code>. Store generated indices and other derived
 outputs under a separate application-owned directory. Reinstalling sources does
 not visit those outputs.</p>
 <h2 id="consumer-selected-store-paths">Consumer-selected store paths<a class="headerlink" href="#consumer-selected-store-paths" title="Permanent link">&para;</a></h2>
@@ -1147,7 +1147,7 @@ for example a version directory per release:</p>
     <span class="n">datasets</span><span class="p">,</span>
     <span class="n">store_path</span><span class="o">=</span><span class="k">lambda</span> <span class="n">name</span><span class="p">,</span> <span class="n">version</span><span class="p">:</span> <span class="n">application_root</span> <span class="o">/</span> <span class="n">version</span> <span class="o">/</span> <span class="s2">"sources"</span> <span class="o">/</span> <span class="n">name</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="n">store</span> <span class="o">=</span> <span class="n">registry</span><span class="o">.</span><span class="n">bundle_path</span><span class="p">(</span><span class="s2">"reference"</span><span class="p">)</span>
+<span class="n">store</span> <span class="o">=</span> <span class="n">registry</span><span class="o">.</span><span class="n">store_path</span><span class="p">(</span><span class="s2">"reference"</span><span class="p">)</span>
 </code></pre></div>
 <p>The callback receives a validated concrete version, including when the caller
 omits it and selects the pinned default. Construction never calls it. The first
@@ -1155,35 +1155,36 @@ lookup calls it once for every dataset version, without filesystem inspection
 or mutation, and the paths are reused afterwards, so callbacks should only
 compute paths. Each version needs its own store: a callback that gives two
 versions the same path raises <code>ValueError</code>, as does one that returns something
-other than a path. Inspection, installation, recovery and refresh all use the
-chosen store, while DataCache still owns its immutable generations.</p>
+other than a path. Inspection, installation and refresh all use the chosen
+store; DataCache owns everything inside it.</p>
 <p>The store's parent belongs to the application and may be a link, for example to
 another disk; the store itself is never a link. Installation creates missing
-parent directories and keeps its lock file and temporary staging directories
-in the parent, so give the stores a parent of their own rather than a
-directory the application lists or cleans.</p>
+parent directories and keeps a lock file in the parent, beside the store, so
+give the stores a parent of their own rather than a directory the application
+lists or cleans. Unfinished downloads, including resumable ones, stay in hidden
+<code>.staging-*</code> directories inside the store.</p>
 <p>Do not point this callback at a populated legacy data/index directory: even
 <code>force=True</code> cannot adopt a foreign directory, and installation raises
 <code>FileValidationError</code> saying so. Keep those old caches readable
 and deliberately install into a new managed source subdirectory instead. Model,
 biological naming and migration policy remain the application's responsibility.</p>
 <h2 id="status-and-trust">Status and trust<a class="headerlink" href="#status-and-trust" title="Permanent link">&para;</a></h2>
-<p><code>BundleInspection.status</code> is <code>available</code>, <code>missing</code>, <code>invalid</code>, <code>inaccessible</code>, or
-<code>recovery-required</code>. <code>files</code> maps asset names to <code>FileInspection</code> objects from one
-generation, and <code>generation</code> is that generation's directory. The <code>error</code> field
-retains the cause of a failed inspection.</p>
+<p><code>BundleInspection.status</code> is <code>available</code>, <code>missing</code>, <code>invalid</code> or <code>inaccessible</code>.
+<code>bundle</code> is the current bundle's directory, and <code>files</code> maps asset names to
+<code>FileInspection</code> objects from it. The <code>error</code> field retains the cause of a
+failed inspection.</p>
 <p>Explicit inspection hashes every asset by default. With trusted registry
-metadata, <code>verified=True</code> means every file matched the supplied SHA-256 just now. Every completed generation
+metadata, <code>verified=True</code> means every file matched the supplied SHA-256 just now. Every bundle
 also has its own manifest recording sizes, observed SHA-256 digests, source URLs,
 and fetch time. <code>inspect_bundle(directory)</code> can check those recorded hashes
-without a registry or network, but returns <code>verified=False</code>: a local receipt is
-not an independent authority. Display URLs omit credentials, queries and
+without a registry or network, but returns <code>verified=False</code>, for the bundle and
+for each file: a local receipt is not an independent authority. Display URLs omit credentials, queries and
 fragments; a separate SHA-256 fingerprint identifies the full source URL without
 storing that omitted text. Paths are retained, so do not use secret-bearing URL
 paths.</p>
 <p>Use <code>inspect_bundle(directory, assets, verify_files=False)</code> or
 <code>registry.inspect(name, verify_files=False)</code> for metadata-only checks. This
-validates ownership, the selected pointer/manifest, registry expectations, the
+checks ownership, the bundle's manifest, registry expectations, the
 required inventory, regular file types, readability and recorded sizes without
 reading payloads. Both bundle and per-file results have <code>verified=False</code>.
 Same-size corruption requires full verification to detect.</p>
@@ -1192,7 +1193,7 @@ Same-size corruption requires full verification to detect.</p>
 Pass <code>verify_files=False</code> to any of them for metadata-only checks where speed
 matters more than detecting same-size corruption. On <code>install_bundle</code>,
 <code>registry.download</code> or <code>ensure</code> it skips payload reads on reuse only: new
-acquisitions and recovery always validate bytes before publishing. All these
+downloads are always hashed before they are published. All these
 checks remain offline and read-only. Archive registries differ: their
 <code>local_path</code>, <code>is_cached</code> and <code>status</code> have been metadata-only by default since
 they were added, and take <code>verify_files=True</code> for full checks.</p>
@@ -1207,47 +1208,50 @@ fingerprints still support offline consistency checks and trusted-hash reuse,
 but need an explicit refresh before reuse without trusted hashes.</p>
 <p>Trusted SHA-256 expectations identify the installed bytes. Libraries using the
 same root, dataset name, version and asset names can therefore share a verified
-generation even when they use different mirrors, signed URLs or compression
+bundle even when they use different mirrors, signed URLs or compression
 settings. DataCache checks the supplied hashes and sizes without downloading or
-rewriting a matching generation.</p>
-<p>Cache reuse and inspection are read-only. Corrupt entries require <code>force=True</code>.
-If publication was interrupted after creating a complete generation, inspection
-can report <code>recovery-required</code>. Explicit installation validates and publishes a
-matching local generation before attempting downloads. No recovery happens
-merely by listing or inspecting a cache.</p>
-<h2 id="publication-and-path-lifetime">Publication and path lifetime<a class="headerlink" href="#publication-and-path-lifetime" title="Permanent link">&para;</a></h2>
-<p>The layout is <code>&lt;root&gt;/&lt;dataset&gt;/&lt;version&gt;/</code>, containing an ownership marker,
-<code>current.json</code>, and <code>generations/&lt;id&gt;/</code>. Each generation contains all assets and
-its own <code>.datacache-manifest.json</code>. Writers serialize per store. A writer stages
-and verifies every asset, then atomically replaces <code>current.json</code>. Readers read
-that pointer once and validate that immutable generation without locks. They
-never combine members from different refreshes or require write permission.</p>
-<p>Published generations are retained. Paths returned from one installation remain
-usable through later installations, until the caller explicitly removes the
-store or its generations. This avoids reader lock files and a missing-directory
-window. It also means forced refreshes consume additional disk space; DataCache
-does not implement garbage collection. Never modify files within a generation.
-Resolve once and use that result for a multi-file operation; separate resolution
-calls can legitimately select different generations.</p>
+rewriting a matching bundle.</p>
+<p>Cache reuse and inspection are read-only. A corrupt bundle requires
+<code>force=True</code>, which installs a new one.</p>
+<h2 id="how-bundles-are-stored">How bundles are stored<a class="headerlink" href="#how-bundles-are-stored" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>&lt;root&gt;/&lt;dataset&gt;/&lt;version&gt;/                 the store for one dataset version
+    .datacache-store.json                   marks the directory as a DataCache store
+    bundles/
+        2026-09-30T14-11-05Z/               an older bundle
+        2026-10-08T17-02-42Z/               the current bundle: always the newest
+            records.fa
+            manifest.json
+            .datacache-manifest.json        what DataCache installed, and from where
+</code></pre></div>
+<p>A bundle is a complete set of files that belong together. Each bundle is named
+for the UTC time it was installed, and the newest is always the current one.
+Installing downloads and checks every file in a hidden staging directory, then
+renames that directory into <code>bundles/</code>. A rename happens completely or not at
+all, so readers see the old bundle or the new one, never a mix, and need no
+locks or write permission. Installs into one store take turns, using a lock
+file beside the store.</p>
+<p>Old bundles are kept, so paths returned by one install keep working after later
+installs. Forced refreshes therefore use more disk space; DataCache never deletes
+bundles itself. Never modify files in a bundle. Resolve paths once for a
+multi-file operation: a later lookup can return a newer bundle.</p>
 <p>Installation is supported on POSIX local filesystems providing <code>flock</code> and atomic
 sibling <code>os.replace</code> (Linux and macOS). Shared caches use normal umask-derived
-permissions; readers need only read/search access. A private outer staging
-directory protects unfinished files while the inner generation already has its
-final sharing permissions. Renaming that generation makes it recoverable with
-the correct permissions immediately, including after an interruption. A failed
-rename leaves resumable work protected by the private outer directory.
+permissions; readers need only read/search access. The staging directory stays
+private while files download, but the bundle inside it already has its final
+sharing permissions, so others can read it the moment it is renamed into place.
+A failed rename leaves resumable work in the private staging directory.
 Atomic publication covers
 process interruption, not guaranteed durability after power loss. Distributed
 coordination and arbitrary network filesystem semantics are outside this API.
-An unhandled termination can leave staging directories; successful generations
-are the only paths returned to callers.</p>
+An unhandled termination can leave staging directories; only complete bundles
+are ever returned to callers.</p>
 <h2 id="large-raw-assets">Large raw assets<a class="headerlink" href="#large-raw-assets" title="Permanent link">&para;</a></h2>
 <p>For integrity-pinned HTTP assets that need no decompression or conversion, use
 <code>registry.download(name, resume=True)</code> or
 <code>install_bundle(..., download_options={"resume": True})</code>. An interrupted bundle
 keeps a private working directory per user and asset mapping. A later call with
-the same mapping reuses completed assets and resumes partial ones; the installed
-generation remains intact. Persistent partials require both hash and size.
+the same mapping reuses completed assets and resumes partial ones; the current
+bundle stays in place. Persistent partials require both hash and size.
 Changing the mapping chooses a different working directory. The normal
 non-resumable mode cleans its staging directory on handled failures.</p>
 <p>See <a href="../downloads/#resumable-http-downloads">resumable downloads</a> for protocol,
@@ -1256,12 +1260,12 @@ progress, disk-space and partial-discard details.</p>
 <ul>
 <li><strong>MHCflurry:</strong> use <a href="../archives/"><code>install_archive</code></a> for released <code>.tar.bz2</code>
   trees and ordered historical parts. Resolve member paths from the returned
-  generation; preserve <code>DOWNLOAD_INFO.csv</code> with <code>extra_files</code>. Do not enumerate
+  bundle; preserve <code>DOWNLOAD_INFO.csv</code> with <code>extra_files</code>. Do not enumerate
   model files as bundle assets or treat the managed store's existence as a
   completed download.</li>
 <li><strong>hitlist / tsarina:</strong> use <a href="../file_registry/">VersionedFileRegistry</a> to retain
   fixed paths, single-Path returns and legacy root manifests without moving old
-  caches. For a deliberate migration to generation bundles, the existing
+  caches. For a deliberate migration to bundles, the existing
   <code>{filename, urls, default_version}</code> mapping
   is accepted with <code>verified=False</code>, as is the <code>cache_dir</code> root callable. This is
   mapping compatibility, not a drop-in filesystem or return-value migration:

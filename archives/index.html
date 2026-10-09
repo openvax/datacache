@@ -637,10 +637,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#publication-recovery-and-platforms" class="md-nav__link">
+  <a href="#publication-and-platforms" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Publication, recovery and platforms
+        Publication and platforms
       
     </span>
   </a>
@@ -1065,10 +1065,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#publication-recovery-and-platforms" class="md-nav__link">
+  <a href="#publication-and-platforms" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Publication, recovery and platforms
+        Publication and platforms
       
     </span>
   </a>
@@ -1122,10 +1122,10 @@ functions remain useful when a downstream library already owns version lookup.</
 <span class="p">)</span>
 <span class="k">assert</span> <span class="n">state</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="s2">"available"</span> <span class="ow">and</span> <span class="n">state</span><span class="o">.</span><span class="n">verified</span>
 </code></pre></div>
-<p>The destination is a managed store, not the extracted directory. Installation
-returns the immutable generation containing the archive's paths. Consumers must
-resolve the generation once and use that returned path for an operation; they
-must not construct <code>&lt;destination&gt;/&lt;archive member&gt;</code> directly.</p>
+<p>The destination is a store, not the extracted directory. Installation returns
+the current bundle: the directory holding the extracted tree. Resolve it once
+and use that returned path for an operation; never construct
+<code>&lt;destination&gt;/&lt;archive member&gt;</code> directly.</p>
 <h2 id="ordered-split-archives-and-local-inputs">Ordered split archives and local inputs<a class="headerlink" href="#ordered-split-archives-and-local-inputs" title="Permanent link">&para;</a></h2>
 <p>An ordered list is concatenated byte-for-byte before tar parsing:</p>
 <div class="highlight"><pre><span></span><code><span class="n">urls</span> <span class="o">=</span> <span class="p">[</span>
@@ -1173,9 +1173,9 @@ ordered URL list in <code>DOWNLOAD_INFO.csv</code>. An adapter can preserve that
 <p>MHCflurry should treat a fast
 <code>inspect_archive(..., verify_files=False).status == "available"</code> using the same
 sources and <code>extra_files</code> as installed, not mere destination existence. Its
-<code>get_path</code> adapter should append member paths to <code>state.generation</code>. The fast
-check validates the atomic publication receipt and requested source identity
-without hashing large model files on every path lookup. Explicit diagnostics can
+<code>get_path</code> adapter should append member paths to <code>state.bundle</code>. The fast
+check validates the manifest and requested source identity without reading
+large model files on every path lookup. Explicit diagnostics can
 use the default <code>verify_files=True</code> for complete tree verification. This prevents
 an initialized store or interrupted install from being mistaken for a complete
 bundle.</p>
@@ -1198,8 +1198,8 @@ MHCflurry's existing directory order:</p>
 <p><code>source_paths=</code> on <code>download</code> accepts one local file per ordered catalogue URL,
 covering MHCflurry's <code>--already-downloaded-dir</code> mode without changing source
 identity or bypassing transactional extraction.</p>
-<p>Existing MHCflurry directories are deliberately not adopted or overwritten,
-whether empty, complete, partial, or unreceipted. A migration can continue to
+<p>Existing MHCflurry directories with files in them are never adopted or
+overwritten, whether complete, partial, or unreceipted. A migration can continue to
 read a legacy directory and use archive stores only for new installations, or
 explicitly validate/import legacy content in application code. DataCache never
 claims it silently, including with <code>force=True</code>.</p>
@@ -1224,7 +1224,7 @@ of a member that exceeds the limit; scanning stops at the first violation.
 The member count includes root directory entries even though they are not
 extracted. Local sources must be regular files; links and special inputs such
 as FIFOs are rejected without waiting for a writer.</p>
-<p>After extraction, the generation receipt records the assembled archive's
+<p>After extraction, the bundle's manifest records the assembled archive's
 observed hash and size, every part's observed hash, ordered source fingerprints,
 and a sorted hash/size manifest of every installed file. The complete consumer
 <code>extra_files</code> inventory is recorded separately. Manifest reading supports the
@@ -1239,27 +1239,25 @@ mirrors. <code>verified=False</code> permits historical unpinned sources; it ver
 consistency against observed receipts and requires the same ordered full source
 identities, but <code>ArchiveInspection.verified</code> remains false.</p>
 <p>A valid cache hit is entirely read-only. <code>inspect_archive</code> hashes the complete
-tree by default; <code>verify_files=False</code> provides a receipt/source-identity-only
-path lookup and never reports <code>verified=True</code>. Invalid installations require an
+tree by default; <code>verify_files=False</code> checks only the manifest and source
+identity, reading none of the extracted tree, and never reports
+<code>verified=True</code>. Invalid installations require an
 explicit <code>force=True</code>; inaccessible installations propagate their permission
-error. Consumer metadata is part of the requested generation identity, so a
+error. Consumer metadata is part of the requested archive's identity, so a
 different, added, or removed metadata entry requires an explicit refresh.</p>
-<h2 id="publication-recovery-and-platforms">Publication, recovery and platforms<a class="headerlink" href="#publication-recovery-and-platforms" title="Permanent link">&para;</a></h2>
-<p>Writers serialize on a permanent sibling lock. Downloads, concatenation,
-extraction, consumer metadata and the DataCache receipt complete in private
-staging. The finished tree is renamed to <code>generations/&lt;id&gt;</code> and <code>current.json</code>
-is atomically replaced only after the complete tree and its written receipt
-have been read back and validated in staging. A failed refresh
-leaves the previous pointer and generation active. On a first installation, an
-interruption between the generation rename and pointer update is reported as
-<code>recovery-required</code>; the next explicit installation recovers matching local
-content without network access. If a refresh is interrupted at that point, the
-old generation remains active and the completed unreferenced generation is
-retained; an explicit retry with <code>force=True</code> performs the requested refresh.</p>
-<p>Generations are retained so paths already returned to readers remain valid.
-DataCache does not garbage-collect them. Publication uses the cross-platform
-<code>filelock</code> lock plus same-filesystem atomic renames and supports ordinary local
-filesystems on Linux, macOS and Windows. Distributed coordination, arbitrary
+<h2 id="publication-and-platforms">Publication and platforms<a class="headerlink" href="#publication-and-platforms" title="Permanent link">&para;</a></h2>
+<p>Archive stores use the same layout as <a href="../bundles/#how-bundles-are-stored">bundles</a>:
+each install is a bundle in <code>bundles/</code>, named for its UTC install time, and the
+newest is the current one. Installs into one store take turns on a lock file
+beside the store. Downloads, concatenation, extraction, consumer metadata and
+the manifest are completed in private staging and read back and checked there.
+Only then is the tree renamed into <code>bundles/</code>, which publishes it in one step.
+A failed or interrupted install leaves the previous bundle current.</p>
+<p>Old bundles are kept so paths already returned to readers remain valid.
+DataCache never deletes them itself. Installs lock a file beside the store
+(<code>flock</code> on POSIX, the <code>filelock</code> package on Windows) and publish with
+same-filesystem atomic renames, supporting ordinary local filesystems on Linux,
+macOS and Windows. Distributed coordination, arbitrary
 network-filesystem semantics, and durability after sudden power loss are outside
 the contract.</p>
 <p>With <code>download_options={"resume": True}</code>, remote part files persist privately

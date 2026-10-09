@@ -922,7 +922,7 @@
 <p><code>VersionedFileRegistry</code> supports applications whose single-file datasets already
 live at <code>&lt;root&gt;/&lt;name&gt;/&lt;version&gt;/&lt;filename&gt;</code> with a root <code>manifest.json</code>.
 It reuses those files in place. Use <code>VersionedDatasetRegistry</code> and bundles when
-you need immutable snapshots and atomic multi-file installation.</p>
+you need several files installed together as one bundle.</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">datacache</span><span class="w"> </span><span class="kn">import</span> <span class="n">VersionedFileRegistry</span>
 
@@ -972,7 +972,7 @@ receipt are separate publications: if receipt publication fails after a valid
 download, the new file remains installed and the prior receipt remains intact.
 Concurrent registry writers serialize acquisition and receipt updates, so
 downloading different datasets cannot discard each other’s receipts. These are the
-established single-file semantics, not the guarantees of generation bundles.</p>
+established single-file semantics, not the guarantees of bundles.</p>
 
 
 

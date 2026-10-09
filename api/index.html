@@ -2313,7 +2313,7 @@
 
 <h1 id="public-api-reference">Public API reference<a class="headerlink" href="#public-api-reference" title="Permanent link">&para;</a></h1>
 <p>This reference covers every name exported in <code>datacache.__all__</code> and every
-public <code>Cache</code> method in DataCache 1.19.1. Import these names from <code>datacache</code>.
+public <code>Cache</code> method in DataCache 1.20.0. Import these names from <code>datacache</code>.
 Signatures below show all defaults; arguments after <code>*</code> are keyword-only.
 Method signatures omit <code>self</code> and are called on a <code>Cache</code> instance.</p>
 <p>Start with the <a href="../#cache-and-verify-a-file">quickstart</a> for a first download.
@@ -3372,7 +3372,7 @@ See <a href="../downloads/#resumable-http-downloads">resumable downloads</a>.</p
 )
 </code></pre></div>
 <p>Safely extract a complete tar archive into a private directory and publish the
-tree as one immutable generation. <code>sources</code> is one URL, one <code>Path</code>, or an
+tree as a new bundle. <code>sources</code> is one URL, one <code>Path</code>, or an
 explicitly ordered sequence. A mapping may contain <code>url</code>, <code>path</code>, <code>sha256</code>, and
 <code>size</code>; supplying both <code>url</code> and <code>path</code> reads local bytes while retaining the URL
 as the logical source identity. Multiple sources are concatenated byte-for-byte,
@@ -3384,7 +3384,7 @@ hashes are still recorded and checked, but do not authenticate the source.</p>
 <p><code>extra_files</code> maps safe relative names to text or bytes written after extraction
 and before publication. It is intended for consumer receipts such as
 <code>DOWNLOAD_INFO.csv</code>; collisions with archive content fail the installation.
-The complete metadata inventory participates in generation identity: additions,
+The complete metadata inventory is part of the archive's identity: additions,
 removals, and content changes require an explicit refresh.
 <code>download_options</code> accepts timeout, chunk size, progress, retry, and resume
 settings from <code>fetch_file</code>. Resumable URL parts each require a trusted hash and
@@ -3392,22 +3392,22 @@ size. Optional <code>max_members</code> and <code>max_extracted_size</code> limi
 files are extracted, as headers arrive; scanning stops when a limit is exceeded.
 Benign leading <code>./</code> paths are normalized and root <code>.</code> directory entries ignored.
 Local special files such as FIFOs are rejected without blocking.</p>
-<p><strong>Returns:</strong> the immutable extracted-generation <code>Path</code>, not the managed store
-path. Existing returned paths remain usable across forced refreshes.</p>
+<p><strong>Returns:</strong> the <code>Path</code> of the extracted tree, the store's current bundle; not
+the store path. Existing returned paths remain usable across forced refreshes.</p>
 <p><strong>Raises:</strong> <code>ValueError</code> for invalid definitions or options;
 <code>FileValidationError</code> for integrity failures, unsafe members, malformed tar
 archives, or invalid installations; transport and filesystem errors otherwise.
 An invalid current installation requires <code>force=True</code>. A legacy or otherwise
 foreign destination is never claimed, even with force.</p>
 <div class="highlight"><pre><span></span><code><span class="n">archive_store</span> <span class="o">=</span> <span class="n">root</span> <span class="o">/</span> <span class="s2">"archive-store"</span>
-<span class="n">archive_generation</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">install_archive</span><span class="p">(</span>
+<span class="n">archive_bundle</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">install_archive</span><span class="p">(</span>
     <span class="n">archive_store</span><span class="p">,</span>
     <span class="n">archive_source</span><span class="p">,</span>
     <span class="n">expected_sha256</span><span class="o">=</span><span class="n">archive_sha256</span><span class="p">,</span>
     <span class="n">expected_size</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">archive_contents</span><span class="p">),</span>
     <span class="n">extra_files</span><span class="o">=</span><span class="p">{</span><span class="s2">"DOWNLOAD_INFO.csv"</span><span class="p">:</span> <span class="s2">"url</span><span class="se">\n</span><span class="s2">"</span> <span class="o">+</span> <span class="n">archive_source</span><span class="o">.</span><span class="n">as_uri</span><span class="p">()</span> <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">},</span>
 <span class="p">)</span>
-<span class="k">assert</span> <span class="p">(</span><span class="n">archive_generation</span> <span class="o">/</span> <span class="s2">"models/model.json"</span><span class="p">)</span><span class="o">.</span><span class="n">is_file</span><span class="p">()</span>
+<span class="k">assert</span> <span class="p">(</span><span class="n">archive_bundle</span> <span class="o">/</span> <span class="s2">"models/model.json"</span><span class="p">)</span><span class="o">.</span><span class="n">is_file</span><span class="p">()</span>
 </code></pre></div>
 <p>See the <a href="../archives/">archive installation guide</a> for split sources, safe-member
 rules, publication semantics, and an MHCflurry adapter.</p>
@@ -3417,21 +3417,21 @@ rules, publication semantics, and an MHCflurry adapter.</p>
     extra_files=None, verify_files=True
 )
 </code></pre></div>
-<p>Inspect one installed archive generation without writes, locks, repair, or
+<p>Inspect the current archive bundle without writes, locks, repair, or
 network access. Omit <code>sources</code> for receipt-only consistency checking, which
 returns <code>verified=False</code>. Supply the same source definition, expectations, and
 consumer metadata used for installation to validate the requested identity.
-Set <code>verify_files=False</code> for a fast published-generation/source-identity check
-that does not hash the extracted tree. Fast results have an empty <code>files</code>
+Set <code>verify_files=False</code> for a fast check of the manifest and source identity
+that reads none of the extracted tree. Fast results have an empty <code>files</code>
 mapping and <code>verified=False</code>; use the default before asserting content integrity.</p>
 <h2 id="archiveinspection">ArchiveInspection<a class="headerlink" href="#archiveinspection" title="Permanent link">&para;</a></h2>
-<p>A frozen record with <code>path</code>, <code>status</code>, <code>verified</code>, <code>generation</code>, <code>files</code>,
+<p>A frozen record with <code>path</code>, <code>status</code>, <code>verified</code>, <code>bundle</code>, <code>files</code>,
 <code>error</code>, <code>source_urls</code>, <code>fetched_at</code>, <code>archive_size</code>, and <code>recorded_sha256</code>.
-Status is <code>available</code>, <code>missing</code>, <code>invalid</code>, <code>inaccessible</code>, or
-<code>recovery-required</code>. <code>generation</code> is the extracted tree applications should use;
-<code>files</code> maps every installed relative file name to a <code>FileInspection</code>, or is
-empty for a fast <code>verify_files=False</code> inspection. Source URLs are redacted for
-display. The recorded digest is observed receipt data, not trusted verification.</p>
+Status is <code>available</code>, <code>missing</code>, <code>invalid</code> or <code>inaccessible</code>. <code>bundle</code> is the
+extracted tree applications should use;
+<code>files</code> maps every installed relative file name to a <code>FileInspection</code>; a file
+is <code>verified</code> only when a hash the caller supplied vouched for it. Source URLs
+are redacted for display. The recorded digest is observed receipt data, not trusted verification.</p>
 <h2 id="versionedarchiveregistry">VersionedArchiveRegistry<a class="headerlink" href="#versionedarchiveregistry" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>VersionedArchiveRegistry(
     archives, *, cache_root=None, store_path=None, verified=True
@@ -3461,7 +3461,7 @@ DataCache. <code>verified=False</code> explicitly enables historical unpinned ca
 </tr>
 <tr>
 <td><code>store_path(name, version=None)</code></td>
-<td>Managed store <code>Path</code>, without creating or inspecting it.</td>
+<td>Store <code>Path</code>, without creating or inspecting it.</td>
 </tr>
 <tr>
 <td><code>inspect(name, version=None, *, verify_files=True)</code></td>
@@ -3469,60 +3469,62 @@ DataCache. <code>verified=False</code> explicitly enables historical unpinned ca
 </tr>
 <tr>
 <td><code>download(name, version=None, *, force=False, source_paths=None, **download_options)</code></td>
-<td>Install/reuse and return the generation <code>Path</code>; <code>source_paths</code> overlays ordered local files while retaining catalogue identities.</td>
+<td>Install/reuse and return the current bundle's <code>Path</code>; <code>source_paths</code> overlays ordered local files while retaining catalogue identities.</td>
 </tr>
 <tr>
 <td><code>local_path(name, version=None, *, verify_files=False)</code></td>
-<td>Resolve a published generation without network, writes, or repair.</td>
+<td>Resolve the current bundle without network, writes, or repair.</td>
 </tr>
 <tr>
 <td><code>ensure(name, version=None, **download_options)</code></td>
-<td>Install if needed and return the generation.</td>
+<td>Install if needed and return the current bundle.</td>
 </tr>
 <tr>
 <td><code>is_cached(name, version=None, *, verify_files=False)</code></td>
-<td>Whether a published generation is available; full verification is optional.</td>
+<td>Whether the current bundle is available; full verification is optional.</td>
 </tr>
 <tr>
 <td><code>status(name=None, *, verify_files=False)</code></td>
-<td>One read-only row per concrete version, including catalogue and downloaded source URLs, store/generation paths, default flag, status, fetch time, observed archive size/hash and inspection. Metadata-only by default; <code>verify_files=True</code> hashes every file.</td>
+<td>One read-only row per concrete version, including catalogue and downloaded source URLs, store and bundle paths, default flag, status, fetch time, observed archive size/hash and inspection. Metadata-only by default; <code>verify_files=True</code> hashes every file.</td>
 </tr>
 </tbody>
 </table>
 <h2 id="install_bundle">install_bundle<a class="headerlink" href="#install_bundle" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>install_bundle(destination, assets, *, force=False, verified=True, verify_files=True, download_options=None)
 </code></pre></div>
-<p>Atomically install a mapping of relative asset names to <code>{url, sha256, size,
-decompress?}</code> metadata. Returns a dict of asset names to immutable generation
-paths. Invalid caches require <code>force=True</code>. <code>verified=False</code> explicitly permits
+<p>Download a mapping of relative asset names to <code>{url, sha256, size,
+decompress?}</code> metadata and publish the files together as a new bundle. Returns a
+dict of asset names to paths in the current bundle. An invalid current bundle
+requires <code>force=True</code>. <code>verified=False</code> explicitly permits
 unpinned sources; their observed hashes are recorded without authenticating them.
-<code>verify_files=False</code> avoids payload reads for existing-generation checks; it
+<code>verify_files=False</code> avoids payload reads when checking an existing bundle; it
 checks readability, file types and recorded sizes but cannot detect same-size
-corruption. New generations and explicit recovery always validate bytes before
-publication, regardless of this cache-hit setting.
+corruption. New bundles are always hashed before publication, regardless of
+this cache-hit setting.
 <code>download_options</code> accepts timeout, chunk size, progress, retry settings and resume.
 Publication requires a POSIX local filesystem. <a href="../bundles/">Complete guide</a>.</p>
 <h2 id="inspect_bundle">inspect_bundle<a class="headerlink" href="#inspect_bundle" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>inspect_bundle(destination, assets=None, *, verify_files=True)
 </code></pre></div>
-<p>Return a <code>BundleInspection</code> without writes, network, locks or recovery. Supply
-trusted assets to verify against the registry; omit them to check consistency
-against the installed generation's own recorded hashes (<code>verified=False</code>).
+<p>Return a <code>BundleInspection</code> of the current bundle without writes, network, locks
+or repair. Supply trusted assets to verify against the registry; omit them to
+check consistency against the bundle's own recorded hashes (<code>verified=False</code>).
 <code>verify_files=False</code> validates metadata, source expectations, required file types,
 readability and recorded sizes without reading payloads. Its bundle and file
 results always have <code>verified=False</code>, even with trusted hashes in the registry.</p>
 <h2 id="bundleinspection">BundleInspection<a class="headerlink" href="#bundleinspection" title="Permanent link">&para;</a></h2>
-<p>A frozen record with <code>path</code>, <code>status</code>, <code>verified</code>, <code>generation</code>, <code>files</code>, and
-<code>error</code>. Status is <code>available</code>, <code>missing</code>, <code>invalid</code>, <code>inaccessible</code>, or
-<code>recovery-required</code>. <code>files</code> maps asset names to <code>FileInspection</code> values from one
-generation. Paths remain usable across refreshes until explicitly removed.</p>
+<p>A frozen record with <code>path</code>, <code>status</code>, <code>verified</code>, <code>bundle</code>, <code>files</code>, and
+<code>error</code>. Status is <code>available</code>, <code>missing</code>, <code>invalid</code> or <code>inaccessible</code>. <code>bundle</code>
+is the current bundle's directory, and <code>files</code> maps asset names to
+<code>FileInspection</code> values from it. Paths remain usable across refreshes until
+explicitly removed.</p>
 <h2 id="versioneddatasetregistry">VersionedDatasetRegistry<a class="headerlink" href="#versioneddatasetregistry" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>VersionedDatasetRegistry(datasets, *, cache_root=None, cache_dir=None, store_path=None, verified=True)
 </code></pre></div>
 <p>Select exactly one root path, zero-argument <code>cache_dir</code> callable, or
-<code>store_path(name, version)</code> callback selecting the exact managed store path; it is called once per dataset version on first lookup, and each version needs its own store.
+<code>store_path(name, version)</code> callback selecting the exact store path; it is called once per dataset version on first lookup, and each version needs its own store.
 Root strategies keep <code>&lt;root&gt;/&lt;name&gt;/&lt;version&gt;</code>; the exact-path callback owns
-the consumer layout but not the internal generation layout. Each dataset
+the consumer layout but not the layout inside each store. Each dataset
 specifies a <code>default_version</code> and <code>versions</code>, mapping concrete versions to asset
 mappings. Construction validates metadata and performs no writes or networking,
 and does not invoke callbacks. Path callbacks should be pure path computations.
@@ -3540,8 +3542,8 @@ The <a href="../bundles/">bundle guide</a> includes an example and downstream mi
 <td>Concrete version label, applying the pinned default. Unknown names/versions raise <code>ValueError</code>.</td>
 </tr>
 <tr>
-<td><code>bundle_path(name, version=None)</code></td>
-<td>Expected managed store <code>Path</code>, without creating it.</td>
+<td><code>store_path(name, version=None)</code></td>
+<td>Store <code>Path</code>, without creating it.</td>
 </tr>
 <tr>
 <td><code>inspect(name, version=None, *, verify_files=True)</code></td>
@@ -3549,11 +3551,11 @@ The <a href="../bundles/">bundle guide</a> includes an example and downstream mi
 </tr>
 <tr>
 <td><code>download(name, version=None, *, force=False, verify_files=True, **download_options)</code></td>
-<td>Install/reuse and return a dict of asset snapshot paths; the flag selects cache-hit cost only.</td>
+<td>Install/reuse and return a dict of asset paths in the current bundle; the flag selects cache-hit cost only.</td>
 </tr>
 <tr>
 <td><code>local_path(name, version=None, *, asset=None, verify_files=True)</code></td>
-<td>Installed single asset's <code>Path</code>, or a multi-file generation directory; select one asset by name. Assets are hashed by default; <code>verify_files=False</code> checks metadata and sizes only. Missing raises <code>FileNotFoundError</code>; invalid/recovery-required raises <code>FileValidationError</code>.</td>
+<td>Installed single asset's <code>Path</code>, or the current bundle's directory for several assets; select one asset by name. Assets are hashed by default; <code>verify_files=False</code> checks metadata and sizes only. Missing raises <code>FileNotFoundError</code>; invalid raises <code>FileValidationError</code>.</td>
 </tr>
 <tr>
 <td><code>ensure(name, version=None, **download_options)</code></td>
@@ -3573,21 +3575,21 @@ The <a href="../bundles/">bundle guide</a> includes an example and downstream mi
 <div class="highlight"><pre><span></span><code>materialize(destination, sources, *, transform, outputs, builder, force=False,
             retain_sources=False, verify_files=True, download_options=None)
 </code></pre></div>
-<p>Install caller-built outputs and their dependency receipt as one immutable
-generation. Sources map relative names to <code>{url: ...}</code> or <code>{path: ...}</code>, plus
+<p>Build outputs with a caller's builder and publish them, with their dependency
+receipt, as a new bundle. Sources map relative names to <code>{url: ...}</code> or <code>{path: ...}</code>, plus
 optional raw-byte <code>sha256</code>/<code>size</code>; outputs map names to optional output-byte
 <code>sha256</code>/<code>size</code>. Transform is <code>{version: nonempty_string, options: JSON_value}</code>.
 The builder receives private <code>(source_paths, output_paths)</code> mappings, must leave
 inputs unchanged and create/close exactly the declared regular output files.
-Returns name-to-string snapshot paths; builder return values are ignored.</p>
+Returns name-to-string paths in the new bundle; builder return values are ignored.</p>
 <p>Dependency mismatch/corruption requires explicit <code>force=True</code>. Completed inputs
 survive failures; successful publication removes owned inputs unless retention
-is requested. Caller-owned local inputs and old generations are never deleted.
-Cache hits are offline/read-only. Fast reuse is opt-in; new publication/recovery
-always hash files. Download/copy/verification progress defaults on, configurable
+is requested. Caller-owned local inputs and old bundles are never deleted.
+Cache hits are offline/read-only. Fast reuse is opt-in; new outputs are always
+hashed. Download/copy/verification progress defaults on, configurable
 through download options. Installation initially requires POSIX local storage.
 See the <a href="../materialization/">materialization guide</a> for receipts, resume, callback
-contracts, retention, recovery and peak/retained disk use.</p>
+contracts, retention and peak/retained disk use.</p>
 <h2 id="inspect_materialization">inspect_materialization<a class="headerlink" href="#inspect_materialization" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>inspect_materialization(destination, sources=None, *, transform=None, outputs=None,
                         verify_files=True)
@@ -3598,9 +3600,9 @@ dependency checks, or omit all three for receipt-only consistency checks.
 <code>verify_files=False</code> validates inventory, types and sizes without payload reads
 and never claims trusted verification.</p>
 <h2 id="materializationinspection">MaterializationInspection<a class="headerlink" href="#materializationinspection" title="Permanent link">&para;</a></h2>
-<p>A read-only snapshot with <code>path</code>, <code>status</code>, <code>verified</code>, <code>generation</code>, <code>files</code>,
-<code>sources</code>, <code>transform</code> and <code>error</code>. Status is available, missing, invalid,
-inaccessible or recovery-required. <code>verified</code> means all output files matched
+<p>A read-only record with <code>path</code>, <code>status</code>, <code>verified</code>, <code>bundle</code>, <code>files</code>,
+<code>sources</code>, <code>transform</code> and <code>error</code>. Status is available, missing, invalid or
+inaccessible. <code>bundle</code> is the current bundle's directory. <code>verified</code> means all output files matched
 caller-trusted hashes now. Source records separately report raw observed hashes,
 sizes, redacted origins, identity, acquisition time, acquisition-time trusted
 verification and available validated transport metadata.</p>
@@ -3610,7 +3612,7 @@ verification and available validated transport metadata.</p>
 <code>urls</code> (version to URL), <code>default_version</code>, and optional <code>description</code>. The
 zero-argument root callable may return a string or Path. Construction creates
 nothing. See the <a href="../file_registry/">fixed-path guide</a> for legacy receipt semantics,
-trust boundaries, and the distinction from transactional generation bundles.</p>
+trust boundaries, and the distinction from bundles.</p>
 <table>
 <thead>
 <tr>

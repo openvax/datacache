@@ -1112,11 +1112,11 @@ paths are initially absent, with required parent directories already present.
 The builder must create exactly those outputs, close all handles, and leave
 inputs unchanged before returning. Only regular, single-link files and the
 declared output parent directories are accepted. Return values are ignored;
-<code>materialize</code> returns name-to-absolute-path mappings belonging to the published generation.
+<code>materialize</code> returns name-to-absolute-path mappings in the newly published bundle.
 The callback is trusted application code, not a sandbox. Builder progress,
 streamed decompression and biological validation are caller-owned.</p>
 <h2 id="identity-receipts-and-trust">Identity, receipts and trust<a class="headerlink" href="#identity-receipts-and-trust" title="Permanent link">&para;</a></h2>
-<p>Each generation records the complete source/transform/output dependency
+<p>Each bundle's manifest records the complete source/transform/output dependency
 definition and observed sizes/SHA-256 hashes. Source receipts also record
 redacted origins, acquisition time, acquisition-time trusted-hash verification,
 and validated transport metadata when available. Resumable HTTP acquisitions
@@ -1127,12 +1127,12 @@ Ordinary transfers without validated transport metadata do not invent it.</p>
 Display origins omit URL credentials, query text and fragments, but retain the
 path; avoid secret-bearing paths. Changing the full URL/path (including signed
 query text), integrity expectations, transform identity or output inventory
-makes an existing generation <code>invalid</code> for that request. Refresh is explicit:
+makes the current bundle <code>invalid</code> for that request. Refresh is explicit:
 <code>materialize(..., force=True)</code> builds a replacement. This API does not claim
 different mirror URLs are the same dependency; caller-declared source identity
 policy is separate. No remote <code>latest</code> lookup occurs.</p>
-<p><code>inspect_materialization</code> reports <code>available</code>, <code>missing</code>, <code>invalid</code>,
-<code>inaccessible</code> or <code>recovery-required</code>, with generation paths, output inspections,
+<p><code>inspect_materialization</code> reports <code>available</code>, <code>missing</code>, <code>invalid</code> or
+<code>inaccessible</code>, with the current bundle's path, output inspections,
 source receipts, transform identity and an error cause. Supply all three of
 <code>sources</code>, <code>transform</code>, and <code>outputs</code> to check the requested identity, or omit
 all three for receipt-only consistency checks. Inspection never accesses the
@@ -1143,8 +1143,8 @@ verification is explicitly historical. Without trusted output hashes, even
 fully consistent results have <code>verified=False</code>. <code>verify_files=False</code> checks
 ownership, dependency identity, exact inventory, types, readability and sizes,
 but cannot detect same-size corruption and always reports unverified outputs.
-This fast flag applies only to reuse. New output publication and explicit
-recovery always hash the bytes.</p>
+This fast flag applies only to reuse. New outputs are always hashed before
+they are published.</p>
 <h2 id="interruption-publication-and-retention">Interruption, publication and retention<a class="headerlink" href="#interruption-publication-and-retention" title="Permanent link">&para;</a></h2>
 <p>Writers serialize per artifact; unrelated artifacts have independent locks.
 Completed inputs persist in owner-only source-keyed directories even without
@@ -1155,48 +1155,45 @@ The supported transport options are timeout, chunk size, progress callback,
 progress display, retry count/backoff/delay and resume. Download, copy and hash
 progress is enabled by default; set <code>show_progress=False</code> in download options
 for noninteractive use. Valid cache hits remain quiet.</p>
-<p>Download, gzip, validation and builder failures leave the previously selected
-output generation untouched. Failed builder outputs are discarded; completed
+<p>Download, gzip, validation and builder failures leave the current bundle
+untouched. Failed builder outputs are discarded; completed
 inputs survive for retry without another download. A killed builder can leave
 private partial outputs, which the next transaction with the same definition
 discards. Changing only the transform can reuse retained matching inputs.
-<code>force=True</code> always rebuilds outputs: it never selects an older generation,
-even when <code>current.json</code> is missing, and it doesn't hash the outputs it replaces.
+<code>force=True</code> always rebuilds outputs, and it doesn't hash the outputs it
+replaces.
 It reuses remote inputs that still match, copies a local source again while
 the original exists (so an in-place correction is picked up; once the original
 is gone, a retained copy still serves), and repairs corrupted private inputs or
 input receipts. It never adopts unsafe paths or foreign directories.</p>
-<p>All declared outputs and <code>.datacache-manifest.json</code> are staged and checked as
-one tree. DataCache renames that tree into <code>generations/&lt;id&gt;</code> and atomically
-replaces <code>current.json</code>. It does not present independent fixed-file renames as
-a multi-file transaction. Readers see the complete old or complete new tree;
-returned snapshot paths continue to exist across later refreshes. Do not add
-indexes or edit files in a published generation; declare them as outputs or
-place independently mutable files outside the managed store.</p>
-<p>If the first pointer publication is interrupted, explicit <code>materialize</code>
-without <code>force</code> can fully check and select a matching complete local
-generation without fetching inputs or calling the builder. It tries the newest
-generation first, by the creation time its receipt records. Inspection alone
-does not recover anything. A failure to remove the private staging directory is
+<p>Materialization stores use the same layout as
+<a href="../bundles/#how-bundles-are-stored">bundles</a>. All declared outputs and
+<code>.datacache-manifest.json</code> are staged and checked as one tree, which is then
+renamed into <code>bundles/</code> under its UTC install time; the newest bundle is the
+current one. Readers see the complete old or complete new tree, and returned
+paths keep working across later refreshes. Do not add indexes or edit files in
+a published bundle; declare them as outputs or place independently mutable
+files outside the store. A failure to remove the private staging directory is
 logged; it never replaces a builder's error or fails a published build.</p>
-<p>After successful pointer publication/recovery, owned inputs for that source
-definition are removed by default. <code>retain_sources=True</code> keeps them privately
-for future builds. Cache hits never perform cleanup: a crash between pointer
-publication and cleanup may leave inputs for an explicit later refresh. Inputs
-for other source definitions/users and old output generations are never pruned
-implicitly. Abandoned input/staging variants require deliberate operator
+<p>After a successful publication, owned inputs for that source definition are
+removed by default. <code>retain_sources=True</code> keeps them privately for future
+builds. Cache hits never perform cleanup: a crash between publication and
+cleanup may leave inputs for an explicit later refresh. Inputs for other source
+definitions/users and old bundles are never removed implicitly. Abandoned input/staging variants require deliberate operator
 cleanup; general inventory/pruning is separate work. Retention is installation
 policy, not output identity, so toggling it on a cache hit does not mutate disk.</p>
-<p>The distinct <code>.datacache-materialization.json</code> ownership marker prevents
-adoption of populated legacy directories or bundle stores, even with force.
-Empty precreated stores are allowed and keep their directory modes. As with
+<p>The store marker, <code>.datacache-store.json</code>, records that this is a
+materialization store, so DataCache never adopts a populated legacy directory or
+another kind of store, even with force.
+An empty precreated directory becomes the store in place, keeping its owner,
+group and permissions. As with
 current resumable bundles, installation requires a POSIX local filesystem with
 <code>flock</code> and atomic sibling renames. Read-only existing hits require no lock.
 This is atomic visibility, not a guarantee against filesystem/power-loss faults.</p>
 <h2 id="disk-use">Disk use<a class="headerlink" href="#disk-use" title="Permanent link">&para;</a></h2>
-<p>Let <code>C</code> be total completed raw inputs, <code>D</code> the new output generation, and <code>O</code>
-all old retained output generations. During a build, storage is approximately
-<code>O + C + D</code>, plus scratch files created by the builder. Generation publication
+<p>Let <code>C</code> be total completed raw inputs, <code>D</code> the new bundle of outputs, and <code>O</code>
+all old bundles. During a build, storage is approximately
+<code>O + C + D</code>, plus scratch files created by the builder. Publication
 is a rename and does not duplicate <code>D</code>. After successful default cleanup,
 retained storage is <code>O + D</code>; opt-in source retention uses <code>O + C + D</code>.</p>
 <p>The existing resumable transport copies a completed private partial into file

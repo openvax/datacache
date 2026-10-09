@@ -1023,17 +1023,17 @@ lists every public signature, default, return value, exception, and example.</p>
 <tr>
 <td>Install or reuse a versioned dataset</td>
 <td><code>VersionedDatasetRegistry</code>, <code>install_bundle(...)</code></td>
-<td>Mapping of asset names to snapshot paths</td>
+<td>Mapping of asset names to paths in the current bundle</td>
 </tr>
 <tr>
 <td>Build derived files from versioned dependencies</td>
 <td><code>materialize(...)</code></td>
-<td>Mapping of output names to snapshot paths</td>
+<td>Mapping of output names to paths in the current bundle</td>
 </tr>
 <tr>
 <td>Install versioned archive trees</td>
 <td><code>VersionedArchiveRegistry</code>, <code>install_archive(...)</code></td>
-<td>Immutable extracted-generation <code>Path</code></td>
+<td><code>Path</code> of the extracted tree, the current bundle</td>
 </tr>
 <tr>
 <td>Reuse an established fixed-path versioned file cache</td>
@@ -1041,7 +1041,7 @@ lists every public signature, default, return value, exception, and example.</p>
 <td>One Path and a legacy-compatible root receipt</td>
 </tr>
 <tr>
-<td>Inspect a complete dataset generation</td>
+<td>Inspect a dataset's current bundle</td>
 <td><code>inspect_bundle(...)</code></td>
 <td><code>BundleInspection</code></td>
 </tr>

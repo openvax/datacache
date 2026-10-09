@@ -1101,7 +1101,7 @@ helper transform flags retain the public parsed-URL behavior.</p>
    and <code>.reason</code> provide structured validation details.</li>
 <li>Use <code>install_archive</code> when a released tar file owns a directory tree. Treat
    only <code>inspect_archive(...).status == "available"</code> as installed and resolve
-   member paths from the returned generation, never from the managed store.</li>
+   member paths from the returned bundle directory, never from the store.</li>
 </ol>
 <h2 id="reusable-downstream-toolkit">Reusable downstream toolkit<a class="headerlink" href="#reusable-downstream-toolkit" title="Permanent link">&para;</a></h2>
 <p>Downstream libraries should keep domain catalogues, CLI wording and generated
@@ -1123,12 +1123,12 @@ indexes, while delegating acquisition and source-store lifecycle to DataCache:</
 <tr>
 <td>A released tar tree, as in MHCflurry weights/data</td>
 <td><code>VersionedArchiveRegistry</code> or <code>install_archive</code></td>
-<td>Ordered parts, safe extraction, consumer receipts, immutable publication, status and recovery</td>
+<td>Ordered parts, safe extraction, consumer receipts, all-or-nothing publication and status</td>
 </tr>
 <tr>
-<td>Several separately published files forming one source snapshot</td>
+<td>Several separately published files that belong together</td>
 <td><code>VersionedDatasetRegistry</code> or <code>install_bundle</code></td>
-<td>Pinned versions, all-files-before-pointer publication, inspection and recovery</td>
+<td>Pinned versions, all-or-nothing publication and inspection</td>
 </tr>
 </tbody>
 </table>
@@ -1142,7 +1142,7 @@ continuing to use <code>fetch_file</code>; direct callers can set <code>record_p
 and expose <code>inspect_file</code> results for download visibility. Those derived
 artifacts remain application-owned.</p>
 <p>MHCflurry can preserve release selection, exact URL receipts and public model
-paths through the archive registry's <code>store_path</code> callback and generation path.</p>
+paths through the archive registry's <code>store_path</code> callback and the returned bundle path.</p>
 <h2 id="shared-openvax-cache">Shared OpenVax cache<a class="headerlink" href="#shared-openvax-cache" title="Permanent link">&para;</a></h2>
 <p>OpenVax packages share one cache so that published data, such as test datasets,
 is downloaded once for all of them. Select its root with <code>get_cache_root</code>,
@@ -1180,8 +1180,8 @@ are bounded, while <code>timeout</code> limits connection/read inactivity per at
 not total elapsed time.</p>
 <p>Use <a href="../bundles/">versioned bundles</a> when named files must be installed together,
 or <a href="../archives/">archive installation</a> when a tar archive defines the complete
-tree. Archive stores use cross-platform locks; generation bundles currently
-require POSIX <code>flock</code>.
+tree. Archive stores use cross-platform locks; <code>install_bundle</code> currently
+requires POSIX <code>flock</code>.
 Individual atomic downloads do not provide multi-file transactions or distributed
 locking. Unhandled termination can leave staging files behind. SQLite operations depend on
 SQLite's filesystem locking and journaling. New database publication needs
