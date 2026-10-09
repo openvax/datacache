@@ -189,8 +189,8 @@ installs. Forced refreshes therefore use more disk space; DataCache never delete
 bundles itself. Never modify files in a bundle. Resolve paths once for a
 multi-file operation: a later lookup can return a newer bundle.
 
-Installation is supported on POSIX local filesystems providing `flock` and atomic
-sibling `os.replace` (Linux and macOS). Shared caches use normal umask-derived
+Installation works on local filesystems with atomic sibling renames, on Linux,
+macOS and Windows; resumable downloads (`resume=True`) need POSIX. Shared caches use normal umask-derived
 permissions; readers need only read/search access. The staging directory stays
 private while files download, but the bundle inside it already has its final
 sharing permissions, so others can read it the moment it is renamed into place.

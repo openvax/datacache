@@ -213,6 +213,18 @@ def holds_files(directory):
                for entry in Path(directory).iterdir())
 
 
+def user_key():
+    """Identifies the current user in the names of private working directories.
+
+    The numeric user id on POSIX, the login name elsewhere, so two users of
+    a shared store never use each other's unfinished files.
+    """
+    if hasattr(os, 'getuid'):
+        return str(os.getuid())
+    import getpass
+    return getpass.getuser()
+
+
 def private_directory(path):
     """Create path if needed as a directory only its owner can use, and check it.
 

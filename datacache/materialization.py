@@ -13,7 +13,7 @@ from uuid import uuid4
 from ._filesystem import open_regular, path_present, read_json, write_json
 from .bundle_store import (
     CHUNK_SIZE, INVALID_STORE_ERRORS, MANIFEST, BundleStore, check_expected, check_tree,
-    discard_private_directory, hash_file, local_file_identity, private_directory,
+    discard_private_directory, hash_file, local_file_identity, private_directory, user_key,
     parent_directories, require_directory, validate_distinct_paths, validate_file_record,
     validate_no_sidecar_collisions, validate_relative_name,
 )
@@ -201,7 +201,7 @@ def _inspect_materialization(destination, expected, *, verify_files=True):
 
 
 def _input_directory(store, definition):
-    return store / ('.inputs-%s-%d' % (_fingerprint(definition['sources']), os.getuid()))
+    return store / ('.inputs-%s-%s' % (_fingerprint(definition['sources']), user_key()))
 
 
 def _cleanup_inputs(store, definition, retain_sources):
@@ -338,7 +338,8 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
     offline and read-only; verify_files=False skips payload hashing only on
     reuse. New outputs are always hashed before publication.
     Download/copy/verification progress is on by default; builder progress is
-    caller-owned. Installation requires POSIX locks and atomic local renames.
+    caller-owned. Installation needs atomic local renames, on Linux, macOS
+    and Windows; resume=True needs POSIX.
     """
     if not all(isinstance(value, bool) for value in (force, retain_sources, verify_files)):
         raise ValueError('force, retain_sources and verify_files must be booleans')
@@ -367,8 +368,6 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
     inspection = inspect_current()
     if store.can_reuse(inspection, force=force):
         return {name: value.path for name, value in inspection.files.items()}
-    if os.name != 'posix':
-        raise NotImplementedError('Materialization requires a POSIX local filesystem')
     path.parent.mkdir(parents=True, exist_ok=True)
     with store.lock():
         store.create()
@@ -377,7 +376,7 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
             return {name: value.path for name, value in inspection.files.items()}
         inputs = _input_directory(path, definition)
         source_paths, records = _acquire_inputs(inputs, definition['sources'], acquisition, options, force=force)
-        working = path / ('.staging-%s-%d' % (_fingerprint(definition), os.getuid()))
+        working = path / ('.staging-%s-%s' % (_fingerprint(definition), user_key()))
         # Start from nothing: discard this user's own outputs from a failed build.
         discard_private_directory(working)
         private_directory(working)

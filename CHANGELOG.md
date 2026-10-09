@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.22.0
+
+- `install_bundle`, `VersionedDatasetRegistry` and `materialize` work on
+  Windows, as archive installs already did (#89). Resumable downloads
+  (`resume=True`) still need POSIX. Private working directories are named for
+  the user's login name where there are no numeric user ids.
+
 ## 1.21.0
 
 - Add `max_bytes` to `fetch_file`, `Cache.fetch` and `fetch_bytes`, and to

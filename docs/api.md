@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.21.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.22.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -1268,7 +1268,7 @@ checks readability, file types and recorded sizes but cannot detect same-size
 corruption. New bundles are always hashed before publication, regardless of
 this cache-hit setting.
 `download_options` accepts timeout, chunk size, progress, retry, resume and `max_bytes` settings.
-Publication requires a POSIX local filesystem. [Complete guide](bundles.md).
+Works on Linux, macOS and Windows local filesystems. [Complete guide](bundles.md).
 
 ## inspect_bundle
 
@@ -1337,7 +1337,7 @@ survive failures; successful publication removes owned inputs unless retention
 is requested. Caller-owned local inputs and old bundles are never deleted.
 Cache hits are offline/read-only. Fast reuse is opt-in; new outputs are always
 hashed. Download/copy/verification progress defaults on, configurable
-through download options. Installation initially requires POSIX local storage.
+through download options. Works on Linux, macOS and Windows local storage.
 See the [materialization guide](materialization.md) for receipts, resume, callback
 contracts, retention and peak/retained disk use.
 

@@ -104,8 +104,7 @@ not total elapsed time.
 
 Use [versioned bundles](bundles.md) when named files must be installed together,
 or [archive installation](archives.md) when a tar archive defines the complete
-tree. Archive stores use cross-platform locks; `install_bundle` currently
-requires POSIX `flock`.
+tree. Both work on Linux, macOS and Windows; resumable downloads need POSIX.
 Individual atomic downloads do not provide multi-file transactions or distributed
 locking. Unhandled termination can leave staging files behind. SQLite operations depend on
 SQLite's filesystem locking and journaling. New database publication needs
