@@ -40,7 +40,7 @@ nav:
   - Install bundles: bundles.md
   - Install archive trees: archives.md
   - Build derived files: materialization.md
-  - Keep single files at fixed paths: file_registry.md
+  - Keep files at fixed paths: file_registry.md
   - Integrate a consuming library: integration.md
 - Reference:
   - Choose an interface: reference/choosing.md

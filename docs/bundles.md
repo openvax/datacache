@@ -263,4 +263,11 @@ non-resumable mode cleans its staging directory on handled failures.
 See [resumable downloads](downloads.md#resumable-http-downloads) for protocol,
 progress, disk-space and partial-discard details.
 
-Notes for specific OpenVax libraries are in [integrating a consuming library](integration.md#notes-for-specific-libraries).
+## Example and library notes
+
+<a id="adopting-from-downstream-libraries"></a>
+The [runnable offline example](https://github.com/openvax/datacache/blob/master/examples/versioned_datasets.py)
+demonstrates single-file, paired-file and multi-file registries, generated
+SQLite indices, shared reuse, and inspection with all upstream sources removed.
+Notes for specific OpenVax libraries are in
+[integrating a consuming library](integration.md#notes-for-specific-libraries).

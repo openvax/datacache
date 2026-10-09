@@ -3,7 +3,9 @@
 See the [API reference](api.md) for signatures, defaults, return values, and errors.
 
 Use the public `Cache`, `fetch_file`, inspection, registry and database APIs
-for new integrations; private helpers can change between releases.
+for new integrations. Private helpers can change between releases, except the
+compatibility entry points named under
+[notes for specific libraries](#notes-for-specific-libraries).
 
 ## Recommended contracts
 
@@ -44,14 +46,6 @@ bounded retry options to the shared transport. Registry construction, status,
 inspection and local-path resolution are offline. Applications can therefore
 offer consistent `list`/`info`/`download` behavior without maintaining private
 network or extraction implementations.
-
-PyEnsembl can preserve its fixed paths and derived SQLite/FASTA indexes while
-continuing to use `fetch_file`; direct callers can set `record_provenance=True`
-and expose `inspect_file` results for download visibility. Those derived
-artifacts remain application-owned.
-
-MHCflurry can preserve release selection, exact URL receipts and public model
-paths through the archive registry's `store_path` callback and the returned bundle path.
 
 ## Shared OpenVax cache
 
@@ -121,9 +115,11 @@ download, transform, inspection, CSV, and database APIs together.
 
 ## Notes for specific libraries
 
-- **MHCflurry:** use [`install_archive`](archives.md) for released `.tar.bz2`
-  trees and ordered historical parts. Resolve member paths from the returned
-  bundle; preserve `DOWNLOAD_INFO.csv` with `extra_files`. Do not enumerate
+- **MHCflurry:** use [`VersionedArchiveRegistry`](archives.md) (or
+  `install_archive`) for released `.tar.bz2` trees and ordered historical parts.
+  Its `store_path` callback preserves release selection and existing paths.
+  Resolve member paths from the returned bundle; preserve `DOWNLOAD_INFO.csv`
+  with `extra_files`. Do not enumerate
   model files as bundle assets or treat the managed store's existence as a
   completed download.
 - **hitlist / tsarina:** use [VersionedFileRegistry](file_registry.md) to retain
@@ -144,11 +140,10 @@ download, transform, inspection, CSV, and database APIs together.
   revision to share a complete installation. Existing digest-addressed individual
   assets can remain under `<root>/objects/sha256/`; these APIs do not relocate
   them or change prediction-cache identities.
-- **pyensembl:** single-file download and SQLite APIs remain supported. Bundles
-  are optional for references with trustworthy multi-file metadata. Existing
-  calls to the private `_download_and_decompress_if_necessary` keep their
-  legacy URL inference and get the current permissions and retry behavior.
-
-The [runnable offline example](https://github.com/openvax/datacache/blob/master/examples/versioned_datasets.py) demonstrates
-single-file, paired-file and multi-file registries, generated SQLite indices,
-shared reuse, and inspection with all upstream sources removed.
+- **pyensembl:** keeps its fixed paths and derived SQLite/FASTA indexes while
+  using `fetch_file`; `record_provenance=True` and `inspect_file` show where
+  files came from. Bundles are optional for references with trustworthy
+  multi-file metadata. Existing calls to the private
+  `_download_and_decompress_if_necessary` keep their legacy literal-URL
+  inference when no transform flags are passed (explicit flags use the public
+  parsed-URL rules), with the current permissions and retry behavior.

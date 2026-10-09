@@ -274,8 +274,9 @@ class VersionedDatasetRegistry:
 
     Each dataset is {default_version, versions: {version: {asset: metadata}}}.
     The single-file shape {filename, urls: {version: url}, default_version} is
-    also accepted with verified=False. cache_root is a path; cache_dir
-    optionally accepts a zero-argument root callable. Alternatively, store_path is
+    also accepted with verified=False; its file is installed with
+    decompress=True. Give the root as cache_root, a path, or as cache_dir, a
+    zero-argument callable consulted on every lookup. Alternatively, store_path is
     a two-argument (name, version) callback selecting an exact managed store.
     Construction never writes or invokes either callback.
     """

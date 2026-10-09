@@ -48,8 +48,10 @@ receipts are treated as empty, matching the legacy registry.
 
 `status()` returns `name`, `description`, `default_version`, `available_versions`,
 `cached`, `cached_version`, `url`, `bytes`, `sha256`, `downloaded_at` and `path`. Presence and path
-refer to the pinned default. Receipt fields describe the most recent download
-for that dataset, which may name another version. This compatibility view does
+refer to the pinned default. `cached_version` comes from the most recent
+download recorded for that dataset, which may be another version; `url`,
+`bytes`, `sha256` and `downloaded_at` are filled in only while the pinned
+default's file exists, and are otherwise `None`. This compatibility view does
 not certify freshness or integrity; use `inspect_file` for the selected path.
 
 Unknown dataset/version errors and acquisition failures use `error_cls`

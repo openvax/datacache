@@ -15,15 +15,16 @@ explain the longer workflows and compatibility guarantees.
 | Area | APIs |
 | --- | --- |
 | Downloading | [fetch_file](#fetch_file), [fetch_bytes](#fetch_bytes), [fetch_csv_dataframe](#fetch_csv_dataframe), [fetch_and_transform](#fetch_and_transform), [discard_partial](#discard_partial) |
-| Complete archive trees | [install_archive](#install_archive), [inspect_archive](#inspect_archive), [ArchiveInspection](#archiveinspection), [VersionedArchiveRegistry](#versionedarchiveregistry) |
-| Versioned file bundles | [install_bundle](#install_bundle), [inspect_bundle](#inspect_bundle), [BundleInspection](#bundleinspection), [list_bundles](#list_bundles), [prune_bundles](#prune_bundles), [VersionedDatasetRegistry](#versioneddatasetregistry), [VersionedFileRegistry](#versionedfileregistry) |
-| Derived artifacts | [materialize](#materialize), [inspect_materialization](#inspect_materialization), [MaterializationInspection](#materializationinspection) |
 | Paths and presence | [expected_path](#expected_path), [file_exists](#file_exists), [build_local_filename](#build_local_filename), [get_data_dir](#get_data_dir), [get_cache_root](#get_cache_root), [resolve_path](#resolve_path), [build_path](#build_path), [ensure_dir](#ensure_dir), [clear_cache](#clear_cache) |
 | Integrity and permissions | [validate_file](#validate_file), [inspect_file](#inspect_file), [inspect_files](#inspect_files), [make_file_readable](#make_file_readable) |
 | Results and exceptions | [FileInspection](#fileinspection), [CacheInspection](#cacheinspection), [FileValidationError](#filevalidationerror) |
 | SQLite | [db_from_dataframe](#db_from_dataframe), [db_from_dataframes](#db_from_dataframes), [db_from_dataframes_with_absolute_path](#db_from_dataframes_with_absolute_path), [fetch_csv_db](#fetch_csv_db), [connect_if_correct_version](#connect_if_correct_version) |
 | Cache object | [Cache](#cache), [fetch](#cachefetch), [local_filename](#cachelocal_filename), [local_path](#cachelocal_path), [exists](#cacheexists), [inspect](#cacheinspect), [make_readable](#cachemake_readable), [db_from_dataframe](#cachedb_from_dataframe), [delete_url](#cachedelete_url), [delete_all](#cachedelete_all) |
-| Package version | [__version__](#__version__) |
+| Complete archive trees | [install_archive](#install_archive), [inspect_archive](#inspect_archive), [ArchiveInspection](#archiveinspection), [VersionedArchiveRegistry](#versionedarchiveregistry) |
+| Versioned file bundles | [install_bundle](#install_bundle), [inspect_bundle](#inspect_bundle), [BundleInspection](#bundleinspection), [list_bundles](#list_bundles), [prune_bundles](#prune_bundles), [VersionedDatasetRegistry](#versioneddatasetregistry) |
+| Derived artifacts | [materialize](#materialize), [inspect_materialization](#inspect_materialization), [MaterializationInspection](#materializationinspection) |
+| Fixed-path file registry | [VersionedFileRegistry](#versionedfileregistry) |
+| Package version | [`__version__`](#__version__) |
 
 ## Example setup
 
@@ -1326,7 +1327,7 @@ the consumer layout but not the layout inside each store. Each dataset
 specifies a `default_version` and `versions`, mapping concrete versions to asset
 mappings. Construction validates metadata and performs no writes or networking,
 and does not invoke callbacks. Path callbacks should be pure path computations.
-The [bundle guide](bundles.md) includes an example and downstream migration notes.
+The [bundle guide](bundles.md) includes an example; notes for specific libraries are in the [integration guide](integration.md#notes-for-specific-libraries).
 
 | Method | Result |
 | --- | --- |
@@ -1420,6 +1421,8 @@ It is independent of the integer `version` used to identify a SQLite cache.
 ```python
 print(dc.__version__)
 ```
+
+## Cleanup
 
 After finishing the examples, remove their temporary files:
 

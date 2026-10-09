@@ -86,21 +86,24 @@ when a dataset contains several assets that must be installed together.
 
 ## Choose an interface
 
-Pick by what you are caching:
+Pick by what you need:
 
-| You are caching | Use | You get back |
+| You need | Use | You get back |
 | --- | --- | --- |
-| One file | `fetch_file()` or `Cache.fetch()` ([guide](downloads.md)) | Its local path |
-| A small resource, such as a directory listing | `fetch_bytes()` | Its bytes; nothing is written |
+| One file, downloaded once and reused | `fetch_file()` or `Cache.fetch()` ([guide](downloads.md)) | Its local path |
+| One file that changes upstream, refreshed now and then | `fetch_file(expire_after=...)` ([guide](downloads.md#small-metadata-and-freshness)) | Its local path |
+| One file per version, at a fixed path | `VersionedFileRegistry` ([guide](file_registry.md)) | Its local path |
+| A small resource held only in memory, such as a listing | `fetch_bytes()` | Its bytes; nothing is cached |
 | Several files that belong together, pinned per version | `VersionedDatasetRegistry` ([guide](bundles.md)) | Their paths, in one bundle |
 | A tar archive unpacked into a directory | `VersionedArchiveRegistry` ([guide](archives.md)) | The unpacked directory |
 | Files your own code builds from downloads | `materialize()` ([guide](materialization.md)) | The built files' paths |
 | Tables or SQLite databases | `fetch_csv_dataframe()`, `db_from_dataframe()` ([guide](data.md)) | A DataFrame or a connection |
 
-Every kind of cache can be checked offline without changing it: `inspect_file()`
-for one file, `inspect()` on a registry for the rest. Several files, archives and
-built files are installed all at once or not at all, and old copies are kept
-until you delete them with `prune_bundles()`.
+Installed files can be checked offline without changing them: `inspect_file()`
+for a file, `inspect()` on a dataset or archive registry, and
+`inspect_materialization()` for built files. Several files, archives and built
+files are installed all at once or not at all, and old copies are kept until
+you delete them with `prune_bundles()`.
 
 The [interface selection reference](reference/choosing.md) covers the main
 entry points and the publication guarantees. The [API reference](api.md) gives
