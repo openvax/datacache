@@ -48,10 +48,13 @@ def serve():
                     self.send_header("Content-Encoding", "gzip")
                 if how in ("length", "gzip"):
                     self.send_header("Content-Length", str(len(payload)))
-                if how == "chunked":
+                if how == "overstated":
+                    # Chunked transfer overrides any Content-Length (RFC 9112).
+                    self.send_header("Content-Length", str(100 * len(payload)))
+                if how in ("chunked", "overstated"):
                     self.send_header("Transfer-Encoding", "chunked")
                 self.end_headers()
-                if how == "chunked":
+                if how in ("chunked", "overstated"):
                     for start in range(0, len(payload), 4096):
                         piece = payload[start:start + 4096]
                         self.wfile.write(b"%x\r\n%s\r\n" % (len(piece), piece))
@@ -107,7 +110,7 @@ def test_bodies_of_unknown_length_never_write_past_the_limit(serve, tmp_path, ho
     assert leftovers(tmp_path, keep=("data",)) == []
 
 
-@pytest.mark.parametrize("how", ["length", "none", "chunked", "gzip"])
+@pytest.mark.parametrize("how", ["length", "none", "chunked", "gzip", "overstated"])
 def test_a_body_of_exactly_max_bytes_is_accepted(serve, tmp_path, how):
     url, _ = serve(how=how)
     destination = tmp_path / "data"
@@ -179,7 +182,42 @@ def test_html_conversion_cant_be_bounded(serve, tmp_path):
     url, requests = serve(path="/table.html")
     with pytest.raises(ValueError, match="HTML-to-CSV"):
         fetch_file(url, destination=tmp_path / "table.csv", max_bytes=10)
+    # The converter guards itself too, for direct callers of the old entry point.
+    with pytest.raises(ValueError, match="HTML-to-CSV"):
+        download._download_and_decompress_if_necessary(str(tmp_path / "table.csv"), url, max_bytes=10)
     assert requests == []
+
+
+def test_a_zero_limit_needs_allow_empty(serve, tmp_path):
+    url, requests = serve(b"", how="length")
+    with pytest.raises(ValueError, match="allow_empty"):
+        fetch_file(url, destination=tmp_path / "empty", raw=True, max_bytes=0)
+    with pytest.raises(ValueError, match="allow_empty"):
+        fetch_bytes(url, max_bytes=0)
+    with pytest.raises(ValueError, match="empty"):
+        validate_download_options({"max_bytes": 0}, "bundle")
+    assert requests == []
+    fetch_file(url, destination=tmp_path / "empty", raw=True, max_bytes=0, allow_empty=True)
+    assert (tmp_path / "empty").read_bytes() == b""
+    assert fetch_bytes(url, max_bytes=0, allow_empty=True) == b""
+
+
+def test_installs_check_known_sizes_before_creating_anything(serve, tmp_path):
+    from datacache import install_archive, materialize
+    url, requests = serve()
+    small = {"url": url, "sha256": "0" * 64, "size": 10}
+    large = {"url": url, "sha256": "0" * 64, "size": 10 ** 9}
+    options = {"max_bytes": 10000}
+    if os.name == "posix":
+        with pytest.raises(ValueError, match="b size 1000000000 is larger than max_bytes 10000"):
+            install_bundle(tmp_path / "bundle", {"a": small, "b": large}, download_options=options)
+        with pytest.raises(ValueError, match="b size 1000000000 is larger than max_bytes 10000"):
+            materialize(tmp_path / "derived", {"a": small, "b": large}, transform={"version": "1"},
+                        outputs={"out": {}}, builder=lambda inputs, outputs: None, download_options=options)
+    with pytest.raises(ValueError, match="part 1 size 1000000000 is larger than max_bytes 10000"):
+        install_archive(tmp_path / "archive", [small, large], download_options=options)
+    assert requests == []
+    assert sorted(path.name for path in tmp_path.iterdir()) == []
 
 
 def test_cache_fetch_and_install_download_options_take_max_bytes(serve, tmp_path):

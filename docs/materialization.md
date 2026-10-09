@@ -115,7 +115,8 @@ HTTP resume. `download_options={"resume": True}` also preserves partial raw
 HTTP(S) downloads, using existing hash/size or size/strong-ETag resume rules.
 Remote resumable inputs require `size`; local inputs are simply copied.
 The supported transport options are timeout, chunk size, progress callback,
-progress display, retry count/backoff/delay and resume. Download, copy and hash
+progress display, retry count/backoff/delay, resume and `max_bytes`, which
+limits each remote download. Download, copy and hash
 progress is enabled by default; set `show_progress=False` in download options
 for noninteractive use. Valid cache hits remain quiet.
 

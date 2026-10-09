@@ -13,7 +13,8 @@
   retrying, keeps any existing file and removes temporary files. It works on
   every platform, unlike `resume=True`. `expected_size` keeps its exact
   meaning and must not exceed `max_bytes`; HTML-to-CSV conversion can't be
-  bounded and is rejected with it.
+  bounded and is rejected with it. Installs check every size they already know
+  against `max_bytes` before creating anything.
 
 ## 1.20.0
 

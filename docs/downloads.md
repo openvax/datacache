@@ -202,19 +202,28 @@ The limit is checked before every write, so no file this fetch writes ever
 holds more than `max_bytes` bytes:
 
 - The download is the body after HTTP transfer decoding, such as gzip
-  `Content-Encoding`. A missing or wrong `Content-Length` doesn't matter; a
-  `Content-Length` over the limit is refused before the body is read.
+  `Content-Encoding`, counted as it arrives, so it holds whether or not the
+  server sends `Content-Length`. A `Content-Length` over the limit is refused
+  before the body is read, unless chunked transfer makes it meaningless.
 - With `decompress=True`, the installed file is limited too, so a download and
-  its decompressed file together never need more than twice `max_bytes`.
+  its decompressed file together never need more than twice `max_bytes`. The
+  compressed download must fit as well; leave room for it when the data
+  barely compresses.
 - A larger transfer raises `FileValidationError` and isn't retried. Any
   existing file stays as it was, and temporary files are removed.
 - Cache hits write nothing, so the limit doesn't apply to them.
 
 `expected_size` keeps its exact meaning and must not exceed `max_bytes`.
 HTML-to-CSV conversion can't be bounded while it writes, so `max_bytes`
-rejects it; pass `raw=True` to keep the HTML itself. `fetch_bytes` accepts
-`max_bytes` for bodies held in memory, and `install_bundle`, `install_archive`
-and `materialize` accept it in `download_options` for each download they make.
+rejects it; pass `raw=True` to keep the HTML itself. Like other options that
+can't work together, these raise `ValueError` before anything else, cache hits
+included. `max_bytes=0` needs `allow_empty=True`.
+
+`fetch_bytes` accepts `max_bytes` for bodies held in memory: the result never
+grows past it, and the body is read in chunks no larger than the limit.
+`install_bundle`, `install_archive` and `materialize` accept it in
+`download_options` for each download they make, and check every size they
+already know against it before creating anything.
 This works the same on every platform, unlike `resume=True`, which needs a
 POSIX filesystem.
 

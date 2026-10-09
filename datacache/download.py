@@ -74,15 +74,40 @@ class MaxBytesExceeded(Exception):
     """
 
 
-def _validate_max_bytes(max_bytes):
-    if max_bytes is not None and (isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes < 0):
-        raise ValueError("max_bytes must be a non-negative integer")
+def validate_limit(name, value):
+    """Raise ValueError unless value is None (no limit) or a non-negative integer."""
+    if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 0):
+        raise ValueError("%s must be a non-negative integer" % name)
 
 
-def _check_max_bytes(written, more, max_bytes):
-    """Raise MaxBytesExceeded before a write that would pass max_bytes."""
-    if max_bytes is not None and written + more > max_bytes:
+def validate_size_within_limit(size, max_bytes, what="expected_size"):
+    """Raise ValueError when a known size can never fit within max_bytes."""
+    if max_bytes is not None and size is not None and size > max_bytes:
+        raise ValueError("%s %d is larger than max_bytes %d" % (what, size, max_bytes))
+
+
+def refuse_if_over(size, max_bytes):
+    """Raise MaxBytesExceeded if size is more than max_bytes."""
+    if max_bytes is not None and size > max_bytes:
         raise MaxBytesExceeded("more than max_bytes=%d bytes" % max_bytes)
+
+
+class LimitedWriter:
+    """A file that refuses any write that would take it past max_bytes.
+
+    The refused write raises MaxBytesExceeded before anything is written, so
+    the file never holds more than max_bytes bytes.
+    """
+
+    def __init__(self, file, max_bytes):
+        self.file = file
+        self.max_bytes = max_bytes
+        self.written = 0
+
+    def write(self, data):
+        refuse_if_over(self.written + len(data), self.max_bytes)
+        self.written += len(data)
+        return self.file.write(data)
 
 
 def _content_length(header_value):
@@ -125,6 +150,10 @@ def _stream_to_file(
     Returns the total number of bytes written.
     """
     bytes_downloaded = 0
+    if max_bytes is not None:
+        file_handle = LimitedWriter(file_handle, max_bytes)
+        # Never read, and so never decode, much more than the limit at once.
+        chunk_size = min(chunk_size, max_bytes + 1)
 
     def report(total_bytes):
         if progress_callback is not None:
@@ -140,12 +169,13 @@ def _stream_to_file(
             encoding = response.headers.get("Content-Encoding", "identity").lower()
             total_bytes = (_content_length(response.headers.get("Content-Length"))
                            if encoding == "identity" else None)
-            _check_max_bytes(0, total_bytes or 0, max_bytes)
+            # Chunked transfer makes Content-Length meaningless (RFC 9112).
+            if "Transfer-Encoding" not in response.headers:
+                refuse_if_over(total_bytes or 0, max_bytes)
             for chunk in response.iter_content(chunk_size=chunk_size):
                 if not chunk:
                     # skip keep-alive chunks that carry no data
                     continue
-                _check_max_bytes(bytes_downloaded, len(chunk), max_bytes)
                 file_handle.write(chunk)
                 bytes_downloaded += len(chunk)
                 report(total_bytes)
@@ -153,12 +183,11 @@ def _stream_to_file(
         req = urllib.request.Request(download_url)
         with urllib.request.urlopen(req, data=None, timeout=timeout) as response:
             total_bytes = _content_length(response.headers.get("Content-Length"))
-            _check_max_bytes(0, total_bytes or 0, max_bytes)
+            refuse_if_over(total_bytes or 0, max_bytes)
             while True:
                 chunk = response.read(chunk_size)
                 if not chunk:
                     break
-                _check_max_bytes(bytes_downloaded, len(chunk), max_bytes)
                 file_handle.write(chunk)
                 bytes_downloaded += len(chunk)
                 report(total_bytes)
@@ -301,7 +330,8 @@ def fetch_bytes(
 
     max_bytes : int, optional
         The largest body to accept, after HTTP transfer decoding. It is
-        checked before each chunk is kept, so memory never holds more; a
+        checked before each chunk is kept, so the returned bytes never grow
+        past it, and the body is read in chunks no larger than the limit. A
         larger body raises ValueError without retrying. Default None: no limit.
 
     Raises ValueError for invalid options, an empty body or one larger than
@@ -314,7 +344,9 @@ def fetch_bytes(
         raise ValueError("URL not provided")
     if not isinstance(allow_empty, bool):
         raise ValueError("allow_empty must be a boolean")
-    _validate_max_bytes(max_bytes)
+    validate_limit("max_bytes", max_bytes)
+    if max_bytes == 0 and not allow_empty:
+        raise ValueError("max_bytes=0 allows only an empty body; pass allow_empty=True")
 
     def attempt():
         buffer = io.BytesIO()
@@ -433,15 +465,16 @@ def _publish_file(staged_path, full_path, record=None):
 
 
 def _copy_with_progress(source, destination, show_progress, total=None, max_bytes=None):
-    if not show_progress and max_bytes is None:
+    if max_bytes is not None:
+        destination = LimitedWriter(destination, max_bytes)
+    if not show_progress:
         return copyfileobj(source, destination)
-    with Progress(show_progress, "Decompressing", total) as progress:
+    with Progress(True, "Decompressing", total) as progress:
         completed = 0
         while True:
             chunk = source.read(DEFAULT_CHUNK_SIZE)
             if not chunk:
                 break
-            _check_max_bytes(completed, len(chunk), max_bytes)
             destination.write(chunk)
             completed += len(chunk)
             progress(completed, total)
@@ -523,6 +556,8 @@ def _download_and_decompress_if_necessary(
         html = download_url.endswith(("html", "htm")) and full_path.endswith(".csv")
     else:
         html = convert_html and source_suffix in (".html", ".htm") and output_suffix == ".csv"
+    if html and max_bytes is not None:
+        raise ValueError("max_bytes can't bound HTML-to-CSV conversion; use raw=True for the HTML itself")
     # expected_size=0 states that an empty file is the right result.
     reject_empty = not allow_empty and expected_size != 0
     try:
@@ -546,32 +581,29 @@ def _download_and_decompress_if_necessary(
 
     staged_path = tmp_path
     try:
-        try:
-            if unzip or gunzip or html:
-                with _open_staging_file(
-                        directory=out_dir, prefix=".datacache-install-") as tmp:
-                    staged_path = tmp.name
-                if unzip:
-                    with zipfile.ZipFile(tmp_path) as z:
-                        infos = [info for info in z.infolist() if not info.is_dir()]
-                        if not infos:
-                            raise ValueError("Empty zip archive")
-                        # Never extract stored paths: stream one member's contents.
-                        chosen = _choose_zip_member(infos, filename, warn=explicit_output is not False)
-                        _check_max_bytes(0, chosen.file_size, max_bytes)
-                        with z.open(chosen) as src, open(staged_path, "wb") as dst:
-                            _copy_with_progress(src, dst, show_progress, chosen.file_size, max_bytes)
-                elif gunzip:
-                    with gzip.GzipFile(tmp_path) as src, open(staged_path, "wb") as dst:
-                        _copy_with_progress(src, dst, show_progress, max_bytes=max_bytes)
-                else:
-                    import pandas as pd
-                    df = pd.read_html(tmp_path, header=0)[0]
-                    df.to_csv(staged_path, sep=',', index=False, encoding='utf-8')
-                if reject_empty and os.path.getsize(staged_path) == 0:
-                    raise FileValidationError(full_path, "installed file is empty; pass allow_empty=True if an empty file is expected")
-        except MaxBytesExceeded as error:
-            raise FileValidationError(full_path, "decompressed file has %s" % error) from error
+        if unzip or gunzip or html:
+            with _open_staging_file(
+                    directory=out_dir, prefix=".datacache-install-") as tmp:
+                staged_path = tmp.name
+            if unzip:
+                with zipfile.ZipFile(tmp_path) as z:
+                    infos = [info for info in z.infolist() if not info.is_dir()]
+                    if not infos:
+                        raise ValueError("Empty zip archive")
+                    # Never extract stored paths: stream one member's contents.
+                    chosen = _choose_zip_member(infos, filename, warn=explicit_output is not False)
+                    refuse_if_over(chosen.file_size, max_bytes)
+                    with z.open(chosen) as src, open(staged_path, "wb") as dst:
+                        _copy_with_progress(src, dst, show_progress, chosen.file_size, max_bytes)
+            elif gunzip:
+                with gzip.GzipFile(tmp_path) as src, open(staged_path, "wb") as dst:
+                    _copy_with_progress(src, dst, show_progress, max_bytes=max_bytes)
+            else:
+                import pandas as pd
+                df = pd.read_html(tmp_path, header=0)[0]
+                df.to_csv(staged_path, sep=',', index=False, encoding='utf-8')
+            if reject_empty and os.path.getsize(staged_path) == 0:
+                raise FileValidationError(full_path, "installed file is empty; pass allow_empty=True if an empty file is expected")
         try:
             if show_progress:
                 validate_file(staged_path, expected_sha256, expected_size, show_progress=True)
@@ -590,6 +622,9 @@ def _download_and_decompress_if_necessary(
             except OSError as error:
                 logger.debug("Could not describe provenance for %s: %s", full_path, error)
         _publish_file(staged_path, full_path, record)
+    except MaxBytesExceeded as error:
+        # Only decompression writes here; the download was limited above.
+        raise FileValidationError(full_path, "decompressed file has %s" % error) from error
     finally:
         if staged_path != tmp_path:
             _remove_staging_file(staged_path)
@@ -709,6 +744,8 @@ def validate_download_options(options, kind):
     unsupported = set(options) - DOWNLOAD_OPTIONS
     if unsupported:
         raise ValueError("unsupported %s download options: %s" % (kind, sorted(unsupported)))
+    if options.get("max_bytes") == 0:
+        raise ValueError("max_bytes=0 allows only empty downloads")
     validate_transfer_settings(
         chunk_size=options.get("chunk_size", DEFAULT_CHUNK_SIZE),
         progress_callback=options.get("progress_callback"),
@@ -725,7 +762,7 @@ def validate_transfer_settings(
         *, chunk_size, progress_callback, show_progress, resume,
         max_retries, retry_backoff, retry_max_delay, max_bytes=None):
     """Check fetch_file's transfer settings; return the retry delays as floats."""
-    _validate_max_bytes(max_bytes)
+    validate_limit("max_bytes", max_bytes)
     if not isinstance(resume, bool):
         raise ValueError("resume must be a boolean")
     if not isinstance(show_progress, bool):
@@ -844,13 +881,15 @@ def fetch_file(
     max_bytes : int, optional
         The most bytes any file this fetch writes may hold, checked before
         every write. It bounds the download itself, which is the body after
-        HTTP transfer decoding such as gzip Content-Encoding (a missing or
-        wrong Content-Length doesn't matter), and the installed file after
-        decompress=True; together they never need more than twice max_bytes.
-        A larger transfer raises FileValidationError without retrying: an
-        existing file stays and temporary files are removed. Cache hits write
-        nothing and are unaffected. expected_size must not be larger, and
-        HTML-to-CSV conversion can't be bounded. Default None: no limit.
+        HTTP transfer decoding such as gzip Content-Encoding (whether or not
+        Content-Length is sent), and the installed file after decompress=True,
+        so allow for the compressed download too; together they never need
+        more than twice max_bytes. A larger transfer raises FileValidationError
+        without retrying: an existing file stays and temporary files are
+        removed. Cache hits write nothing and are unaffected. expected_size
+        must not be larger, and HTML-to-CSV conversion can't be bounded;
+        options that can't work together raise ValueError, even on a cache
+        hit. Default None: no limit.
 
     max_retries : int, optional
         Additional attempts after transient HTTP/transport failures, default 2.
@@ -942,8 +981,9 @@ def fetch_file(
         from .resume import validate_resume
         validate_resume(download_url, expected_sha256, expected_size)
     _validate_expectations(expected_sha256, expected_size)
-    if max_bytes is not None and expected_size is not None and expected_size > max_bytes:
-        raise ValueError("expected_size %d is larger than max_bytes %d" % (expected_size, max_bytes))
+    validate_size_within_limit(expected_size, max_bytes)
+    if max_bytes == 0 and not allow_empty and expected_size != 0:
+        raise ValueError("max_bytes=0 allows only an empty file; pass allow_empty=True")
     if not isinstance(record_provenance, bool):
         raise ValueError("record_provenance must be a boolean")
     if not isinstance(allow_empty, bool):

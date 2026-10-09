@@ -176,7 +176,7 @@ cache is read-only.
 | `download_url` | Source URL string: HTTP, HTTPS, FTP, or `file://`. |
 | `timeout`, `max_retries`, `retry_backoff`, `retry_max_delay` | As for [fetch_file](#fetch_file). Only HTTP(S) transfers are retried. |
 | `allow_empty` | Boolean accepting an empty body; default `False`. An empty HTTP response is otherwise retried as transient, then rejected. |
-| `max_bytes` | Optional non-negative integer: the largest body to accept, after HTTP transfer decoding. Checked before each chunk is kept, so memory never holds more; a larger body raises `ValueError` without retrying. |
+| `max_bytes` | Optional non-negative integer: the largest body to accept, after HTTP transfer decoding. Checked before each chunk is kept, so the returned bytes never grow past it, and the body is read in chunks no larger than the limit; a larger body raises `ValueError` without retrying. `0` requires `allow_empty=True`. |
 
 **Returns:** `bytes`. **Raises:** `ValueError` for invalid options, an empty
 body, or a body larger than `max_bytes`; Requests exceptions for HTTP failures, preserved after retry exhaustion;
@@ -1163,8 +1163,8 @@ and before publication. It is intended for consumer receipts such as
 `DOWNLOAD_INFO.csv`; collisions with archive content fail the installation.
 The complete metadata inventory is part of the archive's identity: additions,
 removals, and content changes require an explicit refresh.
-`download_options` accepts timeout, chunk size, progress, retry, and resume
-settings from `fetch_file`. Resumable URL parts each require a trusted hash and
+`download_options` accepts timeout, chunk size, progress, retry, resume, and
+`max_bytes` settings from `fetch_file`. Resumable URL parts each require a trusted hash and
 size. Optional `max_members` and `max_extracted_size` limits are checked before
 files are extracted, as headers arrive; scanning stops when a limit is exceeded.
 Benign leading `./` paths are normalized and root `.` directory entries ignored.
@@ -1267,7 +1267,7 @@ unpinned sources; their observed hashes are recorded without authenticating them
 checks readability, file types and recorded sizes but cannot detect same-size
 corruption. New bundles are always hashed before publication, regardless of
 this cache-hit setting.
-`download_options` accepts timeout, chunk size, progress, retry settings and resume.
+`download_options` accepts timeout, chunk size, progress, retry, resume and `max_bytes` settings.
 Publication requires a POSIX local filesystem. [Complete guide](bundles.md).
 
 ## inspect_bundle
