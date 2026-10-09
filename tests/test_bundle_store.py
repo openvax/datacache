@@ -143,6 +143,35 @@ def test_directories_with_files_are_never_taken_over(tmp_path):
     assert [path.name for path in store.path.iterdir()] == ['keep.txt']
 
 
+@pytest.mark.parametrize('make', [
+    lambda path: path.write_text('a file'),
+    lambda path: path.symlink_to(path.parent / 'elsewhere', target_is_directory=True),
+], ids=['file', 'link'])
+def test_anything_but_a_directory_is_never_taken_over(tmp_path, make):
+    (tmp_path / 'elsewhere').mkdir()
+    make(tmp_path / 'store')
+    store = BundleStore(tmp_path / 'store', 'bundle')
+    with pytest.raises(FileValidationError, match='never taken over'):
+        store.refuse_takeover()
+    with pytest.raises(FileValidationError, match='never taken over'):
+        install_bundle(tmp_path / 'store', {'a': {'url': 'https://example.test/a', 'sha256': '0' * 64, 'size': 1}})
+
+
+def test_datacache_temporary_files_dont_make_a_directory_foreign(tmp_path, monkeypatch):
+    (tmp_path / 'store').mkdir()
+    (tmp_path / 'store' / '.datacache-json-interrupted').write_text('{')
+    store = BundleStore(tmp_path / 'store', 'bundle')
+    assert store.current_bundle() is None
+    store.create()
+    assert store.current_bundle() is None
+    # A store named "." is created in place, with nothing left beside it.
+    (tmp_path / 'here').mkdir()
+    monkeypatch.chdir(tmp_path / 'here')
+    BundleStore('.', 'archive').create()
+    assert sorted(path.name for path in (tmp_path / 'here').iterdir()) == [MARKER, 'bundles']
+    assert sorted(path.name for path in tmp_path.iterdir()) == ['here', 'store']
+
+
 def test_one_kind_never_uses_another_kinds_store(tmp_path):
     BundleStore(tmp_path / 'store', 'archive').create()
     other = BundleStore(tmp_path / 'store', 'bundle')
@@ -277,4 +306,13 @@ def test_installs_reject_bad_download_options_before_creating_anything(tmp_path)
         materialize(tmp_path / 'derived', {'data.txt': spec}, transform={'version': '1'},
                     outputs={'out.txt': {}}, builder=lambda inputs, outputs: None,
                     download_options=bad)
+    # Resumable installs keep their staging, so unsuitable sources fail first too.
+    with pytest.raises(ValueError, match='HTTP'):
+        install_bundle(tmp_path / 'bundle', {'data.txt': spec}, download_options={'resume': True})
+    with pytest.raises(ValueError, match='raw downloads only'):
+        install_bundle(tmp_path / 'bundle', {'data.txt': dict(spec, url='https://example.test/data.gz',
+                                                              decompress=True)},
+                       download_options={'resume': True})
+    with pytest.raises(ValueError, match='HTTP'):
+        install_archive(tmp_path / 'archive', dict(spec), download_options={'resume': True})
     assert sorted(path.name for path in tmp_path.iterdir()) == ['source.txt']

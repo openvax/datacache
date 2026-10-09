@@ -823,14 +823,15 @@ def test_forced_refresh_does_not_hash_the_old_outputs(tmp_path, sources, outputs
 @pytest.mark.parametrize('builder_fails', [True, False])
 def test_cleanup_failure_never_masks_the_outcome(tmp_path, sources, outputs, monkeypatch, caplog, builder_fails):
     store = tmp_path / 'dna'
-    original = module.shutil.rmtree
+    import shutil
+    original = shutil.rmtree
 
     def failing_rmtree(path, *args, **kwargs):
         if Path(path).name.startswith('.staging-'):
             raise OSError('busy')
         return original(path, *args, **kwargs)
 
-    monkeypatch.setattr(module.shutil, 'rmtree', failing_rmtree)
+    monkeypatch.setattr(shutil, 'rmtree', failing_rmtree)
 
     def failing_build(inputs, targets):
         raise RuntimeError('builder failed')

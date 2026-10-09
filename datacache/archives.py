@@ -25,7 +25,7 @@ from uuid import uuid4
 from ._filesystem import open_regular, read_json, write_json
 from .bundle_store import (
     CHUNK_SIZE, INVALID_STORE_ERRORS, MANIFEST, BundleStore, check_tree, discard_private_directory,
-    hash_file, list_tree, local_file_identity, private_directory, source_fingerprint,
+    hash_file, list_tree, local_file_identity, private_directory, source_fingerprint, validate_distinct_paths,
     validate_file_record, validate_path_component, validate_relative_name,
 )
 from .download import normal_creation_mode, validate_download_options
@@ -110,27 +110,14 @@ def _normalize_extra_files(extra_files):
     if not isinstance(extra_files, dict):
         raise ValueError("extra_files must be a mapping of relative paths to text or bytes")
     result = {}
-    nodes = {}
     for name, value in extra_files.items():
         validate_relative_name(name)
         if isinstance(value, str):
             value = value.encode("utf-8")
         elif not isinstance(value, bytes):
             raise ValueError("extra file contents must be text or bytes")
-        parts = name.split("/")
-        for index in range(1, len(parts)):
-            parent = "/".join(parts[:index])
-            key = parent.casefold()
-            previous = nodes.get(key)
-            if previous is None:
-                nodes[key] = (parent, "directory")
-            elif previous != (parent, "directory"):
-                raise ValueError("extra file paths collide as files and directories or ignoring case")
-        key = name.casefold()
-        if key in nodes:
-            raise ValueError("extra file paths collide as files and directories or ignoring case")
-        nodes[key] = (name, "file")
         result[name] = value
+    validate_distinct_paths(result)
     return result
 
 
@@ -253,10 +240,12 @@ def _check_bundle(store, directory, definition, verify_files=True):
         "archive_size": archive["size"],
         "recorded_sha256": archive["sha256"],
     }
-    # verify_files=False still checks the exact inventory and every size.
-    hashed = check_tree(directory, files, directories, ignore=(MANIFEST,), hash_contents=verify_files)
+    if not verify_files:
+        # The manifest alone: path lookups stay one read, however large the tree.
+        return ArchiveInspection(str(store.path), "available", False, str(directory), **metadata)
+    hashed = check_tree(directory, files, directories, ignore=(MANIFEST,))
     # Only hashes the caller supplied verify files; the manifest's own don't.
-    verified = bool(verify_files and definition and definition["trusted"])
+    verified = bool(definition and definition["trusted"])
     inspections = {name: value.inspection(verified=verified) for name, value in hashed.items()}
     return ArchiveInspection(
         str(store.path), "available", verified, str(directory), inspections, **metadata)
@@ -269,9 +258,8 @@ def inspect_archive(
 
     Omit ``sources`` for receipt-only consistency checking. Supplying sources
     checks the requested ordered archive identity or trusted content hashes.
-    ``verify_files=False`` checks the manifest, source metadata, and every
-    extracted file's presence and size without hashing; its result is never
-    marked verified.
+    ``verify_files=False`` checks the manifest and source metadata without
+    reading the extracted tree; its result is never marked verified.
     """
     if not isinstance(verify_files, bool):
         raise ValueError("verify_files must be a boolean")
@@ -516,16 +504,21 @@ def install_archive(
         require_verified=verified)
     options = validate_download_options(download_options, "archive")
     if options.get("resume"):
+        # Check before creating anything: a resumable install keeps its staging.
+        from .resume import validate_resume
         for index, source in enumerate(definition["sources"]):
             digest, size = _part_expectations(definition, index)
-            if source["path"] is None and (digest is None or size is None):
-                raise ValueError("resumable archive parts require sha256 and size")
+            if source["path"] is None:
+                if digest is None or size is None:
+                    raise ValueError("resumable archive parts require sha256 and size")
+                validate_resume(source["url"], digest, size)
 
     path = Path(destination)
     store = BundleStore(path, "archive")
     inspection = inspect_archive(
         path, sources, expected_sha256=expected_sha256,
-        expected_size=expected_size, extra_files=extra_files)
+        expected_size=expected_size, extra_files=extra_files,
+        verify_files=not force)  # A forced install replaces it unhashed.
     if store.can_reuse(inspection, force=force):
         return Path(inspection.bundle)
 
@@ -534,7 +527,7 @@ def install_archive(
         store.create()
         inspection = inspect_archive(
             path, sources, expected_sha256=expected_sha256,
-            expected_size=expected_size, extra_files=extra_files)
+            expected_size=expected_size, extra_files=extra_files, verify_files=not force)
         if store.can_reuse(inspection, force=force):
             return Path(inspection.bundle)
 
@@ -656,11 +649,15 @@ class VersionedArchiveRegistry:
             default = archive.get("default_version")
             if default not in normalized_versions:
                 raise ValueError("default_version must name a concrete archive version")
+            # Versions are directories: case-insensitive filesystems would give
+            # two that differ only by case one store.
+            validate_distinct_paths(list(normalized_versions))
             self._archives[name] = {
                 "default_version": default,
                 "versions": normalized_versions,
                 "description": archive.get("description", ""),
             }
+        validate_distinct_paths(list(self._archives))
 
     def resolve_version(self, name, version=None):
         if name not in self._archives:

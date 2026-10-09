@@ -6,7 +6,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import shutil
 from urllib.parse import urlsplit
 from urllib.request import url2pathname
 from uuid import uuid4
@@ -147,7 +146,7 @@ class MaterializationInspection:
     error: object = None
 
 
-def _check_bundle(store, directory, expected=None, *, verify_files=True, show_progress=False):
+def _check_bundle(store, directory, expected=None, *, verify_files=True):
     receipt = read_json(directory / MANIFEST, limit=None)
     if not isinstance(receipt, dict) or receipt.get('format') != FORMAT:
         raise ValueError('unrecognized materialization receipt')
@@ -162,7 +161,7 @@ def _check_bundle(store, directory, expected=None, *, verify_files=True, show_pr
         check_expected(name, validate_file_record(record), definition['outputs'][name])
     trusted = expected['outputs'] if expected is not None else None
     hashed = check_tree(directory, outputs, parent_directories(outputs), ignore=(MANIFEST,),
-                        hash_contents=verify_files, show_progress=show_progress)
+                        hash_contents=verify_files)
     # Only a hash the caller supplied verifies an output; the receipt's own doesn't.
     files = {name: value.inspection(verified=bool(verify_files and trusted and trusted[name]['sha256']))
              for name, value in hashed.items()}
@@ -374,13 +373,10 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
             return {name: value.path for name, value in inspection.files.items()}
         inputs = _input_directory(path, definition)
         source_paths, records = _acquire_inputs(inputs, definition['sources'], acquisition, options, force=force)
-        working = private_directory(path / ('.staging-%s-%d' % (_fingerprint(definition), os.getuid())))
-        # Only this user's installer-owned failed outputs are discarded.
-        for entry in working.iterdir():
-            if entry.is_dir() and not entry.is_symlink():
-                shutil.rmtree(entry)
-            else:
-                entry.unlink()
+        working = path / ('.staging-%s-%d' % (_fingerprint(definition), os.getuid()))
+        # Start from nothing: discard this user's own outputs from a failed build.
+        discard_private_directory(working)
+        private_directory(working)
         staged = working / 'files'
         staged.mkdir()
         output_paths = {name: str(staged / name) for name in definition['outputs']}

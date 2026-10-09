@@ -1205,9 +1205,9 @@ Inspect the current archive bundle without writes, locks, repair, or
 network access. Omit `sources` for receipt-only consistency checking, which
 returns `verified=False`. Supply the same source definition, expectations, and
 consumer metadata used for installation to validate the requested identity.
-Set `verify_files=False` for a fast check of the manifest, source identity,
-and every extracted file's presence and size, without hashing. Fast results
-have `verified=False`; use the default before asserting content integrity.
+Set `verify_files=False` for a fast check of the manifest and source identity
+that reads none of the extracted tree. Fast results have an empty `files`
+mapping and `verified=False`; use the default before asserting content integrity.
 
 ## ArchiveInspection
 

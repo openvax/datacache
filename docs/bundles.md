@@ -99,9 +99,10 @@ store; DataCache owns everything inside it.
 
 The store's parent belongs to the application and may be a link, for example to
 another disk; the store itself is never a link. Installation creates missing
-parent directories and keeps its lock file and temporary staging directories
-in the parent, so give the stores a parent of their own rather than a
-directory the application lists or cleans.
+parent directories and keeps a lock file in the parent, beside the store, so
+give the stores a parent of their own rather than a directory the application
+lists or cleans. Unfinished downloads, including resumable ones, stay in hidden
+`.staging-*` directories inside the store.
 
 Do not point this callback at a populated legacy data/index directory: even
 `force=True` cannot adopt a foreign directory, and installation raises

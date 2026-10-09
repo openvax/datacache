@@ -96,8 +96,8 @@ MHCflurry should treat a fast
 `inspect_archive(..., verify_files=False).status == "available"` using the same
 sources and `extra_files` as installed, not mere destination existence. Its
 `get_path` adapter should append member paths to `state.bundle`. The fast
-check validates the manifest, requested source identity and every file's size
-without hashing large model files on every path lookup. Explicit diagnostics can
+check validates the manifest and requested source identity without reading
+large model files on every path lookup. Explicit diagnostics can
 use the default `verify_files=True` for complete tree verification. This prevents
 an initialized store or interrupted install from being mistaken for a complete
 bundle.
@@ -172,8 +172,8 @@ consistency against observed receipts and requires the same ordered full source
 identities, but `ArchiveInspection.verified` remains false.
 
 A valid cache hit is entirely read-only. `inspect_archive` hashes the complete
-tree by default; `verify_files=False` checks the manifest, source identity and
-every file's presence and size without hashing, and never reports
+tree by default; `verify_files=False` checks only the manifest and source
+identity, reading none of the extracted tree, and never reports
 `verified=True`. Invalid installations require an
 explicit `force=True`; inaccessible installations propagate their permission
 error. Consumer metadata is part of the requested archive's identity, so a
@@ -190,9 +190,10 @@ Only then is the tree renamed into `bundles/`, which publishes it in one step.
 A failed or interrupted install leaves the previous bundle current.
 
 Old bundles are kept so paths already returned to readers remain valid.
-DataCache never deletes them itself. Publication uses the cross-platform
-`filelock` lock plus same-filesystem atomic renames and supports ordinary local
-filesystems on Linux, macOS and Windows. Distributed coordination, arbitrary
+DataCache never deletes them itself. Installs lock a file beside the store
+(`flock` on POSIX, the `filelock` package on Windows) and publish with
+same-filesystem atomic renames, supporting ordinary local filesystems on Linux,
+macOS and Windows. Distributed coordination, arbitrary
 network-filesystem semantics, and durability after sudden power loss are outside
 the contract.
 

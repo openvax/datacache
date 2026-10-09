@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import unicodedata
 from uuid import uuid4
 
 from ._filesystem import path_present, read_json, write_json
@@ -155,9 +156,17 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
         raise ValueError('verified, force and verify_files must be booleans')
     expected = _assets(assets, verified)
     options = validate_download_options(download_options, 'bundle')
+    if options.get('resume'):
+        # Check before creating anything: a resumable install keeps its staging.
+        from .resume import validate_resume
+        for name, spec in expected.items():
+            validate_resume(spec['url'], spec['sha256'], spec['size'])
+            if spec['decompress']:
+                raise ValueError('resume=True supports raw downloads only; %s has decompress=True' % name)
     path = Path(destination)
     store = BundleStore(path, 'bundle')
-    inspection = inspect_bundle(path, expected, verify_files=verify_files)
+    # A forced install replaces the bundle whatever it holds: don't hash it.
+    inspection = inspect_bundle(path, expected, verify_files=verify_files and not force)
     if store.can_reuse(inspection, force=force):
         return _paths(inspection)
     if os.name != 'posix':
@@ -165,7 +174,7 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
     path.parent.mkdir(parents=True, exist_ok=True)
     with store.lock():
         store.create()
-        inspection = inspect_bundle(path, expected, verify_files=verify_files)
+        inspection = inspect_bundle(path, expected, verify_files=verify_files and not force)
         if store.can_reuse(inspection, force=force):
             return _paths(inspection)
         # A resumable bundle keeps its private working directory across calls,
@@ -203,9 +212,13 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
             receipt = dict(format=FORMAT, fetched_at=datetime.now(timezone.utc).isoformat(), assets=recorded,
                            source_fingerprints={name: source_fingerprint(spec['url'])
                                                 for name, spec in expected.items()})
-            # fetch_file keeps a private lock beside each resumable download.
-            for state in list(staged.rglob('.datacache-resume-*')):
-                shutil.rmtree(state)
+            # Remove DataCache's own temporary files: resume state and anything
+            # an interrupted earlier attempt left. No asset is named .datacache-*.
+            for leftover in sorted(staged.rglob('.datacache-*'), reverse=True):
+                if leftover.is_dir() and not leftover.is_symlink():
+                    shutil.rmtree(leftover)
+                else:
+                    leftover.unlink(missing_ok=True)
             write_json(staged / MANIFEST, receipt, mode=normal_creation_mode(staged))
             # Check the complete bundle, hashes included, before publishing it.
             _check_bundle(store, staged, expected)
@@ -254,11 +267,15 @@ class VersionedDatasetRegistry:
                 versions = {version: {spec['filename']: {'url': url, 'decompress': True}}
                             for version, url in spec['urls'].items()}
             normalized = {validate_path_component(version): _assets(assets, verified) for version, assets in versions.items()}
+            # Versions are directories: case-insensitive filesystems would give
+            # two that differ only by case one store.
+            validate_distinct_paths(list(normalized))
             default = spec['default_version']
             if default not in normalized:
                 raise ValueError('default_version must name a pinned version')
             self._datasets[name] = dict(default_version=default, versions=normalized,
                                         description=spec.get('description', ''))
+        validate_distinct_paths(list(self._datasets))
 
     def resolve_version(self, name, version=None):
         if name not in self._datasets:
@@ -292,10 +309,12 @@ class VersionedDatasetRegistry:
                 path = self._store_path(name, version)
                 if not isinstance(path, (str, os.PathLike)) or not os.fspath(path):
                     raise ValueError('store_path(%r, %r) returned %r, not a path' % (name, version, path))
-                key = os.path.normpath(os.path.abspath(path))
+                shown = os.path.normpath(os.path.abspath(path))
+                # Case-folded: case-insensitive filesystems store these as one.
+                key = unicodedata.normalize('NFC', shown.casefold())
                 if key in owners:
                     raise ValueError('store_path gives %s for both %s %s and %s %s; '
-                                     'each version needs its own store' % ((key,) + owners[key] + (name, version)))
+                                     'each version needs its own store' % ((shown,) + owners[key] + (name, version)))
                 owners[key] = (name, version)
                 stores[(name, version)] = Path(path)
         return stores

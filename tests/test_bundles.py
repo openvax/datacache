@@ -544,6 +544,32 @@ def test_cleanup_failure_after_publishing_is_logged_not_raised(tmp_path, assets,
     assert 'Could not remove the working directory' in caplog.text
 
 
+def test_force_never_hashes_the_bundle_it_replaces(tmp_path, assets, monkeypatch):
+    dest = tmp_path / 'bundle'
+    old = install_bundle(dest, assets)
+    hash_file = bundles.hash_file
+
+    def unhashed_old_bundle(path, *args, **kwargs):
+        if str(path) in old.values() and kwargs.get('hash_contents', True):
+            raise AssertionError('hashed the bundle being replaced')
+        return hash_file(path, *args, **kwargs)
+
+    monkeypatch.setattr(bundles, 'hash_file', unhashed_old_bundle)
+    assert install_bundle(dest, assets, force=True) != old
+
+
+@pytest.mark.parametrize('datasets', [
+    {'reference': dict(default_version='GRCh38', versions={'GRCh38': 'A', 'grch38': 'A'})},
+    {'Reference': dict(default_version='v1', versions={'v1': 'A'}),
+     'reference': dict(default_version='v1', versions={'v1': 'A'})},
+])
+def test_registry_names_that_differ_only_by_case_are_rejected(tmp_path, assets, datasets):
+    datasets = {name: dict(spec, versions={version: assets for version in spec['versions']})
+                for name, spec in datasets.items()}
+    with pytest.raises(ValueError, match='collide'):
+        VersionedDatasetRegistry(datasets, cache_root=tmp_path)
+
+
 def test_the_newest_bundle_is_current(tmp_path, assets):
     dest = tmp_path / 'bundle'
     first = install_bundle(dest, assets)

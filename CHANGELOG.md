@@ -34,16 +34,21 @@
     kind is never taken over, and the error says so instead of suggesting
     `force=True`.
   - All three kinds of install lock the same way: one lock file beside the
-    store, named without regard to letter case.
+    store, named without regard to letter case, using `flock` on POSIX and the
+    `filelock` package on Windows.
+  - Registries reject dataset or archive names, and versions, that differ only
+    by letter case, since case-insensitive filesystems would give them one
+    store.
 - Archive and materialization checks report missing and unexpected files and
   directories together, and reject a file that changes while it is hashed.
-  Archive `verify_files=False` checks every file's presence and size, as the
-  other kinds do, instead of only the manifest.
 - A file in an inspection is `verified` only when a hash the caller supplied
   vouched for it, for every kind of store; a bundle's own manifest checks the
   bytes but vouches for nothing.
 - Name checks reject paths whose parent directories differ only by letter
   case, such as `A/x` and `a/y`.
+- `install_bundle` and `install_archive` check that resumable sources can
+  resume before creating anything, and a forced install no longer hashes the
+  bundle it is about to replace.
 - `install_bundle`, `install_archive` and `materialize` check
   `download_options` exactly as `fetch_file` checks the same arguments, before
   creating anything (#103).

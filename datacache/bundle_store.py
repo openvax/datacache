@@ -33,7 +33,6 @@ import shutil
 import stat
 from typing import Optional
 import unicodedata
-from uuid import uuid4
 
 from filelock import FileLock
 
@@ -127,8 +126,8 @@ class BundleStore:
         try:
             self.check()
         except FileNotFoundError:
-            if not any(self.path.iterdir()):
-                return None
+            if not holds_files(self.path):
+                return None  # Empty: the first install will create the store here.
             self.check()  # Another installer may have placed the marker since.
         if not path_present(self.bundles):
             return None  # create() places the marker first, then bundles/.
@@ -143,37 +142,34 @@ class BundleStore:
     def create(self):
         """Make path a store of this kind, never taking over a directory.
 
-        A missing or empty directory becomes the store, keeping its owner,
-        group and permissions: the marker is placed first, in one rename, then
-        bundles/. Readers see nothing installed until a bundle is published.
-        An existing store of this kind gets back anything that is missing.
+        A missing or empty directory becomes the store in place, so it keeps
+        its owner, group and permissions: first the marker, then bundles/.
+        Readers see nothing installed until a bundle is published. An
+        existing store of this kind gets back anything that is missing.
         Anything else raises FileValidationError (see refuse_takeover).
         """
         self.path.mkdir(exist_ok=True)
-        require_directory(self.path)
         self.refuse_takeover()
         if not path_present(self.path / MARKER):
-            # Write beside the store, then rename in: the store never holds a
-            # half-written marker or a temporary file.
-            staged = self.path.parent / ('.datacache-store-%s.json' % uuid4().hex)
-            try:
-                write_json(staged, {'format': FORMAT, 'kind': self.kind},
-                           mode=normal_creation_mode(self.path.parent))
-                os.replace(staged, self.path / MARKER)
-            finally:
-                staged.unlink(missing_ok=True)
+            write_json(self.path / MARKER, {'format': FORMAT, 'kind': self.kind},
+                       mode=normal_creation_mode(self.path))
         self.check()
         self.bundles.mkdir(exist_ok=True)
         require_directory(self.bundles)
 
     def refuse_takeover(self):
-        """Raise if path is a directory with files in it but isn't this kind's store.
+        """Raise if path can never become, or be repaired as, this kind's store.
 
-        force=True never changes this, so callers check it before suggesting
-        force.
+        That is anything but a real directory, a directory holding files
+        without this kind's marker, or a store whose bundles/ isn't a real
+        directory. force=True never changes this, so installs check it before
+        suggesting force.
         """
-        if not (path_present(self.path) and stat.S_ISDIR(self.path.lstat().st_mode)
-                and any(self.path.iterdir())):
+        if not path_present(self.path):
+            return
+        if not stat.S_ISDIR(self.path.lstat().st_mode):
+            raise FileValidationError(self.path, 'not a directory, and never taken over')
+        if not holds_files(self.path):
             return
         try:
             marker = read_json(self.path / MARKER)
@@ -182,6 +178,8 @@ class BundleStore:
         if marker != {'format': FORMAT, 'kind': self.kind}:
             raise FileValidationError(
                 self.path, 'not a datacache %s store; a directory with files in it is never taken over' % self.kind)
+        if path_present(self.bundles) and not stat.S_ISDIR(self.bundles.lstat().st_mode):
+            raise FileValidationError(self.bundles, 'not a directory, and never taken over')
 
     def publish(self, staged):
         """Rename a complete, checked directory into bundles/ as the newest.
@@ -202,6 +200,17 @@ class BundleStore:
         bundle = self.bundles / name
         os.replace(staged, bundle)
         return bundle
+
+
+def holds_files(directory):
+    """Whether directory holds anything besides DataCache's temporary files.
+
+    Writing a file such as the store marker briefly leaves a temporary
+    .datacache-json-* or .datacache-mode-* file beside it, and an interrupted
+    write can leave one behind. Neither makes a directory someone else's.
+    """
+    return any(not entry.name.startswith(('.datacache-json-', '.datacache-mode-'))
+               for entry in Path(directory).iterdir())
 
 
 def private_directory(path):
