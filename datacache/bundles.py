@@ -13,7 +13,7 @@ from uuid import uuid4
 from ._filesystem import path_present, read_json, write_json
 from .bundle_store import (
     INVALID_STORE_ERRORS, MANIFEST, BundleStore, discard_private_directory, hash_file, private_directory,
-    require_directory, source_fingerprint, validate_distinct_paths, validate_no_sidecar_collisions,
+    require_directory, source_fingerprint, user_key, validate_distinct_paths, validate_no_sidecar_collisions,
     validate_path_component, validate_relative_name,
 )
 from .download import normal_creation_mode, validate_download_options, validate_size_within_limit
@@ -147,9 +147,9 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
 
     Returns a dict of asset names to paths in the current bundle. Old bundles
     are kept, so these paths survive later force installs. Generated outputs
-    belong outside this store. Installation requires a POSIX local filesystem
-    with flock and atomic sibling os.replace. verify_files controls checks of
-    an existing bundle only; new downloads are always checked.
+    belong outside this store. Installation works on local filesystems with
+    atomic sibling renames, on Linux, macOS and Windows. verify_files controls
+    checks of an existing bundle only; new downloads are always checked.
     """
     from .download import fetch_file
     if not all(isinstance(value, bool) for value in (verified, force, verify_files)):
@@ -171,8 +171,6 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
     inspection = inspect_bundle(path, expected, verify_files=verify_files and not force)
     if store.can_reuse(inspection, force=force):
         return _paths(inspection)
-    if os.name != 'posix':
-        raise NotImplementedError('Bundle installation requires a POSIX local filesystem')
     path.parent.mkdir(parents=True, exist_ok=True)
     with store.lock():
         store.create()
@@ -184,7 +182,7 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
         # different users never inherit each other's private partials.
         resumable = options.get('resume', False)
         staging_key = (hashlib.sha256(json.dumps(expected, sort_keys=True).encode()).hexdigest()
-                       + '-%d' % os.getuid()) if resumable else uuid4().hex
+                       + '-' + user_key()) if resumable else uuid4().hex
         working = private_directory(path / ('.staging-' + staging_key))
         # The private parent protects unfinished bytes. The inner directory
         # already has its final sharing mode, so the bundle is readable by
