@@ -189,7 +189,7 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
     local_sources = _local_sources(source_paths, expected)
     for name, spec in expected.items():
         validate_size_within_limit(spec['size'], options.get('max_bytes'), '%s size' % name)
-    if options.get('resume'):
+    if options.get('resume') is True:  # "auto" downloads normally where it can't resume.
         # Check before creating anything: a resumable install keeps its staging.
         from .resume import validate_resume
         for name, spec in expected.items():

@@ -504,7 +504,7 @@ def install_archive(
         if source["path"] is None:
             size = _part_expectations(definition, index)[1]
             validate_size_within_limit(size, options.get("max_bytes"), "part %d size" % index)
-    if options.get("resume"):
+    if options.get("resume") is True:  # "auto" downloads normally where it can't resume.
         # Check before creating anything: a resumable install keeps its staging.
         from .resume import validate_resume
         for index, source in enumerate(definition["sources"]):

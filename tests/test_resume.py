@@ -532,3 +532,55 @@ def test_leftovers_from_an_interrupted_attempt_are_never_published(server, tmp_p
     paths = install_bundle(dest, assets, download_options=dict(resume=True))
     bundle = Path(paths['data']).parent
     assert sorted(path.name for path in bundle.iterdir()) == ['.datacache-manifest.json', 'data']
+
+
+def test_auto_resume_resumes_an_interrupted_transfer(server, tmp_path):
+    url, requests = server({'drop': 10}, {})
+    dest = tmp_path / 'data'
+    fetch(url, dest, resume='auto')
+    assert dest.read_bytes() == PAYLOAD
+    assert requests[1]['Range'] == 'bytes=8-'  # The complete chunks before the drop.
+
+
+def test_auto_resume_downloads_in_full_when_the_server_cant_resume(server, tmp_path):
+    from datacache.resume import CannotResume
+    url, requests = server({'etag': None}, {'etag': None})
+    dest = tmp_path / 'data'
+    # resume=True refuses; "auto" downloads the file in full instead.
+    with pytest.raises(CannotResume, match='strong ETag'):
+        fetch(url, dest, expected_sha256=None)
+    fetch(url, dest, expected_sha256=None, resume='auto')
+    assert dest.read_bytes() == PAYLOAD
+    assert not (_state_directory(dest) / 'partial').exists()
+
+
+@pytest.mark.parametrize('options', [
+    dict(expected_size=None),            # Size unknown.
+    dict(validator=lambda path: True),   # Validators need the plain path.
+])
+def test_auto_resume_downloads_normally_when_resuming_is_impossible(server, tmp_path, options):
+    url, requests = server({'etag': None})
+    dest = tmp_path / 'data'
+    fetch(url, dest, resume='auto', **options)
+    assert dest.read_bytes() == PAYLOAD
+    assert 'Range' not in requests[0]
+
+
+def test_auto_resume_accepts_decompression_and_local_files(tmp_path):
+    import gzip
+    source = tmp_path / 'data.gz'
+    source.write_bytes(gzip.compress(PAYLOAD, mtime=0))
+    out = fetch_file(source.as_uri(), destination=tmp_path / 'data', decompress=True, resume='auto')
+    assert Path(out).read_bytes() == PAYLOAD
+    with pytest.raises(ValueError, match='resume must be True, False or "auto"'):
+        fetch_file(source.as_uri(), destination=tmp_path / 'other', resume='yes')
+
+
+def test_installs_accept_auto_resume_for_any_source(tmp_path):
+    from hashlib import sha256
+    from datacache import install_bundle
+    source = tmp_path / 'local'
+    source.write_bytes(PAYLOAD)
+    assets = {'data': dict(url=source.as_uri(), sha256=sha256(PAYLOAD).hexdigest(), size=len(PAYLOAD))}
+    paths = install_bundle(tmp_path / 'bundle', assets, download_options={'resume': 'auto'})
+    assert Path(paths['data']).read_bytes() == PAYLOAD

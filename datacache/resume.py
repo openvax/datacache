@@ -19,6 +19,21 @@ from .retries import error_description, is_retryable_http_error, retry_delay
 logger = logging.getLogger(__name__)
 
 
+class CannotResume(FileValidationError):
+    """The server can't support a resumable transfer of this resource.
+
+    For example, it sends no strong ETag and no trusted SHA-256 was given,
+    or it encodes the response. fetch_file(resume="auto") then downloads the
+    file in full instead.
+    """
+
+
+def can_resume(download_url, expected_size):
+    """Whether this platform and URL allow a resumable transfer of that size."""
+    return (os.name == 'posix' and expected_size is not None
+            and urlsplit(download_url).scheme.lower() in ('http', 'https'))
+
+
 def validate_resume(download_url, expected_sha256, expected_size):
     _validate_expectations(expected_sha256, expected_size)
     if expected_size is None:
@@ -175,7 +190,7 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
                                     continue
                                 response.raise_for_status()
                                 if response.headers.get('Content-Encoding', 'identity').lower() != 'identity':
-                                    raise FileValidationError(destination, 'resume requires identity Content-Encoding')
+                                    raise CannotResume(destination, 'resume requires identity Content-Encoding')
                                 current_validator = _validator(response.headers)
                                 if response.status_code == 206:
                                     match = re.fullmatch(r'bytes (\d+)-(\d+)/(\d+)',
@@ -191,7 +206,7 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
                                         metadata['validator'] = None
                                         if restart == 0:
                                             continue
-                                        raise FileValidationError(destination, 'incompatible HTTP Content-Range or validator')
+                                        raise CannotResume(destination, 'incompatible HTTP Content-Range or validator')
                                 elif response.status_code == 200:
                                     output.seek(0)
                                     output.truncate()
@@ -200,7 +215,7 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
                                     raise FileValidationError(destination, 'expected HTTP 200 or 206')
                                 if expected_sha256 is None and (
                                         current_validator is None or current_validator['header'] != 'ETag'):
-                                    raise FileValidationError(
+                                    raise CannotResume(
                                         destination, 'resume without expected_sha256 requires a strong ETag')
                                 metadata['validator'] = current_validator
                                 write_json(metadata_path, metadata)
@@ -221,7 +236,7 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
                                     raise requests.ConnectionError('incomplete resumable response')
                                 break
                         else:
-                            raise FileValidationError(destination, 'server could not restart the download')
+                            raise CannotResume(destination, 'server could not restart the download')
                         output.flush()
                         try:
                             validate_file(partial, expected_sha256, expected_size, show_progress=show_progress)

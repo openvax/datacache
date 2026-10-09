@@ -352,7 +352,7 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
         if kind == 'url':
             validate_size_within_limit(definition['sources'][name]['size'], options.get('max_bytes'),
                                        '%s size' % name)
-    if options.get('resume'):
+    if options.get('resume') is True:  # "auto" downloads normally where it can't resume.
         from .resume import validate_resume
         for name, (kind, source) in acquisition.items():
             if kind == 'url':
