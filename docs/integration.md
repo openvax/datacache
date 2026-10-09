@@ -2,11 +2,8 @@
 
 See the [API reference](api.md) for signatures, defaults, return values, and errors.
 
-Use the public `Cache`, `fetch_file`, inspection, and database APIs for new
-integrations. Existing pyensembl calls to
-`_download_and_decompress_if_necessary` retain their legacy URL inference and
-receive the corrected permissions and HTTP retry behavior. Explicit private
-helper transform flags retain the public parsed-URL behavior.
+Use the public `Cache`, `fetch_file`, inspection, registry and database APIs
+for new integrations; private helpers can change between releases.
 
 ## Recommended contracts
 
@@ -121,3 +118,37 @@ Released-code fixtures also check legacy cache names and SQLite schemas,
 read-only reuse, and unchanged contents and permissions across upgrades.
 The runnable [offline example](https://github.com/openvax/datacache/blob/master/examples/basic_usage.py) exercises the public
 download, transform, inspection, CSV, and database APIs together.
+
+## Notes for specific libraries
+
+- **MHCflurry:** use [`install_archive`](archives.md) for released `.tar.bz2`
+  trees and ordered historical parts. Resolve member paths from the returned
+  bundle; preserve `DOWNLOAD_INFO.csv` with `extra_files`. Do not enumerate
+  model files as bundle assets or treat the managed store's existence as a
+  completed download.
+- **hitlist / tsarina:** use [VersionedFileRegistry](file_registry.md) to retain
+  fixed paths, single-Path returns and legacy root manifests without moving old
+  caches. For a deliberate migration to bundles, the existing
+  `{filename, urls, default_version}` mapping
+  is accepted with `verified=False`, as is the `cache_dir` root callable. This is
+  mapping compatibility, not a drop-in filesystem or return-value migration:
+  `download` returns asset paths, `local_path` requires an installed bundle, and
+  status rows contain a `BundleInspection`. A downstream adapter can preserve
+  its public return types and errors. Keep old paths readable during migration;
+  install into a new managed root instead of overwriting legacy directories.
+- **mhcseqs:** express each records/manifest pair or multi-file source bundle as
+  one version's assets. Keep schema checks and biological validation in mhcseqs.
+  Generated outputs stay outside the source store. The library no longer needs
+  to compose lock, backup, rename and rollback helpers.
+- **Vaxrank / Isovar / Varcode / Topiary:** share a root, dataset name and data
+  revision to share a complete installation. Existing digest-addressed individual
+  assets can remain under `<root>/objects/sha256/`; these APIs do not relocate
+  them or change prediction-cache identities.
+- **pyensembl:** single-file download and SQLite APIs remain supported. Bundles
+  are optional for references with trustworthy multi-file metadata. Existing
+  calls to the private `_download_and_decompress_if_necessary` keep their
+  legacy URL inference and get the current permissions and retry behavior.
+
+The [runnable offline example](https://github.com/openvax/datacache/blob/master/examples/versioned_datasets.py) demonstrates
+single-file, paired-file and multi-file registries, generated SQLite indices,
+shared reuse, and inspection with all upstream sources removed.

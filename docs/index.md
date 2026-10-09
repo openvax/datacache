@@ -86,15 +86,21 @@ when a dataset contains several assets that must be installed together.
 
 ## Choose an interface
 
-| Task | Start here |
-| --- | --- |
-| Download and reuse one file | `Cache.fetch()` or `fetch_file()` |
-| Refresh changing metadata periodically | `fetch_file(expire_after=..., return_stale_on_error=True)` |
-| Read a small resource into memory | `fetch_bytes()` |
-| Check installed files without network access or repair | `Cache.inspect()` or `inspect_file()` |
-| Read tables or build SQLite caches | [Tables and transformations](data.md) |
-| Install a pinned set of assets | `VersionedDatasetRegistry` |
-| Install a versioned archive directory | `VersionedArchiveRegistry` |
+Pick by what you are caching:
+
+| You are caching | Use | You get back |
+| --- | --- | --- |
+| One file | `fetch_file()` or `Cache.fetch()` ([guide](downloads.md)) | Its local path |
+| A small resource, such as a directory listing | `fetch_bytes()` | Its bytes; nothing is written |
+| Several files that belong together, pinned per version | `VersionedDatasetRegistry` ([guide](bundles.md)) | Their paths, in one bundle |
+| A tar archive unpacked into a directory | `VersionedArchiveRegistry` ([guide](archives.md)) | The unpacked directory |
+| Files your own code builds from downloads | `materialize()` ([guide](materialization.md)) | The built files' paths |
+| Tables or SQLite databases | `fetch_csv_dataframe()`, `db_from_dataframe()` ([guide](data.md)) | A DataFrame or a connection |
+
+Every kind of cache can be checked offline without changing it: `inspect_file()`
+for one file, `inspect()` on a registry for the rest. Several files, archives and
+built files are installed all at once or not at all, and old copies are kept
+until you delete them with `prune_bundles()`.
 
 The [interface selection reference](reference/choosing.md) covers the main
 entry points and the publication guarantees. The [API reference](api.md) gives

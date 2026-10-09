@@ -14,7 +14,7 @@ explain the longer workflows and compatibility guarantees.
 
 | Area | APIs |
 | --- | --- |
-| Downloading | [fetch_file](#fetch_file), [fetch_bytes](#fetch_bytes), [fetch_csv_dataframe](#fetch_csv_dataframe), [fetch_and_transform](#fetch_and_transform) |
+| Downloading | [fetch_file](#fetch_file), [fetch_bytes](#fetch_bytes), [fetch_csv_dataframe](#fetch_csv_dataframe), [fetch_and_transform](#fetch_and_transform), [discard_partial](#discard_partial) |
 | Complete archive trees | [install_archive](#install_archive), [inspect_archive](#inspect_archive), [ArchiveInspection](#archiveinspection), [VersionedArchiveRegistry](#versionedarchiveregistry) |
 | Versioned file bundles | [install_bundle](#install_bundle), [inspect_bundle](#inspect_bundle), [BundleInspection](#bundleinspection), [list_bundles](#list_bundles), [prune_bundles](#prune_bundles), [VersionedDatasetRegistry](#versioneddatasetregistry), [VersionedFileRegistry](#versionedfileregistry) |
 | Derived artifacts | [materialize](#materialize), [inspect_materialization](#inspect_materialization), [MaterializationInspection](#materializationinspection) |
@@ -277,6 +277,16 @@ doubled = dc.fetch_and_transform(
 )
 assert doubled["value"].tolist() == [20, 40]
 ```
+
+### `discard_partial`
+
+```text
+discard_partial(destination)
+```
+
+Explicitly discard this user's private resumable bytes for an exact destination,
+under its writer lock. The installed file is unchanged; absent state is a no-op.
+See [resumable downloads](downloads.md#resumable-http-downloads).
 
 ## Paths and presence
 
@@ -1114,29 +1124,9 @@ assert Path(cache.cache_directory_path).is_dir()
 assert not list(Path(cache.cache_directory_path).iterdir())
 ```
 
-## Package version
+## Complete archive trees
 
-### `__version__`
-
-String containing the installed DataCache package version. This is a constant,
-not a callable; it has no parameters, defaults, or API-specific exceptions.
-It is independent of the integer `version` used to identify a SQLite cache.
-
-```python
-print(dc.__version__)
-```
-
-## discard_partial
-
-```text
-discard_partial(destination)
-```
-
-Explicitly discard this user's private resumable bytes for an exact destination,
-under its writer lock. The installed file is unchanged; absent state is a no-op.
-See [resumable downloads](downloads.md#resumable-http-downloads).
-
-## install_archive
+### `install_archive`
 
 ```text
 install_archive(
@@ -1194,7 +1184,7 @@ assert (archive_bundle / "models/model.json").is_file()
 See the [archive installation guide](archives.md) for split sources, safe-member
 rules, publication semantics, and an MHCflurry adapter.
 
-## inspect_archive
+### `inspect_archive`
 
 ```text
 inspect_archive(
@@ -1211,7 +1201,7 @@ Set `verify_files=False` for a fast check of the manifest and source identity
 that reads none of the extracted tree. Fast results have an empty `files`
 mapping and `verified=False`; use the default before asserting content integrity.
 
-## ArchiveInspection
+### `ArchiveInspection`
 
 A frozen record with `path`, `status`, `verified`, `bundle`, `files`,
 `error`, `source_urls`, `fetched_at`, `archive_size`, and `recorded_sha256`.
@@ -1221,7 +1211,7 @@ extracted tree applications should use;
 is `verified` only when a hash the caller supplied vouched for it. Source URLs
 are redacted for display. The recorded digest is observed receipt data, not trusted verification.
 
-## VersionedArchiveRegistry
+### `VersionedArchiveRegistry`
 
 ```text
 VersionedArchiveRegistry(
@@ -1253,7 +1243,9 @@ DataCache. `verified=False` explicitly enables historical unpinned catalogues.
 | `status(name=None, *, verify_files=False)` | One read-only row per concrete version, including catalogue and downloaded source URLs, store and bundle paths, default flag, status, fetch time, observed archive size/hash and inspection. Metadata-only by default; `verify_files=True` hashes every file. |
 | `prune(name, version=None, *, keep=1)` | Delete all but the newest `keep` bundles of one version, as [prune_bundles](#prune_bundles) does. |
 
-## install_bundle
+## Versioned file bundles
+
+### `install_bundle`
 
 ```text
 install_bundle(destination, assets, *, force=False, verified=True, verify_files=True, download_options=None,
@@ -1276,7 +1268,7 @@ this cache-hit setting.
 `download_options` accepts timeout, chunk size, progress, retry, resume and `max_bytes` settings.
 Works on Linux, macOS and Windows local filesystems. [Complete guide](bundles.md).
 
-## inspect_bundle
+### `inspect_bundle`
 
 ```text
 inspect_bundle(destination, assets=None, *, verify_files=True)
@@ -1289,7 +1281,7 @@ check consistency against the bundle's own recorded hashes (`verified=False`).
 readability and recorded sizes without reading payloads. Its bundle and file
 results always have `verified=False`, even with trusted hashes in the registry.
 
-## BundleInspection
+### `BundleInspection`
 
 A frozen record with `path`, `status`, `verified`, `bundle`, `files`, and
 `error`. Status is `available`, `missing`, `invalid` or `inaccessible`. `bundle`
@@ -1297,7 +1289,7 @@ is the current bundle's directory, and `files` maps asset names to
 `FileInspection` values from it. Paths remain usable across refreshes until
 explicitly removed.
 
-## list_bundles
+### `list_bundles`
 
 ```text
 list_bundles(destination)
@@ -1308,7 +1300,7 @@ oldest first; the last is the current bundle. Read-only. A store with nothing
 installed, or no directory at all, has none. A directory that isn't a datacache
 store raises `FileValidationError`.
 
-## prune_bundles
+### `prune_bundles`
 
 ```text
 prune_bundles(destination, *, keep=1)
@@ -1321,7 +1313,7 @@ integer. Paths into deleted bundles stop working, so prune only when no running
 program still uses them. Pruning holds the store's lock, so it never races an
 install. See [removing old bundles](bundles.md#removing-old-bundles).
 
-## VersionedDatasetRegistry
+### `VersionedDatasetRegistry`
 
 ```text
 VersionedDatasetRegistry(datasets, *, cache_root=None, cache_dir=None, store_path=None, verified=True)
@@ -1348,7 +1340,9 @@ The [bundle guide](bundles.md) includes an example and downstream migration note
 | `status(*, verify_files=True)` | One row per pinned default: name, version, description, available_versions and inspection. `verify_files=False` skips hashing. |
 | `prune(name, version=None, *, keep=1)` | Delete all but the newest `keep` bundles of one version, as [prune_bundles](#prune_bundles) does. |
 
-## materialize
+## Derived artifacts
+
+### `materialize`
 
 ```text
 materialize(destination, sources, *, transform, outputs, builder, force=False,
@@ -1372,7 +1366,7 @@ through download options. Works on Linux, macOS and Windows local storage.
 See the [materialization guide](materialization.md) for receipts, resume, callback
 contracts, retention and peak/retained disk use.
 
-## inspect_materialization
+### `inspect_materialization`
 
 ```text
 inspect_materialization(destination, sources=None, *, transform=None, outputs=None,
@@ -1385,7 +1379,7 @@ dependency checks, or omit all three for receipt-only consistency checks.
 `verify_files=False` validates inventory, types and sizes without payload reads
 and never claims trusted verification.
 
-## MaterializationInspection
+### `MaterializationInspection`
 
 A read-only record with `path`, `status`, `verified`, `bundle`, `files`,
 `sources`, `transform` and `error`. Status is available, missing, invalid or
@@ -1394,7 +1388,9 @@ caller-trusted hashes now. Source records separately report raw observed hashes,
 sizes, redacted origins, identity, acquisition time, acquisition-time trusted
 verification and available validated transport metadata.
 
-## VersionedFileRegistry
+## Fixed-path file registry
+
+### `VersionedFileRegistry`
 
 `VersionedFileRegistry(datasets, *, cache_dir, error_cls=RuntimeError)`
 
@@ -1412,6 +1408,18 @@ trust boundaries, and the distinction from bundles.
 | `download(name, version=None, *, force=False, **download_options)` | One fixed Path; fetch_file options control acquisition. Ordinary cache hits do not hash or write; explicit size/hash expectations are checked. |
 | `ensure(name, version=None, **download_options)` | Same download/reuse behavior and Path result. |
 | `status()` | Legacy status dicts with name, description, default_version, available_versions, cached, cached_version, URL, bytes, observed SHA-256, downloaded_at and path. |
+
+## Package version
+
+### `__version__`
+
+String containing the installed DataCache package version. This is a constant,
+not a callable; it has no parameters, defaults, or API-specific exceptions.
+It is independent of the integer `version` used to identify a SQLite cache.
+
+```python
+print(dc.__version__)
+```
 
 After finishing the examples, remove their temporary files:
 

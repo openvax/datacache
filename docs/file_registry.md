@@ -47,7 +47,7 @@ not independently trusted checksums. Missing, unreadable or malformed JSON
 receipts are treated as empty, matching the legacy registry.
 
 `status()` returns `name`, `description`, `default_version`, `available_versions`,
-`cached`, `cached_version`, `bytes`, `downloaded_at` and `path`. Presence and path
+`cached`, `cached_version`, `url`, `bytes`, `sha256`, `downloaded_at` and `path`. Presence and path
 refer to the pinned default. Receipt fields describe the most recent download
 for that dataset, which may name another version. This compatibility view does
 not certify freshness or integrity; use `inspect_file` for the selected path.
