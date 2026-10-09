@@ -27,7 +27,7 @@
     
     
       
-        <title>Use the legacy file registry - datacache</title>
+        <title>Keep files at fixed paths - datacache</title>
       
     
     
@@ -108,7 +108,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Use the legacy file registry
+              Keep files at fixed paths
             
           </span>
         </div>
@@ -594,7 +594,7 @@
   <span class="md-ellipsis">
     
   
-    Use the legacy file registry
+    Keep files at fixed paths
   
 
     
@@ -960,9 +960,11 @@ or signed URLs in these definitions. Local receipts describe observed bytes,
 not independently trusted checksums. Missing, unreadable or malformed JSON
 receipts are treated as empty, matching the legacy registry.</p>
 <p><code>status()</code> returns <code>name</code>, <code>description</code>, <code>default_version</code>, <code>available_versions</code>,
-<code>cached</code>, <code>cached_version</code>, <code>bytes</code>, <code>downloaded_at</code> and <code>path</code>. Presence and path
-refer to the pinned default. Receipt fields describe the most recent download
-for that dataset, which may name another version. This compatibility view does
+<code>cached</code>, <code>cached_version</code>, <code>url</code>, <code>bytes</code>, <code>sha256</code>, <code>downloaded_at</code> and <code>path</code>. Presence and path
+refer to the pinned default. <code>cached_version</code> comes from the most recent
+download recorded for that dataset, which may be another version; <code>url</code>,
+<code>bytes</code>, <code>sha256</code> and <code>downloaded_at</code> are filled in only while the pinned
+default's file exists, and are otherwise <code>None</code>. This compatibility view does
 not certify freshness or integrity; use <code>inspect_file</code> for the selected path.</p>
 <p>Unknown dataset/version errors and acquisition failures use <code>error_cls</code>
 (<code>RuntimeError</code> by default). Acquisition failures retain their original cause.

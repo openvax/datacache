@@ -674,7 +674,7 @@
   <span class="md-ellipsis">
     
   
-    Use the legacy file registry
+    Keep files at fixed paths
   
 
     
@@ -1116,44 +1116,63 @@ downloading replacements, unless <code>expire_after</code> asks for periodic ref
 decompression, retries and resumable transfers. Use <a href="bundles/">pinned bundles</a>
 when a dataset contains several assets that must be installed together.</p>
 <h2 id="choose-an-interface">Choose an interface<a class="headerlink" href="#choose-an-interface" title="Permanent link">&para;</a></h2>
+<p>Pick by what you need:</p>
 <table>
 <thead>
 <tr>
-<th>Task</th>
-<th>Start here</th>
+<th>You need</th>
+<th>Use</th>
+<th>You get back</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Download and reuse one file</td>
-<td><code>Cache.fetch()</code> or <code>fetch_file()</code></td>
+<td>One file, downloaded once and reused</td>
+<td><code>fetch_file()</code> or <code>Cache.fetch()</code> (<a href="downloads/">guide</a>)</td>
+<td>Its local path</td>
 </tr>
 <tr>
-<td>Refresh changing metadata periodically</td>
-<td><code>fetch_file(expire_after=..., return_stale_on_error=True)</code></td>
+<td>One file that changes upstream, refreshed now and then</td>
+<td><code>fetch_file(expire_after=...)</code> (<a href="downloads/#small-metadata-and-freshness">guide</a>)</td>
+<td>Its local path</td>
 </tr>
 <tr>
-<td>Read a small resource into memory</td>
+<td>One file per version, at a fixed path</td>
+<td><code>VersionedFileRegistry</code> (<a href="file_registry/">guide</a>)</td>
+<td>Its local path</td>
+</tr>
+<tr>
+<td>A small resource held only in memory, such as a listing</td>
 <td><code>fetch_bytes()</code></td>
+<td>Its bytes; nothing is cached</td>
 </tr>
 <tr>
-<td>Check installed files without network access or repair</td>
-<td><code>Cache.inspect()</code> or <code>inspect_file()</code></td>
+<td>Several files that belong together, pinned per version</td>
+<td><code>VersionedDatasetRegistry</code> (<a href="bundles/">guide</a>)</td>
+<td>Their paths, in one bundle</td>
 </tr>
 <tr>
-<td>Read tables or build SQLite caches</td>
-<td><a href="data/">Tables and transformations</a></td>
+<td>A tar archive unpacked into a directory</td>
+<td><code>VersionedArchiveRegistry</code> (<a href="archives/">guide</a>)</td>
+<td>The unpacked directory</td>
 </tr>
 <tr>
-<td>Install a pinned set of assets</td>
-<td><code>VersionedDatasetRegistry</code></td>
+<td>Files your own code builds from downloads</td>
+<td><code>materialize()</code> (<a href="materialization/">guide</a>)</td>
+<td>The built files' paths</td>
 </tr>
 <tr>
-<td>Install a versioned archive directory</td>
-<td><code>VersionedArchiveRegistry</code></td>
+<td>Tables or SQLite databases</td>
+<td><code>fetch_csv_dataframe()</code>, <code>db_from_dataframe()</code> (<a href="data/">guide</a>)</td>
+<td>A DataFrame or a connection</td>
 </tr>
 </tbody>
 </table>
+<p>Installed files can be checked offline without changing them: <code>inspect_file()</code>
+for a file, <code>inspect()</code> on a dataset or archive registry, and
+<code>inspect_materialization()</code> for built files. Several files, archives and built
+files are installed all at once or not at all, and old copies are kept until
+you delete them with <code>prune_bundles()</code>.</p>
 <p>The <a href="reference/choosing/">interface selection reference</a> covers the main
 entry points and the publication guarantees. The <a href="api/">API reference</a> gives
 every signature, default, result and error.</p>

@@ -585,7 +585,7 @@
   <span class="md-ellipsis">
     
   
-    Use the legacy file registry
+    Keep files at fixed paths
   
 
     
@@ -714,6 +714,17 @@
     <span class="md-ellipsis">
       
         Regression coverage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#notes-for-specific-libraries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes for specific libraries
       
     </span>
   </a>
@@ -1053,6 +1064,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#notes-for-specific-libraries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes for specific libraries
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1075,11 +1097,10 @@
 
 <h1 id="building-downstream-libraries-on-datacache">Building downstream libraries on DataCache<a class="headerlink" href="#building-downstream-libraries-on-datacache" title="Permanent link">&para;</a></h1>
 <p>See the <a href="../api/">API reference</a> for signatures, defaults, return values, and errors.</p>
-<p>Use the public <code>Cache</code>, <code>fetch_file</code>, inspection, and database APIs for new
-integrations. Existing pyensembl calls to
-<code>_download_and_decompress_if_necessary</code> retain their legacy URL inference and
-receive the corrected permissions and HTTP retry behavior. Explicit private
-helper transform flags retain the public parsed-URL behavior.</p>
+<p>Use the public <code>Cache</code>, <code>fetch_file</code>, inspection, registry and database APIs
+for new integrations. Private helpers can change between releases, except the
+compatibility entry points named under
+<a href="#notes-for-specific-libraries">notes for specific libraries</a>.</p>
 <h2 id="recommended-contracts">Recommended contracts<a class="headerlink" href="#recommended-contracts" title="Permanent link">&para;</a></h2>
 <ol>
 <li>Let callers choose a cache root. Do not create it merely to check whether a
@@ -1137,12 +1158,6 @@ bounded retry options to the shared transport. Registry construction, status,
 inspection and local-path resolution are offline. Applications can therefore
 offer consistent <code>list</code>/<code>info</code>/<code>download</code> behavior without maintaining private
 network or extraction implementations.</p>
-<p>PyEnsembl can preserve its fixed paths and derived SQLite/FASTA indexes while
-continuing to use <code>fetch_file</code>; direct callers can set <code>record_provenance=True</code>
-and expose <code>inspect_file</code> results for download visibility. Those derived
-artifacts remain application-owned.</p>
-<p>MHCflurry can preserve release selection, exact URL receipts and public model
-paths through the archive registry's <code>store_path</code> callback and the returned bundle path.</p>
 <h2 id="shared-openvax-cache">Shared OpenVax cache<a class="headerlink" href="#shared-openvax-cache" title="Permanent link">&para;</a></h2>
 <p>OpenVax packages share one cache so that published data, such as test datasets,
 is downloaded once for all of them. Select its root with <code>get_cache_root</code>,
@@ -1195,6 +1210,41 @@ Released-code fixtures also check legacy cache names and SQLite schemas,
 read-only reuse, and unchanged contents and permissions across upgrades.
 The runnable <a href="https://github.com/openvax/datacache/blob/master/examples/basic_usage.py">offline example</a> exercises the public
 download, transform, inspection, CSV, and database APIs together.</p>
+<h2 id="notes-for-specific-libraries">Notes for specific libraries<a class="headerlink" href="#notes-for-specific-libraries" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>MHCflurry:</strong> use <a href="../archives/"><code>VersionedArchiveRegistry</code></a> (or
+  <code>install_archive</code>) for released <code>.tar.bz2</code> trees and ordered historical parts.
+  Its <code>store_path</code> callback preserves release selection and existing paths.
+  Resolve member paths from the returned bundle; preserve <code>DOWNLOAD_INFO.csv</code>
+  with <code>extra_files</code>. Do not enumerate
+  model files as bundle assets or treat the managed store's existence as a
+  completed download.</li>
+<li><strong>hitlist / tsarina:</strong> use <a href="../file_registry/">VersionedFileRegistry</a> to retain
+  fixed paths, single-Path returns and legacy root manifests without moving old
+  caches. For a deliberate migration to bundles, the existing
+  <code>{filename, urls, default_version}</code> mapping
+  is accepted with <code>verified=False</code>, as is the <code>cache_dir</code> root callable. This is
+  mapping compatibility, not a drop-in filesystem or return-value migration:
+  <code>download</code> returns asset paths, <code>local_path</code> requires an installed bundle, and
+  status rows contain a <code>BundleInspection</code>. A downstream adapter can preserve
+  its public return types and errors. Keep old paths readable during migration;
+  install into a new managed root instead of overwriting legacy directories.</li>
+<li><strong>mhcseqs:</strong> express each records/manifest pair or multi-file source bundle as
+  one version's assets. Keep schema checks and biological validation in mhcseqs.
+  Generated outputs stay outside the source store. The library no longer needs
+  to compose lock, backup, rename and rollback helpers.</li>
+<li><strong>Vaxrank / Isovar / Varcode / Topiary:</strong> share a root, dataset name and data
+  revision to share a complete installation. Existing digest-addressed individual
+  assets can remain under <code>&lt;root&gt;/objects/sha256/</code>; these APIs do not relocate
+  them or change prediction-cache identities.</li>
+<li><strong>pyensembl:</strong> keeps its fixed paths and derived SQLite/FASTA indexes while
+  using <code>fetch_file</code>; <code>record_provenance=True</code> and <code>inspect_file</code> show where
+  files came from. Bundles are optional for references with trustworthy
+  multi-file metadata. Existing calls to the private
+  <code>_download_and_decompress_if_necessary</code> keep their legacy literal-URL
+  inference when no transform flags are passed (explicit flags use the public
+  parsed-URL rules), with the current permissions and retry behavior.</li>
+</ul>
 
 
 

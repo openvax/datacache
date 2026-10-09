@@ -620,10 +620,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#adopting-from-downstream-libraries" class="md-nav__link">
+  <a href="#example-and-library-notes" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Adopting from downstream libraries
+        Example and library notes
       
     </span>
   </a>
@@ -709,7 +709,7 @@
   <span class="md-ellipsis">
     
   
-    Use the legacy file registry
+    Keep files at fixed paths
   
 
     
@@ -1087,10 +1087,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#adopting-from-downstream-libraries" class="md-nav__link">
+  <a href="#example-and-library-notes" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Adopting from downstream libraries
+        Example and library notes
       
     </span>
   </a>
@@ -1335,37 +1335,13 @@ Changing the mapping chooses a different working directory. The normal
 non-resumable mode cleans its staging directory on handled failures.</p>
 <p>See <a href="../downloads/#resumable-http-downloads">resumable downloads</a> for protocol,
 progress, disk-space and partial-discard details.</p>
-<h2 id="adopting-from-downstream-libraries">Adopting from downstream libraries<a class="headerlink" href="#adopting-from-downstream-libraries" title="Permanent link">&para;</a></h2>
-<ul>
-<li><strong>MHCflurry:</strong> use <a href="../archives/"><code>install_archive</code></a> for released <code>.tar.bz2</code>
-  trees and ordered historical parts. Resolve member paths from the returned
-  bundle; preserve <code>DOWNLOAD_INFO.csv</code> with <code>extra_files</code>. Do not enumerate
-  model files as bundle assets or treat the managed store's existence as a
-  completed download.</li>
-<li><strong>hitlist / tsarina:</strong> use <a href="../file_registry/">VersionedFileRegistry</a> to retain
-  fixed paths, single-Path returns and legacy root manifests without moving old
-  caches. For a deliberate migration to bundles, the existing
-  <code>{filename, urls, default_version}</code> mapping
-  is accepted with <code>verified=False</code>, as is the <code>cache_dir</code> root callable. This is
-  mapping compatibility, not a drop-in filesystem or return-value migration:
-  <code>download</code> returns asset paths, <code>local_path</code> requires an installed bundle, and
-  status rows contain a <code>BundleInspection</code>. A downstream adapter can preserve
-  its public return types and errors. Keep old paths readable during migration;
-  install into a new managed root instead of overwriting legacy directories.</li>
-<li><strong>mhcseqs:</strong> express each records/manifest pair or multi-file source bundle as
-  one version's assets. Keep schema checks and biological validation in mhcseqs.
-  Generated outputs stay outside the source store. The library no longer needs
-  to compose lock, backup, rename and rollback helpers.</li>
-<li><strong>Vaxrank / Isovar / Varcode / Topiary:</strong> share a root, dataset name and data
-  revision to share a complete installation. Existing digest-addressed individual
-  assets can remain under <code>&lt;root&gt;/objects/sha256/</code>; these APIs do not relocate
-  them or change prediction-cache identities.</li>
-<li><strong>pyensembl:</strong> single-file download and SQLite APIs remain supported. Bundles
-  are optional for references with trustworthy multi-file metadata.</li>
-</ul>
-<p>The <a href="https://github.com/openvax/datacache/blob/master/examples/versioned_datasets.py">runnable offline example</a> demonstrates
-single-file, paired-file and multi-file registries, generated SQLite indices,
-shared reuse, and inspection with all upstream sources removed.</p>
+<h2 id="example-and-library-notes">Example and library notes<a class="headerlink" href="#example-and-library-notes" title="Permanent link">&para;</a></h2>
+<p><a id="adopting-from-downstream-libraries"></a>
+The <a href="https://github.com/openvax/datacache/blob/master/examples/versioned_datasets.py">runnable offline example</a>
+demonstrates single-file, paired-file and multi-file registries, generated
+SQLite indices, shared reuse, and inspection with all upstream sources removed.
+Notes for specific OpenVax libraries are in
+<a href="../integration/#notes-for-specific-libraries">integrating a consuming library</a>.</p>
 
 
 

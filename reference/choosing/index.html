@@ -585,7 +585,7 @@
   <span class="md-ellipsis">
     
   
-    Use the legacy file registry
+    Keep files at fixed paths
   
 
     
@@ -1021,6 +1021,21 @@ lists every public signature, default, return value, exception, and example.</p>
 </thead>
 <tbody>
 <tr>
+<td>Download or reuse one file</td>
+<td><code>fetch_file(...)</code>, <code>Cache.fetch(...)</code></td>
+<td>Local path string</td>
+</tr>
+<tr>
+<td>Refresh a cached file periodically, keeping it when the source is unreachable</td>
+<td><code>fetch_file(..., expire_after=..., return_stale_on_error=True, validator=...)</code></td>
+<td>Local path string</td>
+</tr>
+<tr>
+<td>Read a small resource into memory</td>
+<td><code>fetch_bytes(...)</code></td>
+<td><code>bytes</code></td>
+</tr>
+<tr>
 <td>Install or reuse a versioned dataset</td>
 <td><code>VersionedDatasetRegistry</code>, <code>install_bundle(...)</code></td>
 <td>Mapping of asset names to paths in the current bundle</td>
@@ -1034,6 +1049,11 @@ lists every public signature, default, return value, exception, and example.</p>
 <td>Install versioned archive trees</td>
 <td><code>VersionedArchiveRegistry</code>, <code>install_archive(...)</code></td>
 <td><code>Path</code> of the extracted tree, the current bundle</td>
+</tr>
+<tr>
+<td>List or delete old bundles in any store</td>
+<td><code>list_bundles(...)</code>, <code>prune_bundles(...)</code></td>
+<td>Bundle paths, oldest first</td>
 </tr>
 <tr>
 <td>Reuse an established fixed-path versioned file cache</td>
@@ -1054,21 +1074,6 @@ lists every public signature, default, return value, exception, and example.</p>
 <td>Discard retained partial download bytes</td>
 <td><code>discard_partial(destination)</code></td>
 <td>Installed file unchanged</td>
-</tr>
-<tr>
-<td>Download or reuse one file</td>
-<td><code>fetch_file(...)</code>, <code>Cache.fetch(...)</code></td>
-<td>Local path string</td>
-</tr>
-<tr>
-<td>Refresh a cached file periodically, keeping it when the source is unreachable</td>
-<td><code>fetch_file(..., expire_after=..., return_stale_on_error=True, validator=...)</code></td>
-<td>Local path string</td>
-</tr>
-<tr>
-<td>Read a small resource into memory</td>
-<td><code>fetch_bytes(...)</code></td>
-<td><code>bytes</code></td>
 </tr>
 <tr>
 <td>Compute a path without filesystem access</td>
@@ -1153,8 +1158,9 @@ and <a href="../../shared-caches/#files-already-downloaded-as-0600">sharing old 
 <p>File publication requires local filesystem support for atomic replacement;
 new SQLite database publication also requires hard links. SQLite locking and
 transactions govern database rebuilds. Use <code>install_bundle</code> for atomic multi-file
-publication. Bundle installation and resumable transfers require POSIX local
-filesystems; distributed coordination is outside their scope.</p>
+publication. Bundle, archive and materialization installs work on local filesystems on
+Linux, macOS and Windows; resumable transfers need POSIX. Distributed
+coordination is outside their scope.</p>
 
 
 
