@@ -2515,7 +2515,7 @@
 
 <h1 id="public-api-reference">Public API reference<a class="headerlink" href="#public-api-reference" title="Permanent link">&para;</a></h1>
 <p>This reference covers every name exported in <code>datacache.__all__</code> and every
-public <code>Cache</code> method in DataCache 1.23.0. Import these names from <code>datacache</code>.
+public <code>Cache</code> method in DataCache 1.24.0. Import these names from <code>datacache</code>.
 Signatures below show all defaults; arguments after <code>*</code> are keyword-only.
 Method signatures omit <code>self</code> and are called on a <code>Cache</code> instance.</p>
 <p>Start with the <a href="../#cache-and-verify-a-file">quickstart</a> for a first download.
@@ -2987,20 +2987,33 @@ types can raise <code>TypeError</code>. Does not require the directory to exist.
 <span class="n">selected_root</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">get_data_dir</span><span class="p">(</span><span class="s2">"my-project"</span><span class="p">,</span> <span class="n">envkey</span><span class="o">=</span><span class="s2">"MY_PROJECT_CACHE_ROOT"</span><span class="p">)</span>
 </code></pre></div>
 <h3 id="get_cache_root"><code>get_cache_root</code><a class="headerlink" href="#get_cache_root" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code>get_cache_root(name, *envkeys)
+<div class="highlight"><pre><span></span><code>get_cache_root(name, *envkeys, override=None, legacy=())
 </code></pre></div>
-<p>Select a cache root that several packages can share, without creating it. The
-first environment variable in <code>envkeys</code> that is set to a non-blank value is the
-root itself, trimmed and with <code>~</code> expanded. Otherwise the result is the platform
-cache directory for <code>name</code>, the same directory <code>get_data_dir(name)</code> selects.
-Unlike <code>get_data_dir(subdir, envkey)</code>, nothing is appended to an environment
-value, so every package that reads the same variable agrees on one location.
-List a package-specific variable first to let it override a shared one. Pass
-the result as <code>cache_root</code>. A relative value stays relative to the working
-directory.</p>
+<p>Find where a package's cached data lives, without creating anything. The first
+of these that applies is the root, with <code>~</code> expanded:</p>
+<ol>
+<li><code>override</code>, when not <code>None</code>: an explicit choice, such as a command-line flag;</li>
+<li>the first environment variable in <code>envkeys</code> set to a non-blank value;</li>
+<li>the platform cache directory for <code>name</code> (the one <code>get_data_dir(name)</code>
+   selects), when it already holds data;</li>
+<li>the first path in <code>legacy</code> that already holds data, so a cache made before a
+   move keeps working;</li>
+<li>the platform cache directory for <code>name</code>.</li>
+</ol>
+<p>A directory holds data when it contains a file anywhere inside, other than
+files operating systems or DataCache leave on their own (<code>.DS_Store</code>,
+<code>Thumbs.db</code>, <code>desktop.ini</code>, <code>.datacache-*</code>); empty folders don't count, and
+unreadable entries are skipped. <code>legacy</code> paths must be absolute. The legacy
+check reads the disk, so resolve the root once and pass it on.</p>
+<p>Nothing is appended to an environment value, unlike <code>get_data_dir(subdir,
+envkey)</code>, so every package that reads the same variable agrees on one
+location. List a package-specific variable before a shared one so it can
+override it. Pass the result as <code>cache_root</code>. A relative value stays relative
+to the working directory. See <a href="../shared-caches/#choosing-where-data-lives">choosing where data lives</a>.</p>
 <p><strong>Returns:</strong> directory path string. <strong>Raises:</strong> <code>ValueError</code> for an empty
-<code>name</code> or a non-string or empty variable name, and platform directory lookup
-errors from appdirs.</p>
+<code>name</code>, a non-string or empty variable name, an empty or non-text <code>override</code>,
+or a non-text, empty or relative <code>legacy</code> path (checked whichever rule
+applies), and platform directory lookup errors.</p>
 <div class="highlight"><pre><span></span><code><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">"EXAMPLE_SHARED"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"shared"</span><span class="p">)</span>
 <span class="n">shared_root</span> <span class="o">=</span> <span class="n">dc</span><span class="o">.</span><span class="n">get_cache_root</span><span class="p">(</span><span class="s2">"example"</span><span class="p">,</span> <span class="s2">"EXAMPLE_OWN"</span><span class="p">,</span> <span class="s2">"EXAMPLE_SHARED"</span><span class="p">)</span>
 <span class="k">assert</span> <span class="n">shared_root</span> <span class="o">==</span> <span class="nb">str</span><span class="p">(</span><span class="n">root</span> <span class="o">/</span> <span class="s2">"shared"</span><span class="p">)</span>
