@@ -35,6 +35,7 @@ from .common import (
 from .cache import Cache
 from .resume import discard_partial
 from .bundles import BundleInspection, VersionedDatasetRegistry, inspect_bundle, install_bundle
+from .bundle_store import list_bundles, prune_bundles
 from .archives import (
     ArchiveInspection, VersionedArchiveRegistry, inspect_archive, install_archive)
 from .file_registry import VersionedFileRegistry
@@ -56,6 +57,8 @@ __all__ = [
     'VersionedFileRegistry',
     'inspect_bundle',
     'install_bundle',
+    'list_bundles',
+    'prune_bundles',
     'inspect_archive',
     'install_archive',
     'expected_path',

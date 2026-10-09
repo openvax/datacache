@@ -50,6 +50,8 @@ CHUNK_SIZE = 2 ** 20
 # UTC install time. Windows forbids ':', and this sorts oldest to newest.
 BUNDLE_NAME_FORMAT = '%Y-%m-%dT%H-%M-%SZ'
 
+KINDS = ('bundle', 'archive', 'materialization')
+
 # Exceptions meaning a store or bundle is unusable as found: corrupt,
 # incomplete, foreign or unreadable. PermissionError is one of them, so callers
 # that report it separately must catch it first.
@@ -200,6 +202,62 @@ class BundleStore:
         bundle = self.bundles / name
         os.replace(staged, bundle)
         return bundle
+
+
+def store_at(destination):
+    """The store at destination, of whichever kind its marker records.
+
+    None when nothing is installed there yet: no directory, or an empty one.
+    Raises FileValidationError for a directory that isn't a datacache store.
+    """
+    path = Path(destination)
+    if not path_present(path):
+        return None
+    require_directory(path)
+    if not path_present(path / MARKER):
+        if holds_files(path):
+            raise FileValidationError(path, 'not a datacache store')
+        return None
+    marker = read_json(path / MARKER)
+    kind = marker.get('kind') if isinstance(marker, dict) else None
+    if kind not in KINDS or marker != {'format': FORMAT, 'kind': kind}:
+        raise FileValidationError(path, 'not a datacache store')
+    return BundleStore(path, kind)
+
+
+def list_bundles(destination):
+    """Every bundle in a store, oldest first; the last is the current one.
+
+    Works for bundle, archive and materialization stores alike, and only
+    reads. A store with nothing installed has no bundles.
+    """
+    store = store_at(destination)
+    if store is None or not path_present(store.bundles):
+        return []
+    require_directory(store.bundles)
+    return [store.bundles / name for name in store.bundle_names()]
+
+
+def prune_bundles(destination, *, keep=1):
+    """Delete all but the newest keep bundles from a store; return the deleted paths.
+
+    The newest bundle is the current one, so it is always kept: keep must be
+    at least 1. Paths into deleted bundles stop working, so prune only when
+    no running program still uses them. The store's lock is held throughout,
+    so pruning never races an install. Works for bundle, archive and
+    materialization stores alike.
+    """
+    if isinstance(keep, bool) or not isinstance(keep, int) or keep < 1:
+        raise ValueError('keep must be a positive integer; the current bundle is always kept')
+    store = store_at(destination)
+    if store is None:
+        return []
+    with store.lock():
+        deleted = list_bundles(store.path)[:-keep]
+        for bundle in deleted:
+            require_directory(bundle)  # Never follow a link out of the store.
+            shutil.rmtree(bundle)
+    return deleted
 
 
 def holds_files(directory):

@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.22.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.23.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -16,7 +16,7 @@ explain the longer workflows and compatibility guarantees.
 | --- | --- |
 | Downloading | [fetch_file](#fetch_file), [fetch_bytes](#fetch_bytes), [fetch_csv_dataframe](#fetch_csv_dataframe), [fetch_and_transform](#fetch_and_transform) |
 | Complete archive trees | [install_archive](#install_archive), [inspect_archive](#inspect_archive), [ArchiveInspection](#archiveinspection), [VersionedArchiveRegistry](#versionedarchiveregistry) |
-| Versioned file bundles | [install_bundle](#install_bundle), [inspect_bundle](#inspect_bundle), [BundleInspection](#bundleinspection), [VersionedDatasetRegistry](#versioneddatasetregistry), [VersionedFileRegistry](#versionedfileregistry) |
+| Versioned file bundles | [install_bundle](#install_bundle), [inspect_bundle](#inspect_bundle), [BundleInspection](#bundleinspection), [list_bundles](#list_bundles), [prune_bundles](#prune_bundles), [VersionedDatasetRegistry](#versioneddatasetregistry), [VersionedFileRegistry](#versionedfileregistry) |
 | Derived artifacts | [materialize](#materialize), [inspect_materialization](#inspect_materialization), [MaterializationInspection](#materializationinspection) |
 | Paths and presence | [expected_path](#expected_path), [file_exists](#file_exists), [build_local_filename](#build_local_filename), [get_data_dir](#get_data_dir), [get_cache_root](#get_cache_root), [resolve_path](#resolve_path), [build_path](#build_path), [ensure_dir](#ensure_dir), [clear_cache](#clear_cache) |
 | Integrity and permissions | [validate_file](#validate_file), [inspect_file](#inspect_file), [inspect_files](#inspect_files), [make_file_readable](#make_file_readable) |
@@ -1251,15 +1251,21 @@ DataCache. `verified=False` explicitly enables historical unpinned catalogues.
 | `ensure(name, version=None, **download_options)` | Install if needed and return the current bundle. |
 | `is_cached(name, version=None, *, verify_files=False)` | Whether the current bundle is available; full verification is optional. |
 | `status(name=None, *, verify_files=False)` | One read-only row per concrete version, including catalogue and downloaded source URLs, store and bundle paths, default flag, status, fetch time, observed archive size/hash and inspection. Metadata-only by default; `verify_files=True` hashes every file. |
+| `prune(name, version=None, *, keep=1)` | Delete all but the newest `keep` bundles of one version, as [prune_bundles](#prune_bundles) does. |
 
 ## install_bundle
 
 ```text
-install_bundle(destination, assets, *, force=False, verified=True, verify_files=True, download_options=None)
+install_bundle(destination, assets, *, force=False, verified=True, verify_files=True, download_options=None,
+               source_paths=None)
 ```
 
 Download a mapping of relative asset names to `{url, sha256, size,
-decompress?}` metadata and publish the files together as a new bundle. Returns a
+decompress?}` metadata and publish the files together as a new bundle. `path`
+in place of `url` names a local file, identified by its `file://` URL.
+`source_paths` maps asset names to local files to read instead of downloading,
+such as files downloaded by hand; each asset keeps its declared URL as its
+identity, so later installs treat the bundle as if it had been downloaded. Returns a
 dict of asset names to paths in the current bundle. An invalid current bundle
 requires `force=True`. `verified=False` explicitly permits
 unpinned sources; their observed hashes are recorded without authenticating them.
@@ -1291,6 +1297,30 @@ is the current bundle's directory, and `files` maps asset names to
 `FileInspection` values from it. Paths remain usable across refreshes until
 explicitly removed.
 
+## list_bundles
+
+```text
+list_bundles(destination)
+```
+
+Every bundle in a bundle, archive or materialization store, as `Path`s ordered
+oldest first; the last is the current bundle. Read-only. A store with nothing
+installed, or no directory at all, has none. A directory that isn't a datacache
+store raises `FileValidationError`.
+
+## prune_bundles
+
+```text
+prune_bundles(destination, *, keep=1)
+```
+
+Delete all but the newest `keep` bundles from a bundle, archive or
+materialization store, and return the deleted `Path`s, oldest first. The newest
+bundle is the current one, so it is always kept: `keep` must be a positive
+integer. Paths into deleted bundles stop working, so prune only when no running
+program still uses them. Pruning holds the store's lock, so it never races an
+install. See [removing old bundles](bundles.md#removing-old-bundles).
+
 ## VersionedDatasetRegistry
 
 ```text
@@ -1311,11 +1341,12 @@ The [bundle guide](bundles.md) includes an example and downstream migration note
 | `resolve_version(name, version=None)` | Concrete version label, applying the pinned default. Unknown names/versions raise `ValueError`. |
 | `store_path(name, version=None)` | Store `Path`, without creating it. |
 | `inspect(name, version=None, *, verify_files=True)` | Read-only `BundleInspection`; full payload verification by default. |
-| `download(name, version=None, *, force=False, verify_files=True, **download_options)` | Install/reuse and return a dict of asset paths in the current bundle; the flag selects cache-hit cost only. |
+| `download(name, version=None, *, force=False, verify_files=True, source_paths=None, **download_options)` | Install/reuse and return a dict of asset paths in the current bundle; the flag selects cache-hit cost only. `source_paths` reads named assets from local files while keeping their declared URLs as identity. |
 | `local_path(name, version=None, *, asset=None, verify_files=True)` | Installed single asset's `Path`, or the current bundle's directory for several assets; select one asset by name. Assets are hashed by default; `verify_files=False` checks metadata and sizes only. Missing raises `FileNotFoundError`; invalid raises `FileValidationError`. |
 | `ensure(name, version=None, **download_options)` | Download/reuse, then return what `local_path` would, from the paths the download validated. `verify_files=False` among the options skips hashing on reuse. |
 | `is_cached(name, version=None, *, verify_files=True)` | Whether inspection reports `available`; `verify_files=False` skips hashing. |
 | `status(*, verify_files=True)` | One row per pinned default: name, version, description, available_versions and inspection. `verify_files=False` skips hashing. |
+| `prune(name, version=None, *, keep=1)` | Delete all but the newest `keep` bundles of one version, as [prune_bundles](#prune_bundles) does. |
 
 ## materialize
 
