@@ -9,7 +9,8 @@ import tarfile
 import pytest
 
 from datacache import (
-    FileValidationError, VersionedArchiveRegistry, VersionedDatasetRegistry, inspect_bundle, install_bundle, list_bundles, materialize, prune_bundles,
+    FileValidationError, VersionedArchiveRegistry, VersionedDatasetRegistry, inspect_bundle, install_archive,
+    install_bundle, list_bundles, materialize, prune_bundles,
 )
 from datacache import download
 
@@ -167,3 +168,36 @@ def test_local_files_need_no_resume_support(tmp_path, local_file, never_download
     paths = install_bundle(tmp_path / "store", assets, download_options={"resume": True},
                            source_paths={"genes.gtf": local_file})
     assert Path(paths["genes.gtf"]).read_bytes() == b"gene\n"
+
+
+def test_auto_resume_never_keeps_unpinned_files_between_attempts(tmp_path):
+    first, second = tmp_path / "a.txt", tmp_path / "b.txt"
+    first.write_bytes(b"release 1\n")
+    assets = {"a.txt": first.as_uri(), "b.txt": second.as_uri()}  # Unpinned; b is missing.
+    store = tmp_path / "store"
+    with pytest.raises(Exception):
+        install_bundle(store, assets, verified=False, download_options={"resume": "auto"})
+    first.write_bytes(b"release 2\n")  # Upstream moves on before the retry.
+    second.write_bytes(b"release 2\n")
+    paths = install_bundle(store, assets, verified=False, download_options={"resume": "auto"})
+    assert Path(paths["a.txt"]).read_bytes() == b"release 2\n"
+
+
+def test_auto_resume_never_keeps_unpinned_archive_parts(tmp_path):
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w") as tar:
+        info = tarfile.TarInfo("README")
+        info.size = 5
+        tar.addfile(info, io.BytesIO(b"hello"))
+    data = archive.getvalue()
+    parts = [tmp_path / "part0", tmp_path / "part1"]
+    parts[0].write_bytes(data[:100])
+    parts[1].write_bytes(b"an error page instead of the second part")
+    sources = [part.as_uri() for part in parts]  # Unpinned parts; the whole is pinned.
+    options = dict(expected_sha256=sha256(data).hexdigest(), expected_size=len(data),
+                   download_options={"resume": "auto"})
+    with pytest.raises(FileValidationError):
+        install_archive(tmp_path / "store", sources, **options)
+    parts[1].write_bytes(data[100:])  # The upstream recovers.
+    bundle = install_archive(tmp_path / "store", sources, **options)
+    assert (bundle / "README").read_bytes() == b"hello"

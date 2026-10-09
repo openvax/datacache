@@ -1,6 +1,6 @@
 """Hash- or strong-ETag-validated HTTP downloads with private partials."""
 
-from contextlib import closing
+from contextlib import closing, contextmanager
 import hashlib
 import logging
 import os
@@ -20,18 +20,22 @@ logger = logging.getLogger(__name__)
 
 
 class CannotResume(FileValidationError):
-    """The server can't support a resumable transfer of this resource.
+    """A resumable transfer isn't possible here, though a normal one may be.
 
-    For example, it sends no strong ETag and no trusted SHA-256 was given,
-    or it encodes the response. fetch_file(resume="auto") then downloads the
-    file in full instead.
+    The server may send no strong ETag when no trusted SHA-256 was given,
+    encode the response, or answer ranges inconsistently; or the destination's
+    filesystem can't keep private resume state or locks. fetch_file(resume=
+    "auto") then downloads the file in full instead.
     """
 
 
-def can_resume(download_url, expected_size):
-    """Whether this platform and URL allow a resumable transfer of that size."""
-    return (os.name == 'posix' and expected_size is not None
-            and urlsplit(download_url).scheme.lower() in ('http', 'https'))
+def can_resume(download_url, expected_sha256, expected_size):
+    """Whether resume=True would accept these arguments; see validate_resume."""
+    try:
+        validate_resume(download_url, expected_sha256, expected_size)
+    except (ValueError, NotImplementedError):
+        return False
+    return True
 
 
 def validate_resume(download_url, expected_sha256, expected_size):
@@ -56,8 +60,22 @@ def _prepare_directory(destination):
     info = directory.lstat()
     if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid()
             or stat.S_IMODE(info.st_mode) & 0o077):
-        raise FileValidationError(directory, 'resume directory must be owner-only and not a link')
+        raise CannotResume(directory, 'resume directory must be owner-only and not a link')
     return directory
+
+
+@contextmanager
+def _state_lock(directory):
+    """The private lock on resume state; CannotResume if this filesystem can't hold it."""
+    try:
+        lock = file_lock(directory / 'lock', private=True)
+        lock.__enter__()
+    except (OSError, FileValidationError) as error:
+        raise CannotResume(directory, 'cannot lock resume state on this filesystem: %s' % error) from error
+    try:
+        yield
+    finally:
+        lock.__exit__(None, None, None)
 
 
 def discard_partial(destination):
@@ -116,7 +134,7 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
     identity = {'sha256': expected_sha256.lower() if expected_sha256 is not None else None,
                 'size': expected_size,
                 'url_hash': hashlib.sha256(download_url.encode()).hexdigest()}
-    with file_lock(directory / 'lock', private=True):
+    with _state_lock(directory):
         # Another installer may have completed while we waited for its lock.
         if not force:
             try:
@@ -141,7 +159,10 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
             metadata['validator'] = None
             partial.unlink(missing_ok=True)
         write_json(metadata_path, metadata)
-        fd = open_regular(partial, os.O_RDWR | os.O_CREAT, private=True)
+        try:
+            fd = open_regular(partial, os.O_RDWR | os.O_CREAT, private=True)
+        except FileValidationError as error:
+            raise CannotResume(partial, error.reason) from error
         with os.fdopen(fd, 'r+b') as output:
             backoff = retry_backoff
             with Progress(show_progress, 'Downloading', expected_size) as progress:
@@ -212,7 +233,7 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
                                     output.truncate()
                                     offset = 0
                                 else:
-                                    raise FileValidationError(destination, 'expected HTTP 200 or 206')
+                                    raise CannotResume(destination, 'expected HTTP 200 or 206')
                                 if expected_sha256 is None and (
                                         current_validator is None or current_validator['header'] != 'ETag'):
                                     raise CannotResume(

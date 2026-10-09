@@ -584,3 +584,27 @@ def test_installs_accept_auto_resume_for_any_source(tmp_path):
     assets = {'data': dict(url=source.as_uri(), sha256=sha256(PAYLOAD).hexdigest(), size=len(PAYLOAD))}
     paths = install_bundle(tmp_path / 'bundle', assets, download_options={'resume': 'auto'})
     assert Path(paths['data']).read_bytes() == PAYLOAD
+
+
+def test_auto_resume_falls_back_when_this_filesystem_cant_hold_resume_state(server, tmp_path, monkeypatch):
+    import errno
+    from datacache import CannotResume, resume
+
+    def no_locks(*args, **kwargs):
+        raise OSError(errno.ENOLCK, 'No locks available')  # As on some NFS mounts.
+
+    monkeypatch.setattr(resume, 'file_lock', no_locks)
+    url, requests = server({}, {})
+    with pytest.raises(CannotResume, match='cannot lock'):
+        fetch(url, tmp_path / 'strict')
+    fetch(url, tmp_path / 'data', resume='auto')
+    assert (tmp_path / 'data').read_bytes() == PAYLOAD
+
+
+def test_auto_resume_falls_back_on_unexpected_success_statuses(server, tmp_path):
+    from datacache import CannotResume
+    url, requests = server({'status': 203}, {'status': 203}, {'status': 203})
+    with pytest.raises(CannotResume, match='200 or 206'):
+        fetch(url, tmp_path / 'strict')
+    fetch(url, tmp_path / 'data', resume='auto')
+    assert (tmp_path / 'data').read_bytes() == PAYLOAD

@@ -1029,7 +1029,7 @@ def fetch_file(
         raise ValueError("resume=True supports raw downloads only; use raw=True or retain the archive suffix")
     if resume_if_possible:
         from .resume import can_resume
-        resume = can_resume(download_url, expected_size) and not transformed and validator is None
+        resume = can_resume(download_url, expected_sha256, expected_size) and not transformed and validator is None
     # Whether the cached file is known valid, for a failed refresh to fall
     # back to (return_stale_on_error); with force=True it is checked only on failure.
     cached = False
@@ -1110,7 +1110,10 @@ def fetch_file(
                 if not resume_if_possible:
                     raise
                 logger.info("Cannot resume %s (%s); downloading it in full", full_path, error.reason)
-                discard_partial(full_path)
+                try:
+                    discard_partial(full_path)
+                except (OSError, FileValidationError) as discard_error:
+                    logger.debug("Could not discard resume state for %s: %s", full_path, discard_error)
                 download_in_full()
         else:
             download_in_full()

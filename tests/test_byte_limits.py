@@ -244,3 +244,12 @@ def test_resumable_downloads_check_their_size_against_the_limit(serve, tmp_path)
     path = fetch_file(url, destination=tmp_path / "data", raw=True, resume=True,
                       expected_sha256=sha256(BODY).hexdigest(), expected_size=len(BODY), max_bytes=len(BODY))
     assert Path(path).read_bytes() == BODY
+
+
+@pytest.mark.parametrize("how", ["length", "chunked"])
+def test_auto_resume_works_everywhere(serve, tmp_path, how):
+    # Runs on Windows CI too: there "auto" downloads normally, and on POSIX
+    # this server's missing ETag makes it fall back to a full download.
+    url, _ = serve(how=how)
+    path = fetch_file(url, destination=tmp_path / "data", raw=True, expected_size=len(BODY), resume="auto")
+    assert Path(path).read_bytes() == BODY

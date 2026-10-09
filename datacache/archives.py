@@ -427,14 +427,13 @@ def _part_expectations(definition, index):
     return digest, size
 
 
-def _assemble_archive(working, definition, options):
+def _assemble_archive(working, definition, options, keep_parts):
     from .download import fetch_file
 
     archive_path = working / "archive.tar"
     aggregate = hashlib.sha256()
     aggregate_size = 0
     recorded = []
-    keep_parts = options.get("resume", False)
     with archive_path.open("wb") as assembled:
         for index, source in enumerate(definition["sources"]):
             expected_sha256, expected_size = _part_expectations(definition, index)
@@ -532,7 +531,11 @@ def install_archive(
         if store.can_reuse(inspection, force=force):
             return Path(inspection.bundle)
 
-        resumable = options.get("resume", False)
+        # Parts are kept across attempts only when each is pinned, so a kept
+        # part can never be stale; "auto" doesn't require pinning, True does.
+        resumable = options.get("resume") is True or (options.get("resume") == "auto" and all(
+            source["path"] is not None or None not in _part_expectations(definition, index)
+            for index, source in enumerate(definition["sources"])))
         working = private_directory(
             path / (".staging-" + (_working_key(definition) if resumable else uuid4().hex)))
         tree = working / "tree"
@@ -542,7 +545,7 @@ def install_archive(
         published = False
         try:
             archive_path, archive_record, source_records = _assemble_archive(
-                working, definition, options)
+                working, definition, options, keep_parts=resumable)
             _extract_tar(
                 archive_path, tree, max_members, max_extracted_size,
                 definition["extra_files"])

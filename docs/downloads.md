@@ -357,8 +357,10 @@ New integrations should use the public download and inspection APIs.
 The simplest choice is `resume="auto"`: it resumes interrupted transfers when
 it can, and otherwise downloads normally. That covers Windows, a size that
 isn't known, decompression, a `validator`, and a server that turns out not to
-support resuming, whose partial is then discarded and the file downloaded in
-full. No `os.name` checks or error-message matching are needed:
+support resuming, or a filesystem that can't hold private resume state or
+locks; the partial is then discarded and the file downloaded in full. No
+`os.name` checks or error-message matching are needed. Learning that a server
+can't resume costs one extra request, whose body isn't read:
 
 ```python
 path = fetch_file(url, destination=dest, raw=True, expected_size=size, resume="auto")

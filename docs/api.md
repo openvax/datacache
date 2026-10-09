@@ -20,7 +20,7 @@ explain the longer workflows and compatibility guarantees.
 | Derived artifacts | [materialize](#materialize), [inspect_materialization](#inspect_materialization), [MaterializationInspection](#materializationinspection) |
 | Paths and presence | [expected_path](#expected_path), [file_exists](#file_exists), [build_local_filename](#build_local_filename), [get_data_dir](#get_data_dir), [get_cache_root](#get_cache_root), [resolve_path](#resolve_path), [build_path](#build_path), [ensure_dir](#ensure_dir), [clear_cache](#clear_cache) |
 | Integrity and permissions | [validate_file](#validate_file), [inspect_file](#inspect_file), [inspect_files](#inspect_files), [make_file_readable](#make_file_readable) |
-| Results and exceptions | [FileInspection](#fileinspection), [CacheInspection](#cacheinspection), [FileValidationError](#filevalidationerror) |
+| Results and exceptions | [FileInspection](#fileinspection), [CacheInspection](#cacheinspection), [FileValidationError](#filevalidationerror), [CannotResume](#cannotresume) |
 | SQLite | [db_from_dataframe](#db_from_dataframe), [db_from_dataframes](#db_from_dataframes), [db_from_dataframes_with_absolute_path](#db_from_dataframes_with_absolute_path), [fetch_csv_db](#fetch_csv_db), [connect_if_correct_version](#connect_if_correct_version) |
 | Cache object | [Cache](#cache), [fetch](#cachefetch), [local_filename](#cachelocal_filename), [local_path](#cachelocal_path), [exists](#cacheexists), [inspect](#cacheinspect), [make_readable](#cachemake_readable), [db_from_dataframe](#cachedb_from_dataframe), [delete_url](#cachedelete_url), [delete_all](#cachedelete_all) |
 | Package version | [__version__](#__version__) |
@@ -682,6 +682,15 @@ except dc.FileValidationError as error:
     assert error.path == path
     assert "size mismatch" in error.reason
 ```
+
+### `CannotResume`
+
+A `FileValidationError` subclass raised by `resume=True` when a resumable
+transfer isn't possible but a normal one may be: the server sends no strong
+ETag (without a trusted SHA-256), encodes the response, answers ranges
+inconsistently or with an unexpected status, or the destination's filesystem
+can't keep private resume state or locks. `resume="auto"` catches it and
+downloads the file in full instead. The installed file is unchanged.
 
 ### `make_file_readable`
 

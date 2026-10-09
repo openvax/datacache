@@ -212,8 +212,12 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
             return _paths(inspection)
         # A resumable bundle keeps its private working directory across calls,
         # including completed assets. The registry identity selects it, and
-        # different users never inherit each other's private partials.
-        resumable = options.get('resume', False)
+        # different users never inherit each other's private partials. With
+        # "auto", only when every asset is pinned, so a kept file can never be
+        # stale: an unpinned upstream file may change between attempts.
+        resumable = options.get('resume') is True or (
+            options.get('resume') == 'auto'
+            and all(spec['sha256'] is not None and spec['size'] is not None for spec in expected.values()))
         staging_key = (hashlib.sha256(json.dumps(expected, sort_keys=True).encode()).hexdigest()
                        + '-' + user_key()) if resumable else uuid4().hex
         working = private_directory(path / ('.staging-' + staging_key))
