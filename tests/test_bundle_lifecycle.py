@@ -142,3 +142,28 @@ def test_invalid_source_paths_are_rejected_before_anything_is_created(tmp_path, 
     with pytest.raises(ValueError, match="exactly one of url or path"):
         install_bundle(tmp_path / "store", {"genes.gtf": {"url": REMOTE, "path": "x"}}, verified=False)
     assert not (tmp_path / "store").exists()
+
+
+def test_stores_are_recognized_only_by_a_known_marker(tmp_path):
+    from datacache.bundle_store import MARKER
+    (tmp_path / "empty").mkdir()
+    assert list_bundles(tmp_path / "empty") == [] and prune_bundles(tmp_path / "empty") == []
+    (tmp_path / "odd").mkdir()
+    (tmp_path / "odd" / MARKER).write_text('{"format": 2, "kind": "something-else"}')
+    with pytest.raises(FileValidationError, match="not a datacache store"):
+        list_bundles(tmp_path / "odd")
+
+
+def test_users_are_told_apart_without_numeric_ids(monkeypatch):
+    import getpass
+    import os
+    from datacache.bundle_store import user_key
+    monkeypatch.delattr(os, "getuid", raising=False)  # As on Windows.
+    assert user_key() == getpass.getuser()
+
+
+def test_local_files_need_no_resume_support(tmp_path, local_file, never_downloads):
+    assets = {"genes.gtf": dict(describe(b"gene\n"), url=REMOTE)}
+    paths = install_bundle(tmp_path / "store", assets, download_options={"resume": True},
+                           source_paths={"genes.gtf": local_file})
+    assert Path(paths["genes.gtf"]).read_bytes() == b"gene\n"
