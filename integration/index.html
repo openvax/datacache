@@ -1180,8 +1180,7 @@ are bounded, while <code>timeout</code> limits connection/read inactivity per at
 not total elapsed time.</p>
 <p>Use <a href="../bundles/">versioned bundles</a> when named files must be installed together,
 or <a href="../archives/">archive installation</a> when a tar archive defines the complete
-tree. Archive stores use cross-platform locks; <code>install_bundle</code> currently
-requires POSIX <code>flock</code>.
+tree. Both work on Linux, macOS and Windows; resumable downloads need POSIX.
 Individual atomic downloads do not provide multi-file transactions or distributed
 locking. Unhandled termination can leave staging files behind. SQLite operations depend on
 SQLite's filesystem locking and journaling. New database publication needs

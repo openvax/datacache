@@ -2313,7 +2313,7 @@
 
 <h1 id="public-api-reference">Public API reference<a class="headerlink" href="#public-api-reference" title="Permanent link">&para;</a></h1>
 <p>This reference covers every name exported in <code>datacache.__all__</code> and every
-public <code>Cache</code> method in DataCache 1.21.0. Import these names from <code>datacache</code>.
+public <code>Cache</code> method in DataCache 1.22.0. Import these names from <code>datacache</code>.
 Signatures below show all defaults; arguments after <code>*</code> are keyword-only.
 Method signatures omit <code>self</code> and are called on a <code>Cache</code> instance.</p>
 <p>Start with the <a href="../#cache-and-verify-a-file">quickstart</a> for a first download.
@@ -3510,7 +3510,7 @@ checks readability, file types and recorded sizes but cannot detect same-size
 corruption. New bundles are always hashed before publication, regardless of
 this cache-hit setting.
 <code>download_options</code> accepts timeout, chunk size, progress, retry, resume and <code>max_bytes</code> settings.
-Publication requires a POSIX local filesystem. <a href="../bundles/">Complete guide</a>.</p>
+Works on Linux, macOS and Windows local filesystems. <a href="../bundles/">Complete guide</a>.</p>
 <h2 id="inspect_bundle">inspect_bundle<a class="headerlink" href="#inspect_bundle" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>inspect_bundle(destination, assets=None, *, verify_files=True)
 </code></pre></div>
@@ -3595,7 +3595,7 @@ survive failures; successful publication removes owned inputs unless retention
 is requested. Caller-owned local inputs and old bundles are never deleted.
 Cache hits are offline/read-only. Fast reuse is opt-in; new outputs are always
 hashed. Download/copy/verification progress defaults on, configurable
-through download options. Installation initially requires POSIX local storage.
+through download options. Works on Linux, macOS and Windows local storage.
 See the <a href="../materialization/">materialization guide</a> for receipts, resume, callback
 contracts, retention and peak/retained disk use.</p>
 <h2 id="inspect_materialization">inspect_materialization<a class="headerlink" href="#inspect_materialization" title="Permanent link">&para;</a></h2>

@@ -1187,9 +1187,9 @@ policy, not output identity, so toggling it on a cache hit does not mutate disk.
 materialization store, so DataCache never adopts a populated legacy directory or
 another kind of store, even with force.
 An empty precreated directory becomes the store in place, keeping its owner,
-group and permissions. As with
-current resumable bundles, installation requires a POSIX local filesystem with
-<code>flock</code> and atomic sibling renames. Read-only existing hits require no lock.
+group and permissions. Installation works on local filesystems with atomic
+sibling renames, on Linux, macOS and Windows; <code>resume=True</code> needs POSIX.
+Read-only existing hits require no lock.
 This is atomic visibility, not a guarantee against filesystem/power-loss faults.</p>
 <h2 id="disk-use">Disk use<a class="headerlink" href="#disk-use" title="Permanent link">&para;</a></h2>
 <p>Let <code>C</code> be total completed raw inputs, <code>D</code> the new bundle of outputs, and <code>O</code>
