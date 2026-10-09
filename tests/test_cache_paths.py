@@ -136,3 +136,25 @@ def test_cache_root_falls_back_to_the_platform_directory(monkeypatch):
 def test_cache_root_rejects_empty_names(arguments):
     with pytest.raises(ValueError):
         get_cache_root(*arguments)
+
+
+def test_cache_root_prefers_an_override_then_variables_then_legacy_data(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("EXAMPLE_ROOT", raising=False)
+    legacy = tmp_path / ".example"
+    platform = get_cache_root("example")
+    assert get_cache_root("example", "EXAMPLE_ROOT", legacy=["~/.example"]) == platform
+
+    # Empty leftover folders don't make a legacy location count.
+    (legacy / "proteomes").mkdir(parents=True)
+    assert get_cache_root("example", "EXAMPLE_ROOT", legacy=["~/.example"]) == platform
+    (legacy / "proteomes" / "human.fa").write_text(">p\n")
+    assert get_cache_root("example", "EXAMPLE_ROOT", legacy=["~/.example"]) == str(legacy)
+    assert get_cache_root("example", "EXAMPLE_ROOT", legacy="~/.example") == str(legacy)
+
+    monkeypatch.setenv("EXAMPLE_ROOT", "~/chosen")
+    assert get_cache_root("example", "EXAMPLE_ROOT", legacy=["~/.example"]) == str(tmp_path / "chosen")
+    assert get_cache_root("example", "EXAMPLE_ROOT", override=tmp_path / "flag") == str(tmp_path / "flag")
+    assert get_cache_root("example", override="~/flag") == str(tmp_path / "flag")
+    with pytest.raises(ValueError, match="override"):
+        get_cache_root("example", override="")

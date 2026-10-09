@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.24.0
+
+- `get_cache_root(name, *envkeys, override=None, legacy=())` resolves a
+  package's cache root in one call: an explicit override, then the first
+  environment variable that is set, then the first legacy location that
+  already holds data (a file at its top level or one folder down), then the
+  platform cache directory. This replaces the root resolvers several OpenVax
+  packages keep. The shared-caches guide shows the pattern.
+
 ## 1.23.0
 
 - Add `prune_bundles(destination, keep=1)` and `list_bundles(destination)`,

@@ -76,29 +76,66 @@ def get_data_dir(subdir=None, envkey=None):
     return appdirs.user_cache_dir(subdir if subdir else "datacache")
 
 
-def get_cache_root(name, *envkeys):
-    """Return a cache root shared by name, honoring environment overrides.
+def get_cache_root(name, *envkeys, override=None, legacy=()):
+    """Return where name's cached data lives on this machine.
 
-    The first variable in envkeys that is set to a non-blank value is the root
-    itself, trimmed and with ~ expanded; otherwise the platform cache
-    directory for name. Unlike get_data_dir(subdir, envkey), nothing is
-    appended to an environment value, so every package reading the same
-    variable agrees on one location. Nothing is created.
+    The first of these that applies, with ~ expanded:
+
+    1. override, when not None: an explicit choice, such as a command-line flag;
+    2. the first environment variable in envkeys set to a non-blank value;
+    3. the first path in legacy that already holds data (a file at its top
+       level or one directory down), so a cache made before a move keeps
+       working; empty leftover folders don't count;
+    4. the platform's cache directory for name.
+
+    Unlike get_data_dir(subdir, envkey), nothing is appended to an
+    environment value, so every package reading the same variable agrees on
+    one location. Nothing is created.
     """
     if not isinstance(name, str) or not name:
         raise ValueError("name must be a non-empty string")
     if not all(isinstance(envkey, str) and envkey for envkey in envkeys):
         raise ValueError("environment variable names must be non-empty strings")
+    if isinstance(legacy, (str, os.PathLike)):
+        legacy = (legacy,)
+    if override is not None:
+        if not isinstance(override, (str, os.PathLike)) or not os.fspath(override):
+            raise ValueError("override must be a non-empty path")
+        return os.path.expanduser(os.fspath(override))
     for envkey in envkeys:
         value = environ.get(envkey, "").strip()
         if value:
             return os.path.expanduser(value)
+    for path in legacy:
+        path = os.path.expanduser(os.fspath(path))
+        if _holds_data(path):
+            return path
     return appdirs.user_cache_dir(name)
+
+
+def _holds_data(directory):
+    """Whether directory holds a regular file at its top level or one level down."""
+    try:
+        with os.scandir(directory) as entries:
+            entries = list(entries)
+    except OSError:
+        return False
+    if any(entry.is_file() for entry in entries):
+        return True
+    for entry in entries:
+        if entry.is_dir():
+            try:
+                with os.scandir(entry.path) as inner:
+                    if any(item.is_file() for item in inner):
+                        return True
+            except OSError:
+                continue
+    return False
 
 def resolve_path(filename, subdir=None, *, cache_root=None):
     """Resolve a cache path without filesystem access or directory creation.
 
-    cache_root is the directory containing cached files, overriding the appdirs
+    cache_root is the directory containing cached files, overriding the platform
     location selected by subdir. Relative roots remain relative to the cwd.
     """
     data_dir = get_data_dir(subdir) if cache_root is None else os.fspath(cache_root)

@@ -2,6 +2,35 @@
 
 See the [API reference](api.md) for signatures, defaults, return values, and errors.
 
+## Choosing where data lives
+
+Most packages let users move their data with an option or an environment
+variable, keep using a location from an older release, and otherwise use the
+platform's cache directory. `get_cache_root` does all of that in one call:
+
+```python
+from datacache import fetch_file, get_cache_root
+
+root = get_cache_root(
+    "hitlist",                 # Platform cache directory name, the last resort.
+    "HITLIST_DATA_DIR",        # Environment variables, checked in order.
+    override=data_dir_option,  # An explicit choice wins, when not None.
+    legacy=["~/.hitlist"],     # Older locations, used only if they hold data.
+)
+path = fetch_file(url, cache_root=root)
+```
+
+The first of these that applies is the root: the override, then the first
+environment variable that is set, then the first legacy location holding a file
+(at its top level or one folder down), then the platform cache directory.
+Environment values are used exactly as given, never with a package name added,
+so several packages reading one variable agree on one directory. Nothing is
+created until something is downloaded. Pass the root to `fetch_file`, `Cache`
+or a registry as `cache_root`; `fetch_file`'s `subdir` alone reads no
+environment variables.
+
+## Sharing one root
+
 Select a common root explicitly:
 
 ```python

@@ -694,7 +694,7 @@ def expected_path(
         cache_root=None):
     """Resolve the fetch destination without filesystem access or mutations.
 
-    cache_root overrides the appdirs location selected by subdir. destination
+    cache_root overrides the platform location selected by subdir. destination
     is an exact path and cannot be combined with filename, subdir, or cache_root.
     """
     if destination is not None:
