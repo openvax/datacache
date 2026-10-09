@@ -53,7 +53,7 @@ def main():
         for name in datasets:
             consumer.download(name)  # Verified reuse with no upstream available.
             assert consumer.inspect(name).verified
-            assert inspect_bundle(consumer.bundle_path(name)).status == 'available'
+            assert inspect_bundle(consumer.store_path(name)).status == 'available'
         print('Three dataset shapes installed, indexed, shared, and inspected offline.')
 
 

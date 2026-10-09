@@ -68,13 +68,13 @@ paths are initially absent, with required parent directories already present.
 The builder must create exactly those outputs, close all handles, and leave
 inputs unchanged before returning. Only regular, single-link files and the
 declared output parent directories are accepted. Return values are ignored;
-`materialize` returns name-to-absolute-path mappings belonging to the published generation.
+`materialize` returns name-to-absolute-path mappings in the newly published bundle.
 The callback is trusted application code, not a sandbox. Builder progress,
 streamed decompression and biological validation are caller-owned.
 
 ## Identity, receipts and trust
 
-Each generation records the complete source/transform/output dependency
+Each bundle's manifest records the complete source/transform/output dependency
 definition and observed sizes/SHA-256 hashes. Source receipts also record
 redacted origins, acquisition time, acquisition-time trusted-hash verification,
 and validated transport metadata when available. Resumable HTTP acquisitions
@@ -86,13 +86,13 @@ Full source references are represented by SHA-256 identity fingerprints.
 Display origins omit URL credentials, query text and fragments, but retain the
 path; avoid secret-bearing paths. Changing the full URL/path (including signed
 query text), integrity expectations, transform identity or output inventory
-makes an existing generation `invalid` for that request. Refresh is explicit:
+makes the current bundle `invalid` for that request. Refresh is explicit:
 `materialize(..., force=True)` builds a replacement. This API does not claim
 different mirror URLs are the same dependency; caller-declared source identity
 policy is separate. No remote `latest` lookup occurs.
 
-`inspect_materialization` reports `available`, `missing`, `invalid`,
-`inaccessible` or `recovery-required`, with generation paths, output inspections,
+`inspect_materialization` reports `available`, `missing`, `invalid` or
+`inaccessible`, with the current bundle's path, output inspections,
 source receipts, transform identity and an error cause. Supply all three of
 `sources`, `transform`, and `outputs` to check the requested identity, or omit
 all three for receipt-only consistency checks. Inspection never accesses the
@@ -104,8 +104,8 @@ verification is explicitly historical. Without trusted output hashes, even
 fully consistent results have `verified=False`. `verify_files=False` checks
 ownership, dependency identity, exact inventory, types, readability and sizes,
 but cannot detect same-size corruption and always reports unverified outputs.
-This fast flag applies only to reuse. New output publication and explicit
-recovery always hash the bytes.
+This fast flag applies only to reuse. New outputs are always hashed before
+they are published.
 
 ## Interruption, publication and retention
 
@@ -119,54 +119,50 @@ progress display, retry count/backoff/delay and resume. Download, copy and hash
 progress is enabled by default; set `show_progress=False` in download options
 for noninteractive use. Valid cache hits remain quiet.
 
-Download, gzip, validation and builder failures leave the previously selected
-output generation untouched. Failed builder outputs are discarded; completed
+Download, gzip, validation and builder failures leave the current bundle
+untouched. Failed builder outputs are discarded; completed
 inputs survive for retry without another download. A killed builder can leave
 private partial outputs, which the next transaction with the same definition
 discards. Changing only the transform can reuse retained matching inputs.
-`force=True` always rebuilds outputs: it never selects an older generation,
-even when `current.json` is missing, and it doesn't hash the outputs it replaces.
+`force=True` always rebuilds outputs, and it doesn't hash the outputs it
+replaces.
 It reuses remote inputs that still match, copies a local source again while
 the original exists (so an in-place correction is picked up; once the original
 is gone, a retained copy still serves), and repairs corrupted private inputs or
 input receipts. It never adopts unsafe paths or foreign directories.
 
-All declared outputs and `.datacache-manifest.json` are staged and checked as
-one tree. DataCache renames that tree into `generations/<id>` and atomically
-replaces `current.json`. It does not present independent fixed-file renames as
-a multi-file transaction. Readers see the complete old or complete new tree;
-returned snapshot paths continue to exist across later refreshes. Do not add
-indexes or edit files in a published generation; declare them as outputs or
-place independently mutable files outside the managed store.
-
-If the first pointer publication is interrupted, explicit `materialize`
-without `force` can fully check and select a matching complete local
-generation without fetching inputs or calling the builder. It tries the newest
-generation first, by the creation time its receipt records. Inspection alone
-does not recover anything. A failure to remove the private staging directory is
+Materialization stores use the same layout as
+[bundles](bundles.md#how-bundles-are-stored). All declared outputs and
+`.datacache-manifest.json` are staged and checked as one tree, which is then
+renamed into `bundles/` under its UTC install time; the newest bundle is the
+current one. Readers see the complete old or complete new tree, and returned
+paths keep working across later refreshes. Do not add indexes or edit files in
+a published bundle; declare them as outputs or place independently mutable
+files outside the store. A failure to remove the private staging directory is
 logged; it never replaces a builder's error or fails a published build.
 
-After successful pointer publication/recovery, owned inputs for that source
-definition are removed by default. `retain_sources=True` keeps them privately
-for future builds. Cache hits never perform cleanup: a crash between pointer
-publication and cleanup may leave inputs for an explicit later refresh. Inputs
-for other source definitions/users and old output generations are never pruned
-implicitly. Abandoned input/staging variants require deliberate operator
+After a successful publication, owned inputs for that source definition are
+removed by default. `retain_sources=True` keeps them privately for future
+builds. Cache hits never perform cleanup: a crash between publication and
+cleanup may leave inputs for an explicit later refresh. Inputs for other source
+definitions/users and old bundles are never removed implicitly. Abandoned input/staging variants require deliberate operator
 cleanup; general inventory/pruning is separate work. Retention is installation
 policy, not output identity, so toggling it on a cache hit does not mutate disk.
 
-The distinct `.datacache-materialization.json` ownership marker prevents
-adoption of populated legacy directories or bundle stores, even with force.
-Empty precreated stores are allowed and keep their directory modes. As with
+The store marker, `.datacache-store.json`, records that this is a
+materialization store, so DataCache never adopts a populated legacy directory or
+another kind of store, even with force.
+An empty precreated directory becomes the store in place, keeping its owner,
+group and permissions. As with
 current resumable bundles, installation requires a POSIX local filesystem with
 `flock` and atomic sibling renames. Read-only existing hits require no lock.
 This is atomic visibility, not a guarantee against filesystem/power-loss faults.
 
 ## Disk use
 
-Let `C` be total completed raw inputs, `D` the new output generation, and `O`
-all old retained output generations. During a build, storage is approximately
-`O + C + D`, plus scratch files created by the builder. Generation publication
+Let `C` be total completed raw inputs, `D` the new bundle of outputs, and `O`
+all old bundles. During a build, storage is approximately
+`O + C + D`, plus scratch files created by the builder. Publication
 is a rename and does not duplicate `D`. After successful default cleanup,
 retained storage is `O + D`; opt-in source retention uses `O + C + D`.
 

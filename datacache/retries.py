@@ -66,7 +66,9 @@ def is_retryable_http_error(error):
 def retry_delay(error, backoff, max_delay):
     """Return a delay, or None if Retry-After exceeds the caller's wait limit.
 
-    Invalid Retry-After values are ignored. A server's minimum wait is never
+    backoff is the uncapped exponential delay; this is the one place it is
+    capped at max_delay, so retry loops simply double it. Invalid Retry-After
+    values are ignored. A server's minimum wait is never
     shortened to fit the cap: in that case the original failure must propagate.
     """
     response = getattr(error, "response", None)

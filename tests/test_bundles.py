@@ -6,14 +6,13 @@ import json
 import os
 from pathlib import Path
 import threading
-import time
 
 import pytest
 
 from datacache import (
     FileValidationError, VersionedDatasetRegistry, inspect_bundle, install_bundle,
 )
-from datacache import bundles, download
+from datacache import bundle_store, bundles, download
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='POSIX bundle locks')
 
@@ -53,8 +52,9 @@ def test_install_inspect_offline_and_generated_outputs_survive(tmp_path, assets,
     def forbidden(*args, **kwargs):
         raise AssertionError('read-only reuse attempted a mutation or download')
     monkeypatch.setattr(download, 'fetch_file', forbidden)
-    monkeypatch.setattr(bundles, 'file_lock', forbidden)
+    monkeypatch.setattr(bundle_store.BundleStore, 'lock', forbidden)
     monkeypatch.setattr(bundles, 'write_json', forbidden)
+    monkeypatch.setattr(bundle_store, 'write_json', forbidden)
     monkeypatch.setattr(Path, 'mkdir', forbidden)
     assert install_bundle(destination, assets) == refreshed
     assert inspect_bundle(destination, assets).verified
@@ -62,47 +62,28 @@ def test_install_inspect_offline_and_generated_outputs_survive(tmp_path, assets,
 
 
 @pytest.mark.parametrize('failure', ['last-download', 'hash', 'publication'])
-def test_failed_refresh_preserves_old_generation(tmp_path, assets, monkeypatch, failure):
+def test_failed_refresh_preserves_old_bundle(tmp_path, assets, monkeypatch, failure):
     destination = tmp_path / 'data'
     paths = install_bundle(destination, assets)
-    old_pointer = (destination / bundles.CURRENT).read_bytes()
+    old_bundle = inspect_bundle(destination).bundle
     replacement = {k: dict(v) for k, v in assets.items()}
     if failure == 'last-download':
         replacement['release/manifest.json']['url'] = (tmp_path / 'missing').as_uri()
     elif failure == 'hash':
         replacement['release/manifest.json']['sha256'] = '0' * 64
     else:
-        original = bundles.write_json
-        def fail(path, value, **kwargs):
-            if Path(path).name == bundles.CURRENT:
+        replace = os.replace
+        def fail(source, target):
+            if Path(target).parent == destination / 'bundles':
                 raise OSError('publication failed')
-            return original(path, value, **kwargs)
-        monkeypatch.setattr(bundles, 'write_json', fail)
+            return replace(source, target)
+        monkeypatch.setattr(os, 'replace', fail)
     with pytest.raises((OSError, FileValidationError)):
         install_bundle(destination, replacement, force=True)
-    assert (destination / bundles.CURRENT).read_bytes() == old_pointer
+    assert inspect_bundle(destination).bundle == old_bundle
     assert inspect_bundle(destination, assets).verified
     assert all(Path(path).exists() for path in paths.values())
-
-
-def test_interrupted_first_publish_recovers_without_network(tmp_path, assets, monkeypatch):
-    destination = tmp_path / 'data'
-    original = bundles.write_json
-    def fail(path, value, **kwargs):
-        if Path(path).name == bundles.CURRENT:
-            raise KeyboardInterrupt
-        return original(path, value, **kwargs)
-    monkeypatch.setattr(bundles, 'write_json', fail)
-    with pytest.raises(KeyboardInterrupt):
-        install_bundle(destination, assets)
-    assert inspect_bundle(destination, assets).status == 'recovery-required'
-    monkeypatch.setattr(bundles, 'write_json', original)
-    def forbidden(*args, **kwargs):
-        raise AssertionError('recovery attempted network')
-    monkeypatch.setattr(download, 'fetch_file', forbidden)
-    paths = install_bundle(destination, assets)
-    assert inspect_bundle(destination, assets).verified
-    assert all(Path(path).exists() for path in paths.values())
+    assert not list(destination.glob('.staging-*'))
 
 
 def test_concurrent_first_and_forced_installs(tmp_path, assets):
@@ -121,17 +102,17 @@ def test_concurrent_first_and_forced_installs(tmp_path, assets):
     assert inspect_bundle(destination, assets).verified
 
 
-def test_managed_reader_sees_complete_old_generation_during_publish(tmp_path, assets, monkeypatch):
+def test_reader_sees_complete_old_bundle_during_publish(tmp_path, assets, monkeypatch):
     destination = tmp_path / 'data'
     old = install_bundle(destination, assets)
     entered, release = threading.Event(), threading.Event()
-    original = bundles.write_json
-    def paused(path, value, **kwargs):
-        if Path(path).name == bundles.CURRENT:
+    replace = os.replace
+    def paused(source, target):
+        if Path(target).parent == destination / 'bundles':
             entered.set()
             assert release.wait(5)
-        return original(path, value, **kwargs)
-    monkeypatch.setattr(bundles, 'write_json', paused)
+        return replace(source, target)
+    monkeypatch.setattr(os, 'replace', paused)
     with ThreadPoolExecutor() as pool:
         future = pool.submit(install_bundle, destination, assets, force=True)
         assert entered.wait(5)
@@ -189,10 +170,11 @@ def test_missing_manifest_and_symlinks_cannot_escape_store(tmp_path, assets):
     target.unlink()
     target.symlink_to(Path(assets['records.json']['url'][7:]))
     assert inspect_bundle(dest, assets).status == 'invalid'
-    manifest = Path(inspected.generation) / bundles.MANIFEST
+    manifest = Path(inspected.bundle) / bundles.MANIFEST
     manifest.unlink()
     assert inspect_bundle(dest).status == 'invalid'
-    (dest / bundles.CURRENT).write_text(json.dumps({'generation': '../../upstream'}))
+    # A newest "bundle" that links elsewhere is never followed.
+    (dest / 'bundles' / '2999-01-01T00-00-00Z').symlink_to(tmp_path / 'upstream', target_is_directory=True)
     assert inspect_bundle(dest).status == 'invalid'
 
 
@@ -213,7 +195,7 @@ def test_registry_versions_are_independent_and_pinned(tmp_path, assets):
         cache_root=tmp_path / 'cache')
     assert reg.resolve_version('example') == '2026-09'
     assert reg.inspect('example').status == 'missing'
-    assert not reg.bundle_path('example').parent.exists()
+    assert not reg.store_path('example').parent.exists()
     reg.download('example')
     assert reg.is_cached('example')
     assert reg.inspect('example', '2025-01').status == 'missing'
@@ -252,7 +234,7 @@ def test_parent_permission_error_is_not_missing(tmp_path, assets, monkeypatch):
         install_bundle(dest, assets)
 
 
-def test_separate_processes_converge_on_one_generation(tmp_path, assets):
+def test_separate_processes_converge_on_one_bundle(tmp_path, assets):
     import subprocess
     import sys
     dest = tmp_path / 'data'
@@ -263,15 +245,15 @@ def test_separate_processes_converge_on_one_generation(tmp_path, assets):
     results = [process.communicate(timeout=10) for process in processes]
     assert all(process.returncode == 0 for process in processes), results
     assert len({stdout for stdout, stderr in results}) == 1
-    assert len(list((dest / 'generations').iterdir())) == 1
+    assert len(list((dest / 'bundles').iterdir())) == 1
 
 
 def test_single_manifest_tampering_does_not_override_trusted_registry(tmp_path, assets):
     dest = tmp_path / 'data'
     paths = install_bundle(dest, assets)
-    generation = Path(inspect_bundle(dest).generation)
+    bundle = Path(inspect_bundle(dest).bundle)
     Path(paths['records.json']).write_bytes(b'forged')
-    manifest = generation / bundles.MANIFEST
+    manifest = bundle / bundles.MANIFEST
     receipt = json.loads(manifest.read_text())
     receipt['assets']['records.json'].update(sha256=sha256(b'forged').hexdigest(), size=6)
     manifest.write_text(json.dumps(receipt))
@@ -321,7 +303,7 @@ def test_unverified_reuse_checks_full_source_identity(tmp_path, monkeypatch, cha
     assert Path(new_paths['data']).read_bytes() == b'new data'
     assert Path(old_paths['data']).read_bytes() == b'old data'
     assert requests == [original_url, changed_url]
-    receipt = json.loads((Path(inspect_bundle(dest).generation) / bundles.MANIFEST).read_text())
+    receipt = json.loads((Path(inspect_bundle(dest).bundle) / bundles.MANIFEST).read_text())
     assert receipt['source_fingerprints']['data'] == sha256(changed_url.encode()).hexdigest()
     assert receipt['assets']['data']['url'] == 'https://example.test/download'
     serialized = json.dumps(receipt)
@@ -361,8 +343,9 @@ def test_trusted_hashes_allow_cross_library_reuse_across_mirrors(tmp_path, asset
         raise AssertionError('trusted shared reuse must not download or write')
 
     monkeypatch.setattr(download, 'fetch_file', forbidden)
-    monkeypatch.setattr(bundles, 'file_lock', forbidden)
+    monkeypatch.setattr(bundle_store.BundleStore, 'lock', forbidden)
     monkeypatch.setattr(bundles, 'write_json', forbidden)
+    monkeypatch.setattr(bundle_store, 'write_json', forbidden)
     assert second.download('reference') == paths
     assert second.inspect('reference').verified
 
@@ -390,16 +373,16 @@ def test_empty_symlink_is_not_an_uninitialized_bundle(tmp_path, assets):
 
 
 @pytest.mark.parametrize('creation_mask', [0o022, 0o002, 0o077])
-def test_generation_is_shared_before_it_can_be_recovered(tmp_path, assets, monkeypatch, creation_mask):
+def test_bundle_is_shared_and_current_once_renamed(tmp_path, assets, monkeypatch, creation_mask):
     dest = tmp_path / 'bundle'
     replace = os.replace
     installed_modes = []
 
     def interrupt_after_rename(source, target):
         replace(source, target)
-        if Path(target).parent == dest / 'generations':
+        if Path(target).parent == dest / 'bundles':
             installed_modes.append(Path(target).stat().st_mode & 0o777)
-            raise KeyboardInterrupt('interrupted immediately after generation rename')
+            raise KeyboardInterrupt('interrupted immediately after the bundle rename')
 
     monkeypatch.setattr(os, 'replace', interrupt_after_rename)
     previous_mask = os.umask(creation_mask)
@@ -407,16 +390,15 @@ def test_generation_is_shared_before_it_can_be_recovered(tmp_path, assets, monke
         with pytest.raises(KeyboardInterrupt):
             install_bundle(dest, assets)
         assert installed_modes == [0o777 & ~creation_mask]
-        assert inspect_bundle(dest, assets).status == 'recovery-required'
         monkeypatch.setattr(os, 'replace', replace)
 
         def forbidden(*args, **kwargs):
-            raise AssertionError('recoverable shared generation must not be downloaded again')
+            raise AssertionError('an installed bundle must not be downloaded again')
 
         monkeypatch.setattr(download, 'fetch_file', forbidden)
-        paths = install_bundle(dest, assets)
         assert inspect_bundle(dest, assets).verified
-        assert Path(inspect_bundle(dest).generation).stat().st_mode & 0o777 == 0o777 & ~creation_mask
+        paths = install_bundle(dest, assets)
+        assert Path(inspect_bundle(dest).bundle).stat().st_mode & 0o777 == 0o777 & ~creation_mask
         assert all(Path(path).is_file() for path in paths.values())
     finally:
         os.umask(previous_mask)
@@ -425,7 +407,7 @@ def test_generation_is_shared_before_it_can_be_recovered(tmp_path, assets, monke
 @pytest.mark.parametrize('names', [
     ('data', '.data.datacache.json'),
     ('dir/data', 'dir/.data.datacache.json'),
-    ('dir/DATA', 'DIR/.data.datacache.JSON'),
+    ('dir/DATA', 'dir/.data.datacache.JSON'),
     ('data', '.data.datacache.json/nested'),
 ])
 @pytest.mark.parametrize('reverse', [False, True])
@@ -444,14 +426,17 @@ def test_provenance_sidecar_collisions_fail_before_any_writes(tmp_path, assets, 
     assert not dest.parent.exists()
 
 
-def test_existing_bundle_inspection_needs_no_directory_listing(tmp_path, assets, monkeypatch):
+def test_existing_bundle_inspection_lists_only_the_bundles_directory(tmp_path, assets, monkeypatch):
     dest = tmp_path / 'bundle'
     paths = install_bundle(dest, assets)
+    iterdir = Path.iterdir
 
-    def forbidden(*args, **kwargs):
-        raise AssertionError('known bundle files need search access, not a directory listing')
+    def only_bundles(path):
+        # Finding the newest bundle lists bundles/; known files need no listing.
+        assert path == dest / 'bundles', 'listed %s' % path
+        return iterdir(path)
 
-    monkeypatch.setattr(Path, 'iterdir', forbidden)
+    monkeypatch.setattr(Path, 'iterdir', only_bundles)
     assert inspect_bundle(dest, assets).verified
     assert install_bundle(dest, assets) == paths
 
@@ -459,7 +444,7 @@ def test_existing_bundle_inspection_needs_no_directory_listing(tmp_path, assets,
 def test_legacy_receipts_still_verify_but_cannot_prove_unpinned_source_identity(tmp_path, assets):
     dest = tmp_path / 'bundle'
     paths = install_bundle(dest, assets)
-    manifest = Path(inspect_bundle(dest).generation) / bundles.MANIFEST
+    manifest = Path(inspect_bundle(dest).bundle) / bundles.MANIFEST
     receipt = json.loads(manifest.read_text())
     del receipt['source_fingerprints']
     manifest.write_text(json.dumps(receipt))
@@ -499,18 +484,18 @@ def test_concurrent_initialization_of_precreated_directory_reuses_winner(tmp_pat
     dest = tmp_path / 'bundle'
     dest.mkdir()
     missing_marker, resume_inspection = threading.Event(), threading.Event()
-    read_json = bundles.read_json
+    read_json = bundle_store.read_json
 
     def pause_after_missing_marker(path, *args, **kwargs):
         try:
             return read_json(path, *args, **kwargs)
         except FileNotFoundError:
-            if Path(path) == dest / bundles.STORE and not missing_marker.is_set():
+            if Path(path) == dest / bundle_store.MARKER and not missing_marker.is_set():
                 missing_marker.set()
                 assert resume_inspection.wait(5)
             raise
 
-    monkeypatch.setattr(bundles, 'read_json', pause_after_missing_marker)
+    monkeypatch.setattr(bundle_store, 'read_json', pause_after_missing_marker)
     with ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(install_bundle, dest, assets)
         assert missing_marker.wait(5)
@@ -519,26 +504,78 @@ def test_concurrent_initialization_of_precreated_directory_reuses_winner(tmp_pat
         finally:
             resume_inspection.set()
         assert future.result() == winner
-    assert len(list((dest / 'generations').iterdir())) == 1
+    assert len(list((dest / 'bundles').iterdir())) == 1
 
 
-def test_recovery_picks_the_newest_generation_not_the_highest_name(tmp_path, assets):
+def test_large_manifests_are_read(tmp_path, assets):
     dest = tmp_path / 'bundle'
-    older = Path(next(iter(install_bundle(dest, assets).values()))).parent
-    newer = Path(next(iter(install_bundle(dest, assets, force=True).values()))).parent
-    # Generation names are random: make the older one's name sort highest.
-    older.rename(dest / 'generations' / ('f' * 32))
-    newer.rename(dest / 'generations' / ('0' * 32))
-    (dest / bundles.CURRENT).unlink()
-    recovered = install_bundle(dest, assets)
-    generations = {Path(path).relative_to(dest / 'generations').parts[0] for path in recovered.values()}
-    assert generations == {'0' * 32}
+    paths = install_bundle(dest, assets)
+    manifest = Path(inspect_bundle(dest).bundle) / bundles.MANIFEST
+    receipt = json.loads(manifest.read_text())
+    # Manifests grow with the number of assets; this one is over 1 MiB.
+    receipt['assets']['records.json']['url'] += '/' + 'x' * (2 ** 21)
+    manifest.write_text(json.dumps(receipt))
+    assert inspect_bundle(dest).status == 'available'
+    assert all(Path(path).is_file() for path in paths.values())
 
 
-def test_generation_age_falls_back_to_modification_time(tmp_path):
-    store = tmp_path / 'store'
-    for name, age in [('a' * 32, 100), ('b' * 32, 10)]:
-        directory = store / 'generations' / name
-        directory.mkdir(parents=True)
-        os.utime(directory, (time.time() - age, time.time() - age))
-    assert bundles._newest_generations_first(store, bundles.MANIFEST, 'fetched_at') == ['b' * 32, 'a' * 32]
+def test_files_are_verified_only_by_hashes_the_caller_supplied(tmp_path, assets):
+    dest = tmp_path / 'bundle'
+    install_bundle(dest, assets)
+    assert all(item.verified for item in inspect_bundle(dest, assets).files.values())
+    # The bundle's own manifest checks the bytes but vouches for nothing.
+    receipt_only = inspect_bundle(dest)
+    assert receipt_only.status == 'available'
+    assert not any(item.verified for item in receipt_only.files.values())
+
+
+def test_cleanup_failure_after_publishing_is_logged_not_raised(tmp_path, assets, monkeypatch, caplog):
+    import shutil
+    rmtree = shutil.rmtree
+
+    def failing_rmtree(path, *args, **kwargs):
+        if Path(path).name.startswith('.staging-'):
+            raise OSError('busy')
+        return rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, 'rmtree', failing_rmtree)
+    paths = install_bundle(tmp_path / 'bundle', assets)
+    assert all(Path(path).is_file() for path in paths.values())
+    assert 'Could not remove the working directory' in caplog.text
+
+
+def test_force_never_hashes_the_bundle_it_replaces(tmp_path, assets, monkeypatch):
+    dest = tmp_path / 'bundle'
+    old = install_bundle(dest, assets)
+    hash_file = bundles.hash_file
+
+    def unhashed_old_bundle(path, *args, **kwargs):
+        if str(path) in old.values() and kwargs.get('hash_contents', True):
+            raise AssertionError('hashed the bundle being replaced')
+        return hash_file(path, *args, **kwargs)
+
+    monkeypatch.setattr(bundles, 'hash_file', unhashed_old_bundle)
+    assert install_bundle(dest, assets, force=True) != old
+
+
+@pytest.mark.parametrize('datasets', [
+    {'reference': dict(default_version='GRCh38', versions={'GRCh38': 'A', 'grch38': 'A'})},
+    {'Reference': dict(default_version='v1', versions={'v1': 'A'}),
+     'reference': dict(default_version='v1', versions={'v1': 'A'})},
+])
+def test_registry_names_that_differ_only_by_case_are_rejected(tmp_path, assets, datasets):
+    datasets = {name: dict(spec, versions={version: assets for version in spec['versions']})
+                for name, spec in datasets.items()}
+    with pytest.raises(ValueError, match='collide'):
+        VersionedDatasetRegistry(datasets, cache_root=tmp_path)
+
+
+def test_the_newest_bundle_is_current(tmp_path, assets):
+    dest = tmp_path / 'bundle'
+    first = install_bundle(dest, assets)
+    second = install_bundle(dest, assets, force=True)
+    names = sorted(entry.name for entry in (dest / 'bundles').iterdir())
+    assert len(names) == 2
+    assert Path(inspect_bundle(dest).bundle).name == names[-1]
+    assert install_bundle(dest, assets) == second != first
+    assert all(Path(path).is_file() for path in first.values())

@@ -1,5 +1,64 @@
 # Changelog
 
+## 1.20.0
+
+- Bundles, archive trees and materializations share one simple store layout,
+  implemented once in the new `datacache.bundle_store` module (#103):
+
+  ```text
+  <store>/
+      .datacache-store.json         {"format": 2, "kind": "bundle"}
+      bundles/
+          2026-09-30T14-11-05Z/     an older bundle
+          2026-10-08T17-02-42Z/     the current bundle: always the newest
+  ```
+
+  A bundle is a complete set of files installed together, named for its UTC
+  install time. Installing checks a bundle completely, then renames it into
+  `bundles/`, so readers see the old bundle or the new one, never a mix. There
+  is no `current.json` pointer any more, so the `recovery-required` status and
+  recovery are gone.
+- Breaking changes, all to stores and APIs that no library uses yet:
+  - Stores written by 1.13 to 1.19, with `generations/` and `current.json`,
+    aren't read. Delete them and install again.
+  - `BundleInspection`, `ArchiveInspection` and `MaterializationInspection`
+    have `bundle` in place of `generation`, as do
+    `VersionedArchiveRegistry.status` rows.
+  - `VersionedDatasetRegistry.bundle_path` is now `store_path`, matching
+    `VersionedArchiveRegistry`.
+  - `force=True` on an invalid bundle or archive always installs a new bundle;
+    it no longer falls back to an older one.
+  - Every kind of install, archives included, turns an existing empty
+    directory into the store in place, so it keeps its owner, group and
+    permissions. A directory with files in it that isn't a store of the same
+    kind is never taken over, and the error says so instead of suggesting
+    `force=True`.
+  - All three kinds of install lock the same way: one lock file beside the
+    store, named without regard to letter case, using `flock` on POSIX and the
+    `filelock` package on Windows.
+  - Registries reject dataset or archive names, and versions, that differ only
+    by letter case, since case-insensitive filesystems would give them one
+    store.
+- Archive and materialization checks report missing and unexpected files and
+  directories together, and reject a file that changes while it is hashed.
+- A file in an inspection is `verified` only when a hash the caller supplied
+  vouched for it, for every kind of store; a bundle's own manifest checks the
+  bytes but vouches for nothing.
+- Name checks reject paths whose parent directories differ only by letter
+  case, such as `A/x` and `a/y`.
+- `install_bundle` and `install_archive` check that resumable sources can
+  resume before creating anything, and a forced install no longer hashes the
+  bundle it is about to replace.
+- `install_bundle`, `install_archive` and `materialize` check
+  `download_options` exactly as `fetch_file` checks the same arguments, before
+  creating anything (#103).
+- Remove `DatabaseTable.from_fasta_dict`. It was deprecated in 1.11.0 for
+  removal in 2.0, and nothing uses it. Parse FASTA in the consuming library and
+  pass a DataFrame to `db_from_dataframe` (#67).
+- Remove the private `download._decompress_to_file`, which nothing called (#67).
+- Cap retry backoff in one place, `retries.retry_delay`; delays are unchanged
+  (#67).
+
 ## 1.19.1
 
 - Identify every HTTP and HTTPS request as

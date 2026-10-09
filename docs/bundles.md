@@ -37,7 +37,7 @@ registry = VersionedDatasetRegistry(
 )
 
 # No directory creation, locks, network requests, or repairs:
-store = registry.bundle_path("reference")
+store = registry.store_path("reference")
 state = registry.inspect("reference")
 
 # Download if missing; verify and reuse if already installed:
@@ -66,10 +66,10 @@ state = inspect_bundle(source_directory, assets)
 the bundle, collide as files/directories or by letter case, or occupy DataCache's
 reserved metadata names. A file or directory at another asset's automatic
 provenance sidecar path is also rejected before installation starts. Source
-directories are managed stores: an existing empty directory is reported as
-`missing` and can be initialized without `force=True`, preserving its access
-mode. Installation refuses to take over a nonempty directory without its
-ownership marker, even with `force=True`. Store generated indices and other derived
+directories are stores: an existing empty directory is reported as `missing`
+and becomes the store on the first install, in place, so it keeps its owner,
+group and permissions. Installation never takes over a directory with files in
+it unless it is already a bundle store, even with `force=True`. Store generated indices and other derived
 outputs under a separate application-owned directory. Reinstalling sources does
 not visit those outputs.
 
@@ -85,7 +85,7 @@ registry = VersionedDatasetRegistry(
     datasets,
     store_path=lambda name, version: application_root / version / "sources" / name,
 )
-store = registry.bundle_path("reference")
+store = registry.store_path("reference")
 ```
 
 The callback receives a validated concrete version, including when the caller
@@ -94,14 +94,15 @@ lookup calls it once for every dataset version, without filesystem inspection
 or mutation, and the paths are reused afterwards, so callbacks should only
 compute paths. Each version needs its own store: a callback that gives two
 versions the same path raises `ValueError`, as does one that returns something
-other than a path. Inspection, installation, recovery and refresh all use the
-chosen store, while DataCache still owns its immutable generations.
+other than a path. Inspection, installation and refresh all use the chosen
+store; DataCache owns everything inside it.
 
 The store's parent belongs to the application and may be a link, for example to
 another disk; the store itself is never a link. Installation creates missing
-parent directories and keeps its lock file and temporary staging directories
-in the parent, so give the stores a parent of their own rather than a
-directory the application lists or cleans.
+parent directories and keeps a lock file in the parent, beside the store, so
+give the stores a parent of their own rather than a directory the application
+lists or cleans. Unfinished downloads, including resumable ones, stay in hidden
+`.staging-*` directories inside the store.
 
 Do not point this callback at a populated legacy data/index directory: even
 `force=True` cannot adopt a foreign directory, and installation raises
@@ -111,24 +112,24 @@ biological naming and migration policy remain the application's responsibility.
 
 ## Status and trust
 
-`BundleInspection.status` is `available`, `missing`, `invalid`, `inaccessible`, or
-`recovery-required`. `files` maps asset names to `FileInspection` objects from one
-generation, and `generation` is that generation's directory. The `error` field
-retains the cause of a failed inspection.
+`BundleInspection.status` is `available`, `missing`, `invalid` or `inaccessible`.
+`bundle` is the current bundle's directory, and `files` maps asset names to
+`FileInspection` objects from it. The `error` field retains the cause of a
+failed inspection.
 
 Explicit inspection hashes every asset by default. With trusted registry
-metadata, `verified=True` means every file matched the supplied SHA-256 just now. Every completed generation
+metadata, `verified=True` means every file matched the supplied SHA-256 just now. Every bundle
 also has its own manifest recording sizes, observed SHA-256 digests, source URLs,
 and fetch time. `inspect_bundle(directory)` can check those recorded hashes
-without a registry or network, but returns `verified=False`: a local receipt is
-not an independent authority. Display URLs omit credentials, queries and
+without a registry or network, but returns `verified=False`, for the bundle and
+for each file: a local receipt is not an independent authority. Display URLs omit credentials, queries and
 fragments; a separate SHA-256 fingerprint identifies the full source URL without
 storing that omitted text. Paths are retained, so do not use secret-bearing URL
 paths.
 
 Use `inspect_bundle(directory, assets, verify_files=False)` or
 `registry.inspect(name, verify_files=False)` for metadata-only checks. This
-validates ownership, the selected pointer/manifest, registry expectations, the
+checks ownership, the bundle's manifest, registry expectations, the
 required inventory, regular file types, readability and recorded sizes without
 reading payloads. Both bundle and per-file results have `verified=False`.
 Same-size corruption requires full verification to detect.
@@ -138,7 +139,7 @@ Every registry method hashes by default, so `inspect`, `local_path`,
 Pass `verify_files=False` to any of them for metadata-only checks where speed
 matters more than detecting same-size corruption. On `install_bundle`,
 `registry.download` or `ensure` it skips payload reads on reuse only: new
-acquisitions and recovery always validate bytes before publishing. All these
+downloads are always hashed before they are published. All these
 checks remain offline and read-only. Archive registries differ: their
 `local_path`, `is_cached` and `status` have been metadata-only by default since
 they were added, and take `verify_files=True` for full checks.
@@ -155,45 +156,50 @@ but need an explicit refresh before reuse without trusted hashes.
 
 Trusted SHA-256 expectations identify the installed bytes. Libraries using the
 same root, dataset name, version and asset names can therefore share a verified
-generation even when they use different mirrors, signed URLs or compression
+bundle even when they use different mirrors, signed URLs or compression
 settings. DataCache checks the supplied hashes and sizes without downloading or
-rewriting a matching generation.
+rewriting a matching bundle.
 
-Cache reuse and inspection are read-only. Corrupt entries require `force=True`.
-If publication was interrupted after creating a complete generation, inspection
-can report `recovery-required`. Explicit installation validates and publishes a
-matching local generation before attempting downloads. No recovery happens
-merely by listing or inspecting a cache.
+Cache reuse and inspection are read-only. A corrupt bundle requires
+`force=True`, which installs a new one.
 
-## Publication and path lifetime
+## How bundles are stored
 
-The layout is `<root>/<dataset>/<version>/`, containing an ownership marker,
-`current.json`, and `generations/<id>/`. Each generation contains all assets and
-its own `.datacache-manifest.json`. Writers serialize per store. A writer stages
-and verifies every asset, then atomically replaces `current.json`. Readers read
-that pointer once and validate that immutable generation without locks. They
-never combine members from different refreshes or require write permission.
+```text
+<root>/<dataset>/<version>/                 the store for one dataset version
+    .datacache-store.json                   marks the directory as a DataCache store
+    bundles/
+        2026-09-30T14-11-05Z/               an older bundle
+        2026-10-08T17-02-42Z/               the current bundle: always the newest
+            records.fa
+            manifest.json
+            .datacache-manifest.json        what DataCache installed, and from where
+```
 
-Published generations are retained. Paths returned from one installation remain
-usable through later installations, until the caller explicitly removes the
-store or its generations. This avoids reader lock files and a missing-directory
-window. It also means forced refreshes consume additional disk space; DataCache
-does not implement garbage collection. Never modify files within a generation.
-Resolve once and use that result for a multi-file operation; separate resolution
-calls can legitimately select different generations.
+A bundle is a complete set of files that belong together. Each bundle is named
+for the UTC time it was installed, and the newest is always the current one.
+Installing downloads and checks every file in a hidden staging directory, then
+renames that directory into `bundles/`. A rename happens completely or not at
+all, so readers see the old bundle or the new one, never a mix, and need no
+locks or write permission. Installs into one store take turns, using a lock
+file beside the store.
+
+Old bundles are kept, so paths returned by one install keep working after later
+installs. Forced refreshes therefore use more disk space; DataCache never deletes
+bundles itself. Never modify files in a bundle. Resolve paths once for a
+multi-file operation: a later lookup can return a newer bundle.
 
 Installation is supported on POSIX local filesystems providing `flock` and atomic
 sibling `os.replace` (Linux and macOS). Shared caches use normal umask-derived
-permissions; readers need only read/search access. A private outer staging
-directory protects unfinished files while the inner generation already has its
-final sharing permissions. Renaming that generation makes it recoverable with
-the correct permissions immediately, including after an interruption. A failed
-rename leaves resumable work protected by the private outer directory.
+permissions; readers need only read/search access. The staging directory stays
+private while files download, but the bundle inside it already has its final
+sharing permissions, so others can read it the moment it is renamed into place.
+A failed rename leaves resumable work in the private staging directory.
 Atomic publication covers
 process interruption, not guaranteed durability after power loss. Distributed
 coordination and arbitrary network filesystem semantics are outside this API.
-An unhandled termination can leave staging directories; successful generations
-are the only paths returned to callers.
+An unhandled termination can leave staging directories; only complete bundles
+are ever returned to callers.
 
 ## Large raw assets
 
@@ -201,8 +207,8 @@ For integrity-pinned HTTP assets that need no decompression or conversion, use
 `registry.download(name, resume=True)` or
 `install_bundle(..., download_options={"resume": True})`. An interrupted bundle
 keeps a private working directory per user and asset mapping. A later call with
-the same mapping reuses completed assets and resumes partial ones; the installed
-generation remains intact. Persistent partials require both hash and size.
+the same mapping reuses completed assets and resumes partial ones; the current
+bundle stays in place. Persistent partials require both hash and size.
 Changing the mapping chooses a different working directory. The normal
 non-resumable mode cleans its staging directory on handled failures.
 
@@ -213,12 +219,12 @@ progress, disk-space and partial-discard details.
 
 - **MHCflurry:** use [`install_archive`](archives.md) for released `.tar.bz2`
   trees and ordered historical parts. Resolve member paths from the returned
-  generation; preserve `DOWNLOAD_INFO.csv` with `extra_files`. Do not enumerate
+  bundle; preserve `DOWNLOAD_INFO.csv` with `extra_files`. Do not enumerate
   model files as bundle assets or treat the managed store's existence as a
   completed download.
 - **hitlist / tsarina:** use [VersionedFileRegistry](file_registry.md) to retain
   fixed paths, single-Path returns and legacy root manifests without moving old
-  caches. For a deliberate migration to generation bundles, the existing
+  caches. For a deliberate migration to bundles, the existing
   `{filename, urls, default_version}` mapping
   is accepted with `verified=False`, as is the `cache_dir` root callable. This is
   mapping compatibility, not a drop-in filesystem or return-value migration:

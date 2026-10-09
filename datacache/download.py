@@ -155,7 +155,7 @@ def _with_retries(
     already be validated.
     """
     http = urllib.parse.urlsplit(download_url).scheme.lower() in ("http", "https")
-    backoff = min(retry_backoff, retry_max_delay)
+    backoff = retry_backoff
     for number in range(max_retries + 1):
         try:
             return attempt()
@@ -176,7 +176,7 @@ def _with_retries(
                            number + 1, max_retries + 1, error_description(error), delay)
             if delay:
                 time.sleep(delay)
-            backoff = min(backoff * 2, retry_max_delay)
+            backoff *= 2  # retry_delay caps it at retry_max_delay.
 
 
 def _download_to_temp_file(
@@ -320,7 +320,7 @@ def _remove_staging_file(path):
         pass
 
 
-def _normal_creation_mode(directory):
+def normal_creation_mode(directory):
     """Measure ordinary creation permissions using an empty, disposable file.
 
     Never put data in this file: another user might open it before removal.
@@ -349,7 +349,7 @@ def _publish_staged_file(staged_path, full_path, mode=None):
         existing = os.stat(full_path)
     except FileNotFoundError:
         if mode is None:
-            mode = _normal_creation_mode(os.path.dirname(full_path) or ".")
+            mode = normal_creation_mode(os.path.dirname(full_path) or ".")
     else:
         if not stat.S_ISREG(existing.st_mode):
             raise FileValidationError(full_path, "expected a regular file")
@@ -391,21 +391,6 @@ def _publish_file(staged_path, full_path, record=None):
     finally:
         if staged_record is not None:
             _remove_staging_file(staged_record)
-
-
-def _decompress_to_file(src_stream, full_path):
-    """Compatibility entry point for atomically copying a decompressed stream."""
-    staged_path = None
-    try:
-        with _open_staging_file(
-                directory=os.path.dirname(full_path) or ".",
-                prefix=".datacache-decompress-") as output:
-            staged_path = output.name
-            copyfileobj(src_stream, output)
-        _publish_file(staged_path, full_path)
-    finally:
-        if staged_path is not None:
-            _remove_staging_file(staged_path)
 
 
 def _copy_with_progress(source, destination, show_progress, total=None):
@@ -658,6 +643,50 @@ def file_exists(
         destination=destination, cache_root=cache_root))
 
 
+DOWNLOAD_OPTIONS = frozenset((
+    "timeout", "chunk_size", "progress_callback", "show_progress",
+    "max_retries", "retry_backoff", "retry_max_delay", "resume"))
+
+
+def validate_download_options(options, kind):
+    """Check the download_options an install passes to each fetch_file call.
+
+    Bundle, archive and materialization installs accept the transfer settings
+    named in DOWNLOAD_OPTIONS and nothing else. Each is checked as fetch_file
+    checks it, so a bad value fails before an install creates anything rather
+    than at its first download. options may be None. kind names the install
+    in messages, such as "bundle". Returns a new dict of the options.
+    """
+    options = dict(options or {})
+    unsupported = set(options) - DOWNLOAD_OPTIONS
+    if unsupported:
+        raise ValueError("unsupported %s download options: %s" % (kind, sorted(unsupported)))
+    validate_transfer_settings(
+        chunk_size=options.get("chunk_size", DEFAULT_CHUNK_SIZE),
+        progress_callback=options.get("progress_callback"),
+        show_progress=options.get("show_progress", False),
+        resume=options.get("resume", False),
+        max_retries=options.get("max_retries", DEFAULT_MAX_RETRIES),
+        retry_backoff=options.get("retry_backoff", DEFAULT_RETRY_BACKOFF),
+        retry_max_delay=options.get("retry_max_delay", DEFAULT_RETRY_MAX_DELAY))
+    return options
+
+
+def validate_transfer_settings(
+        *, chunk_size, progress_callback, show_progress, resume,
+        max_retries, retry_backoff, retry_max_delay):
+    """Check fetch_file's transfer settings; return the retry delays as floats."""
+    if not isinstance(resume, bool):
+        raise ValueError("resume must be a boolean")
+    if not isinstance(show_progress, bool):
+        raise ValueError("show_progress must be a boolean")
+    if progress_callback is not None and not callable(progress_callback):
+        raise ValueError("progress_callback must be callable")
+    if not isinstance(chunk_size, int) or isinstance(chunk_size, bool) or chunk_size <= 0:
+        raise ValueError("chunk_size must be a positive integer")
+    return validate_retry_options(max_retries, retry_backoff, retry_max_delay)
+
+
 def fetch_file(
         download_url,
         filename=None,
@@ -839,8 +868,10 @@ def fetch_file(
 
     Returns the local path, which is relative when destination or cache_root is.
     """
-    if not isinstance(resume, bool):
-        raise ValueError("resume must be a boolean")
+    retry_backoff, retry_max_delay = validate_transfer_settings(
+        chunk_size=chunk_size, progress_callback=progress_callback, show_progress=show_progress,
+        resume=resume, max_retries=max_retries, retry_backoff=retry_backoff,
+        retry_max_delay=retry_max_delay)
     if not isinstance(raw, bool):
         raise ValueError("raw must be a boolean")
     if raw and decompress:
@@ -849,8 +880,6 @@ def fetch_file(
         from .resume import validate_resume
         validate_resume(download_url, expected_sha256, expected_size)
     _validate_expectations(expected_sha256, expected_size)
-    if not isinstance(show_progress, bool):
-        raise ValueError("show_progress must be a boolean")
     if not isinstance(record_provenance, bool):
         raise ValueError("record_provenance must be a boolean")
     if not isinstance(allow_empty, bool):
@@ -863,11 +892,6 @@ def fetch_file(
     if validator is not None and resume:
         raise ValueError("validator cannot be combined with resume=True")
     reject_empty = not allow_empty and expected_size != 0
-    if progress_callback is not None and not callable(progress_callback):
-        raise ValueError("progress_callback must be callable")
-    retry_backoff, retry_max_delay = validate_retry_options(max_retries, retry_backoff, retry_max_delay)
-    if not isinstance(chunk_size, int) or isinstance(chunk_size, bool) or chunk_size <= 0:
-        raise ValueError("chunk_size must be a positive integer")
     # Query/fragment text in an inferred cache key is not an output-format request.
     explicit_output = destination is not None or bool(filename)
     if use_wget_if_available is not None:

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from datacache import FileValidationError, VersionedDatasetRegistry
-from datacache import bundles, download
+from datacache import bundle_store, bundles, download
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='POSIX bundle installation')
 
@@ -36,12 +36,12 @@ def test_custom_path_resolution_is_pure_and_uses_concrete_versions(tmp_path, dat
 
     monkeypatch.setattr(bundles, 'path_present', forbidden)
     monkeypatch.setattr(Path, 'mkdir', forbidden)
-    assert registry.bundle_path('reference') == tmp_path / 'GRCh38/ensembl-110/sources/reference'
+    assert registry.store_path('reference') == tmp_path / 'GRCh38/ensembl-110/sources/reference'
     # Every version's store is resolved once, on first use, and then reused.
     assert sorted(calls) == [('reference', '109'), ('reference', '110')]
-    assert registry.bundle_path('reference', '109') == tmp_path / 'GRCh38/ensembl-109/sources/reference'
+    assert registry.store_path('reference', '109') == tmp_path / 'GRCh38/ensembl-109/sources/reference'
     with pytest.raises(ValueError):
-        registry.bundle_path('reference', 'latest')
+        registry.store_path('reference', 'latest')
     assert len(calls) == 2
     assert not (tmp_path / 'GRCh38').exists()
 
@@ -54,7 +54,7 @@ def test_custom_layout_install_versions_refresh_and_read_only_reuse(tmp_path, da
     registry = VersionedDatasetRegistry(
         datasets, store_path=lambda name, version: root / 'GRCh38' / ('ensembl-' + version) / 'sources' / name)
     assert registry.inspect('reference').status == 'missing'
-    assert not registry.bundle_path('reference').exists()
+    assert not registry.store_path('reference').exists()
     current = registry.download('reference')
     older = registry.download('reference', '109')
     assert current != older
@@ -64,7 +64,7 @@ def test_custom_layout_install_versions_refresh_and_read_only_reuse(tmp_path, da
     assert refreshed != current
     assert Path(current['records.fa']).read_bytes() == Path(refreshed['records.fa']).read_bytes()
     assert index.read_bytes() == b'application-owned derived index'
-    store = registry.bundle_path('reference')
+    store = registry.store_path('reference')
     entries = [store, *store.rglob('*')]
     modes = {path: path.stat().st_mode & 0o777 for path in entries}
 
@@ -72,8 +72,9 @@ def test_custom_layout_install_versions_refresh_and_read_only_reuse(tmp_path, da
         raise AssertionError('offline reuse attempted a write or acquisition')
 
     monkeypatch.setattr(download, 'fetch_file', forbidden)
-    monkeypatch.setattr(bundles, 'file_lock', forbidden)
+    monkeypatch.setattr(bundle_store.BundleStore, 'lock', forbidden)
     monkeypatch.setattr(bundles, 'write_json', forbidden)
+    monkeypatch.setattr(bundle_store, 'write_json', forbidden)
     try:
         for path in entries:
             path.chmod(0o555 if path.is_dir() else 0o444)
@@ -86,25 +87,24 @@ def test_custom_layout_install_versions_refresh_and_read_only_reuse(tmp_path, da
             path.chmod(mode)
 
 
-def test_custom_layout_recovers_completed_generation_without_network(tmp_path, datasets, monkeypatch):
+def test_custom_layout_bundle_is_installed_once_renamed(tmp_path, datasets, monkeypatch):
     registry = VersionedDatasetRegistry(
         datasets, store_path=lambda name, version: tmp_path / ('sources-' + version) / name)
-    original = bundles.write_json
+    store = registry.store_path('reference')
+    replace = os.replace
 
-    def interrupted(path, value, **kwargs):
-        if Path(path).name == bundles.CURRENT:
-            raise KeyboardInterrupt('pointer publication interrupted')
-        return original(path, value, **kwargs)
+    def interrupted(source, target):
+        replace(source, target)
+        if Path(target).parent == store / 'bundles':
+            raise KeyboardInterrupt('interrupted right after the bundle rename')
 
-    monkeypatch.setattr(bundles, 'write_json', interrupted)
+    monkeypatch.setattr(os, 'replace', interrupted)
     with pytest.raises(KeyboardInterrupt):
         registry.download('reference')
-    state = registry.inspect('reference')
-    assert state.status == 'recovery-required'
-    monkeypatch.setattr(bundles, 'write_json', original)
+    monkeypatch.setattr(os, 'replace', replace)
 
     def forbidden(*args, **kwargs):
-        raise AssertionError('recovery attempted acquisition')
+        raise AssertionError('an installed bundle was downloaded again')
 
     monkeypatch.setattr(download, 'fetch_file', forbidden)
     paths = registry.download('reference')
@@ -158,16 +158,16 @@ def test_existing_root_strategies_remain_compatible(tmp_path, datasets):
     explicit = VersionedDatasetRegistry(datasets, cache_root=tmp_path / 'root')
     selected = [tmp_path / 'root']
     dynamic = VersionedDatasetRegistry(datasets, cache_dir=lambda: selected[0])
-    assert explicit.bundle_path('reference') == dynamic.bundle_path('reference')
+    assert explicit.store_path('reference') == dynamic.store_path('reference')
     selected[0] = tmp_path / 'different-root'
-    assert dynamic.bundle_path('reference') == tmp_path / 'different-root/reference/110'
+    assert dynamic.store_path('reference') == tmp_path / 'different-root/reference/110'
     assert not selected[0].exists()
 
 
 def test_versions_sharing_a_custom_store_are_rejected(tmp_path, datasets):
     registry = VersionedDatasetRegistry(datasets, store_path=lambda name, version: tmp_path / name)
     with pytest.raises(ValueError, match='each version needs its own store'):
-        registry.bundle_path('reference')
+        registry.store_path('reference')
     assert not (tmp_path / 'reference').exists()
 
 
@@ -175,7 +175,7 @@ def test_versions_sharing_a_custom_store_are_rejected(tmp_path, datasets):
 def test_custom_store_paths_must_be_paths(datasets, result):
     registry = VersionedDatasetRegistry(datasets, store_path=lambda name, version: result)
     with pytest.raises(ValueError, match='not a path'):
-        registry.bundle_path('reference')
+        registry.store_path('reference')
 
 
 def test_custom_store_parent_may_be_a_link(tmp_path, datasets):

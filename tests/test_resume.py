@@ -373,14 +373,14 @@ def test_failed_bundle_rename_keeps_private_resumable_work(server, tmp_path, mon
     assets = {'data': dict(url=url, sha256=DIGEST, size=len(PAYLOAD))}
     replace = os.replace
 
-    def fail_generation_rename(source, target):
-        if Path(target).parent == dest / 'generations':
+    def fail_bundle_rename(source, target):
+        if Path(target).parent == dest / 'bundles':
             assert Path(source).parent.stat().st_mode & 0o077 == 0
-            raise OSError('cannot publish generation')
+            raise OSError('cannot publish bundle')
         return replace(source, target)
 
-    monkeypatch.setattr(os, 'replace', fail_generation_rename)
-    with pytest.raises(OSError, match='cannot publish generation'):
+    monkeypatch.setattr(os, 'replace', fail_bundle_rename)
+    with pytest.raises(OSError, match='cannot publish bundle'):
         install_bundle(dest, assets, download_options=dict(resume=True, chunk_size=8))
     working = next(dest.glob('.staging-*'))
     assert working.stat().st_mode & 0o077 == 0
@@ -390,6 +390,8 @@ def test_failed_bundle_rename_keeps_private_resumable_work(server, tmp_path, mon
     assert Path(paths['data']).read_bytes() == PAYLOAD
     assert len(requests) == 1
     assert not working.exists()
+    # The private resume lock stays out of the shared bundle.
+    assert not list(Path(paths['data']).parent.rglob('.datacache-resume-*'))
 
 
 @pytest.mark.parametrize('etag', [None, 'W/"v1"', 'v1', '"v1", "v2"', '"has space"', '"has\ttab"'])
@@ -510,3 +512,23 @@ def test_raw_resume_at_arbitrary_output_name(server, tmp_path, api, suffix, expe
     assert inspect_file(path).recorded_sha256 == expected_sha256
     assert call() == str(path)
     assert len(requests) == 2
+
+
+def test_leftovers_from_an_interrupted_attempt_are_never_published(server, tmp_path, monkeypatch):
+    from datacache import download, install_bundle
+    url, requests = server()
+    dest = tmp_path / 'bundle'
+    assets = {'data': dict(url=url, sha256=DIGEST, size=len(PAYLOAD))}
+    fetch_file = download.fetch_file
+
+    def killed(url, *, destination, **options):
+        (Path(destination).parent / '.datacache-install-deadbeef').write_bytes(b'partial')
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(download, 'fetch_file', killed)
+    with pytest.raises(KeyboardInterrupt):
+        install_bundle(dest, assets, download_options=dict(resume=True))
+    monkeypatch.setattr(download, 'fetch_file', fetch_file)
+    paths = install_bundle(dest, assets, download_options=dict(resume=True))
+    bundle = Path(paths['data']).parent
+    assert sorted(path.name for path in bundle.iterdir()) == ['.datacache-manifest.json', 'data']

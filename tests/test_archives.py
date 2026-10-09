@@ -30,7 +30,7 @@ from datacache import (
     FileValidationError, VersionedArchiveRegistry, inspect_archive,
     install_archive,
 )
-from datacache import archives, download
+from datacache import archives, bundle_store, download
 
 
 def make_tar(path, members, *, mode="w:bz2"):
@@ -67,54 +67,87 @@ def test_install_inspect_and_read_only_reuse(tmp_path, archive_file, monkeypatch
     receipt = "url\nhttps://example.test/models.tar.bz2\n"
     sources = [{"url": "https://example.test/models.tar.bz2", "path": source}]
 
-    generation = install_archive(
+    bundle = install_archive(
         destination, sources, expected_sha256=digest, expected_size=len(data),
         extra_files={"DOWNLOAD_INFO.csv": receipt})
 
-    assert (generation / "models/a/model.json").read_text() == '{"model": "a"}\n'
-    assert (generation / "DOWNLOAD_INFO.csv").read_text() == receipt
+    assert (bundle / "models/a/model.json").read_text() == '{"model": "a"}\n'
+    assert (bundle / "DOWNLOAD_INFO.csv").read_text() == receipt
     inspected = inspect_archive(
         destination, sources, expected_sha256=digest, expected_size=len(data),
         extra_files={"DOWNLOAD_INFO.csv": receipt})
     assert inspected.status == "available" and inspected.verified
-    assert Path(inspected.generation) == generation
+    assert Path(inspected.bundle) == bundle
     assert inspected.source_urls == ("https://example.test/models.tar.bz2",)
     assert inspected.archive_size == len(data)
     assert inspected.recorded_sha256 == digest
     assert inspected.fetched_at.endswith("+00:00")
     assert inspect_archive(destination).status == "available"
     assert not inspect_archive(destination).verified
+    # Files are verified only by hashes the caller supplied, never the manifest's own.
+    assert all(item.verified for item in inspected.files.values())
+    assert not any(item.verified for item in inspect_archive(destination).files.values())
     fast = inspect_archive(
         destination, sources, expected_sha256=digest, expected_size=len(data),
         extra_files={"DOWNLOAD_INFO.csv": receipt}, verify_files=False)
     assert fast.status == "available" and not fast.verified
-    assert fast.files == {} and Path(fast.generation) == generation
+    assert fast.files == {} and Path(fast.bundle) == bundle
 
-    walk_tree = archives._walk_tree
-    monkeypatch.setattr(
-        archives, "_walk_tree",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            AssertionError("fast inspection hashed the tree")))
+    def forbidden(*args, **kwargs):
+        raise AssertionError("fast inspection read the extracted tree")
+
+    # The fast check reads the manifest alone, however large the tree.
+    monkeypatch.setattr(archives, "check_tree", forbidden)
     assert inspect_archive(
         destination, sources, extra_files={"DOWNLOAD_INFO.csv": receipt},
         verify_files=False).status == "available"
-    monkeypatch.setattr(archives, "_walk_tree", walk_tree)
+    monkeypatch.undo()
 
     refreshed = install_archive(
         destination, sources, expected_sha256=digest, expected_size=len(data),
         extra_files={"DOWNLOAD_INFO.csv": receipt}, force=True)
-    assert refreshed != generation
-    assert (generation / "models/a/model.json").read_text() == '{"model": "a"}\n'
+    assert refreshed != bundle
+    assert (bundle / "models/a/model.json").read_text() == '{"model": "a"}\n'
 
     def forbidden(*args, **kwargs):
         raise AssertionError("a valid cache hit attempted a write, lock, or transfer")
 
-    monkeypatch.setattr(archives, "FileLock", forbidden)
+    monkeypatch.setattr(bundle_store.BundleStore, "lock", forbidden)
     monkeypatch.setattr(download, "fetch_file", forbidden)
     monkeypatch.setattr(archives, "write_json", forbidden)
+    monkeypatch.setattr(bundle_store, "write_json", forbidden)
     assert install_archive(
         destination, sources, expected_sha256=digest, expected_size=len(data),
         extra_files={"DOWNLOAD_INFO.csv": receipt}) == refreshed
+
+
+def test_line_endings_and_control_bytes_are_installed_unchanged(tmp_path):
+    # Windows translates line endings, and stops reading at 0x1A, in files
+    # that aren't opened as binary.
+    contents = b"a,b\r\n1,2\r\n\x1a after the control byte\n"
+    source = make_tar(tmp_path / "table.tar.bz2", [("table.csv", contents)])
+    data = source.read_bytes()
+    destination = tmp_path / "download"
+    bundle = install_archive(
+        destination, source, expected_sha256=sha256(data).hexdigest(), expected_size=len(data),
+        extra_files={"DOWNLOAD_INFO.csv": "url\r\nhttps://example.test/table.tar.bz2\r\n"})
+    assert (bundle / "table.csv").read_bytes() == contents
+    manifest = json.loads((bundle / archives.MANIFEST).read_text())
+    assert manifest["files"]["table.csv"] == {"sha256": sha256(contents).hexdigest(), "size": len(contents)}
+    assert inspect_archive(destination).status == "available"
+
+
+def test_install_hashes_the_extracted_tree_once(tmp_path, archive_file, monkeypatch):
+    source, data, digest = archive_file
+    destination = tmp_path / "download"
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("hashed the extracted tree a second time")
+
+    monkeypatch.setattr(archives, "check_tree", forbidden)
+    install_archive(destination, source, expected_sha256=digest, expected_size=len(data))
+    monkeypatch.undo()
+    assert inspect_archive(destination, source, expected_sha256=digest, expected_size=len(data)).verified
 
 
 def test_standard_dot_prefixed_tar_tree_installs_and_inspects(tmp_path):
@@ -124,11 +157,11 @@ def test_standard_dot_prefixed_tar_tree_installs_and_inspects(tmp_path):
     ])
     data = source.read_bytes()
     destination = tmp_path / "download"
-    generation = install_archive(
+    bundle = install_archive(
         destination, source, expected_sha256=sha256(data).hexdigest(),
         expected_size=len(data))
 
-    assert (generation / "models/model.json").read_bytes() == b"model"
+    assert (bundle / "models/model.json").read_bytes() == b"model"
     inspected = inspect_archive(destination)
     assert inspected.status == "available"
     assert set(inspected.files) == {"models/model.json", "README.txt"}
@@ -149,23 +182,21 @@ def test_dot_prefix_normalization_preserves_path_safety(tmp_path, members):
     assert not (tmp_path / "escape").exists()
 
 
-def test_large_tree_manifest_installs_and_recovers_offline(tmp_path):
+def test_large_tree_manifest_installs_and_is_reused_offline(tmp_path):
     source = make_tar(tmp_path / "large.tar.bz2", [
         ("file-%05d" % index, b"") for index in range(12000)
     ])
     data = source.read_bytes()
     options = {"expected_sha256": sha256(data).hexdigest(), "expected_size": len(data)}
     destination = tmp_path / "download"
-    generation = install_archive(destination, source, **options)
-    assert (generation / archives.MANIFEST).stat().st_size > 1024 * 1024
+    bundle = install_archive(destination, source, **options)
+    assert (bundle / archives.MANIFEST).stat().st_size > 1024 * 1024
     inspected = inspect_archive(destination, source, **options)
     assert inspected.status == "available" and inspected.verified
     assert len(inspected.files) == 12000
 
-    (destination / archives.CURRENT).unlink()
     source.unlink()
-    assert inspect_archive(destination).status == "recovery-required"
-    assert install_archive(destination, source, **options) == generation
+    assert install_archive(destination, source, **options) == bundle
     assert inspect_archive(destination, source, verify_files=False, **options).status == "available"
 
 
@@ -238,15 +269,15 @@ def test_ordered_split_archive_and_logical_source_urls(tmp_path, archive_file):
     csv_receipt = "url\n" + "".join(url.split("?", 1)[0] + "\n" for url in urls)
     destination = tmp_path / "split"
 
-    generation = install_archive(
+    bundle = install_archive(
         destination, sources, verified=False,
         extra_files={"DOWNLOAD_INFO.csv": csv_receipt})
 
-    assert (generation / "models/b/model.json").is_file()
-    assert (generation / "DOWNLOAD_INFO.csv").read_text() == csv_receipt
+    assert (bundle / "models/b/model.json").is_file()
+    assert (bundle / "DOWNLOAD_INFO.csv").read_text() == csv_receipt
     state = inspect_archive(destination, sources, extra_files={"DOWNLOAD_INFO.csv": csv_receipt})
     assert state.status == "available" and not state.verified
-    manifest = json.loads((generation / archives.MANIFEST).read_text())
+    manifest = json.loads((bundle / archives.MANIFEST).read_text())
     assert [item["url"] for item in manifest["sources"]] == [url.split("?", 1)[0] for url in urls]
     assert [item["fingerprint"] for item in manifest["sources"]] != [
         sha256(url.split("?", 1)[0].encode()).hexdigest() for url in urls]
@@ -274,13 +305,13 @@ def test_trusted_part_hashes_allow_mirror_reuse(tmp_path, archive_file):
             "size": len(piece),
         })
     destination = tmp_path / "download"
-    generation = install_archive(destination, sources)
+    bundle = install_archive(destination, sources)
     mirrored = [dict(source, url=source["url"].replace("one", "two"))
                 for source in sources]
 
     state = inspect_archive(destination, mirrored)
     assert state.status == "available" and state.verified
-    assert install_archive(destination, mirrored) == generation
+    assert install_archive(destination, mirrored) == bundle
 
 
 def test_url_parts_use_raw_fetch_and_forward_download_options(tmp_path, archive_file, monkeypatch):
@@ -293,12 +324,12 @@ def test_url_parts_use_raw_fetch_and_forward_download_options(tmp_path, archive_
         return original(url, **options)
 
     monkeypatch.setattr(download, "fetch_file", recording)
-    generation = install_archive(
+    bundle = install_archive(
         tmp_path / "download", source.as_uri(),
         expected_sha256=digest, expected_size=len(data),
         download_options={"timeout": 12, "max_retries": 4})
 
-    assert generation.is_dir()
+    assert bundle.is_dir()
     assert len(calls) == 1
     assert calls[0][1]["raw"] is True
     assert calls[0][1]["timeout"] == 12
@@ -327,7 +358,7 @@ def test_unsafe_members_are_rejected_without_publication(tmp_path, bad_member):
 
     assert not outside.exists()
     assert inspect_archive(destination).status == "missing"
-    assert not list((destination / "generations").iterdir())
+    assert not list((destination / "bundles").iterdir())
 
 
 @pytest.mark.parametrize("members", [
@@ -360,13 +391,13 @@ def test_extra_file_casefolded_parent_collision_is_rejected(tmp_path):
             extra_files={"models/DOWNLOAD_INFO.csv": "url\n"})
 
 
-def test_failed_refresh_preserves_old_generation(tmp_path, archive_file, monkeypatch):
+def test_failed_refresh_preserves_old_bundle(tmp_path, archive_file, monkeypatch):
     old_source, old_data, old_digest = archive_file
     destination = tmp_path / "download"
     old = install_archive(
         destination, old_source, expected_sha256=old_digest,
         expected_size=len(old_data))
-    pointer = (destination / archives.CURRENT).read_bytes()
+    old_bundle = inspect_archive(destination).bundle
     replacement = make_tar(tmp_path / "replacement.tar.bz2", [("new.txt", b"new")])
     replacement_data = replacement.read_bytes()
 
@@ -379,7 +410,7 @@ def test_failed_refresh_preserves_old_generation(tmp_path, archive_file, monkeyp
             destination, replacement, expected_sha256=sha256(replacement_data).hexdigest(),
             expected_size=len(replacement_data), force=True)
 
-    assert (destination / archives.CURRENT).read_bytes() == pointer
+    assert inspect_archive(destination).bundle == old_bundle
     assert inspect_archive(
         destination, old_source, expected_sha256=old_digest,
         expected_size=len(old_data)).status == "available"
@@ -401,42 +432,38 @@ def test_interrupted_first_extraction_is_hidden_and_retryable(
         install_archive(
             destination, source, expected_sha256=digest, expected_size=len(data))
     assert inspect_archive(destination).status == "missing"
-    assert not list((destination / "generations").iterdir())
+    assert not list((destination / "bundles").iterdir())
 
     monkeypatch.setattr(archives, "_extract_tar", original)
-    generation = install_archive(
+    bundle = install_archive(
         destination, source, expected_sha256=digest, expected_size=len(data))
-    assert (generation / "models/a/model.json").is_file()
+    assert (bundle / "models/a/model.json").is_file()
 
 
-def test_interrupted_pointer_publication_recovers_without_source(tmp_path, archive_file, monkeypatch):
+def test_tree_is_installed_once_renamed(tmp_path, archive_file, monkeypatch):
     source, data, digest = archive_file
     destination = tmp_path / "download"
-    original = archives.write_json
+    replace = os.replace
 
-    def interrupt(path, value, **kwargs):
-        if Path(path).name == archives.CURRENT:
-            raise KeyboardInterrupt("after generation rename")
-        return original(path, value, **kwargs)
+    def interrupt(source_path, target):
+        replace(source_path, target)
+        if Path(target).parent == destination / "bundles":
+            raise KeyboardInterrupt("right after the bundle rename")
 
-    monkeypatch.setattr(archives, "write_json", interrupt)
+    monkeypatch.setattr(os, "replace", interrupt)
     with pytest.raises(KeyboardInterrupt):
         install_archive(
             destination, source, expected_sha256=digest, expected_size=len(data))
-    assert inspect_archive(
-        destination, source, expected_sha256=digest,
-        expected_size=len(data)).status == "recovery-required"
-
-    monkeypatch.setattr(archives, "write_json", original)
+    monkeypatch.setattr(os, "replace", replace)
     source.unlink()
 
     def forbidden(*args, **kwargs):
-        raise AssertionError("recovery attempted to reacquire the archive")
+        raise AssertionError("an installed archive was acquired again")
 
     monkeypatch.setattr(archives, "_assemble_archive", forbidden)
-    generation = install_archive(
+    bundle = install_archive(
         destination, source, expected_sha256=digest, expected_size=len(data))
-    assert generation.is_dir()
+    assert bundle.is_dir()
     assert inspect_archive(
         destination, source, expected_sha256=digest,
         expected_size=len(data)).verified
@@ -458,15 +485,15 @@ def test_failed_manifest_write_leaves_no_apparently_installed_tree(
         install_archive(
             destination, source, expected_sha256=digest, expected_size=len(data))
     assert inspect_archive(destination).status == "missing"
-    assert not list((destination / "generations").iterdir())
+    assert not list((destination / "bundles").iterdir())
 
     monkeypatch.setattr(archives, "write_json", original)
-    generation = install_archive(
+    bundle = install_archive(
         destination, source, expected_sha256=digest, expected_size=len(data))
-    assert generation.is_dir()
+    assert bundle.is_dir()
 
 
-def test_unreadable_generated_manifest_is_rejected_before_generation_rename(
+def test_unreadable_generated_manifest_is_rejected_before_the_bundle_rename(
         tmp_path, archive_file, monkeypatch):
     source, data, digest = archive_file
     destination = tmp_path / "download"
@@ -481,31 +508,39 @@ def test_unreadable_generated_manifest_is_rejected_before_generation_rename(
     with pytest.raises(ValueError):
         install_archive(destination, source, expected_sha256=digest, expected_size=len(data))
     assert inspect_archive(destination).status == "missing"
-    assert not list((destination / "generations").iterdir())
+    assert not list((destination / "bundles").iterdir())
 
 
-def test_foreign_directories_are_never_claimed_even_with_force(tmp_path, archive_file):
+def test_populated_directories_are_never_claimed_even_with_force(tmp_path, archive_file):
     source, data, digest = archive_file
-    for name, contents in (("empty", None), ("legacy", "keep me")):
-        destination = tmp_path / name
-        destination.mkdir()
-        if contents:
-            (destination / "legacy.txt").write_text(contents)
-        with pytest.raises((FileNotFoundError, FileValidationError)):
+    destination = tmp_path / "legacy"
+    destination.mkdir()
+    (destination / "legacy.txt").write_text("keep me")
+    for force in (False, True):
+        with pytest.raises(FileValidationError, match="never taken over"):
             install_archive(
                 destination, source, expected_sha256=digest,
-                expected_size=len(data), force=True)
-        assert not contents or (destination / "legacy.txt").read_text() == contents
+                expected_size=len(data), force=force)
+    assert [path.name for path in destination.iterdir()] == ["legacy.txt"]
+
+
+def test_an_empty_directory_becomes_the_store(tmp_path, archive_file):
+    source, data, digest = archive_file
+    destination = tmp_path / "precreated"
+    destination.mkdir()
+    assert inspect_archive(destination).status == "missing"
+    bundle = install_archive(destination, source, expected_sha256=digest, expected_size=len(data))
+    assert (bundle / "README.txt").is_file()
 
 
 def test_tree_changes_and_extra_files_are_detected(tmp_path, archive_file):
     source, data, digest = archive_file
     destination = tmp_path / "download"
-    generation = install_archive(
+    bundle = install_archive(
         destination, source, expected_sha256=digest, expected_size=len(data))
-    (generation / "README.txt").write_text("changed")
+    (bundle / "README.txt").write_text("changed")
     assert inspect_archive(destination).status == "invalid"
-    (generation / "unexpected.txt").write_text("extra")
+    (bundle / "unexpected.txt").write_text("extra")
     assert inspect_archive(destination).status == "invalid"
     with pytest.raises(FileValidationError, match="force=True"):
         install_archive(
@@ -513,7 +548,7 @@ def test_tree_changes_and_extra_files_are_detected(tmp_path, archive_file):
     repaired = install_archive(
         destination, source, expected_sha256=digest,
         expected_size=len(data), force=True)
-    assert repaired != generation
+    assert repaired != bundle
     assert inspect_archive(destination).verified is False
     assert inspect_archive(
         destination, source, expected_sha256=digest,
@@ -524,11 +559,11 @@ def test_links_added_after_installation_are_invalid_and_never_followed(
         tmp_path, archive_file):
     source, data, digest = archive_file
     destination = tmp_path / "download"
-    generation = install_archive(
+    bundle = install_archive(
         destination, source, expected_sha256=digest, expected_size=len(data))
     outside = tmp_path / "outside.txt"
     outside.write_text("outside")
-    target = generation / "README.txt"
+    target = bundle / "README.txt"
     target.unlink()
     try:
         target.symlink_to(outside)
@@ -546,18 +581,18 @@ def test_published_tree_uses_normal_creation_permissions(
     previous = os.umask(creation_mask)
     try:
         destination = tmp_path / "download"
-        generation = install_archive(
+        bundle = install_archive(
             destination, source, expected_sha256=digest, expected_size=len(data))
     finally:
         os.umask(previous)
     assert destination.stat().st_mode & 0o777 == 0o777 & ~creation_mask
-    assert generation.stat().st_mode & 0o777 == 0o777 & ~creation_mask
-    assert (generation / "README.txt").stat().st_mode & 0o777 == 0o666 & ~creation_mask
-    assert (generation / archives.MANIFEST).stat().st_mode & 0o777 == 0o666 & ~creation_mask
-    assert (destination / archives.CURRENT).stat().st_mode & 0o777 == 0o666 & ~creation_mask
+    assert bundle.stat().st_mode & 0o777 == 0o777 & ~creation_mask
+    assert (bundle / "README.txt").stat().st_mode & 0o777 == 0o666 & ~creation_mask
+    assert (bundle / archives.MANIFEST).stat().st_mode & 0o777 == 0o666 & ~creation_mask
+    assert (destination / bundle_store.MARKER).stat().st_mode & 0o777 == 0o666 & ~creation_mask
 
 
-def test_concurrent_installers_converge_on_one_generation(tmp_path, archive_file):
+def test_concurrent_installers_converge_on_one_bundle(tmp_path, archive_file):
     source, data, digest = archive_file
     destination = tmp_path / "download"
     barrier = threading.Barrier(4)
@@ -571,7 +606,7 @@ def test_concurrent_installers_converge_on_one_generation(tmp_path, archive_file
         results = list(pool.map(install, range(4)))
 
     assert len(set(results)) == 1
-    assert len(list((destination / "generations").iterdir())) == 1
+    assert len(list((destination / "bundles").iterdir())) == 1
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         refreshed = list(pool.map(
@@ -675,20 +710,20 @@ def test_versioned_archive_registry_supports_consumer_layout_and_status(
     assert rows[0]["default"] and rows[0]["sources"] == [url]
     assert rows[0]["downloaded_sources"] == []
 
-    generation = registry.download("models", source_paths=source)
-    assert (generation / "models/a/model.json").is_file()
+    bundle = registry.download("models", source_paths=source)
+    assert (bundle / "models/a/model.json").is_file()
     assert registry.is_cached("models")
-    assert registry.local_path("models") == generation
+    assert registry.local_path("models") == bundle
     assert registry.inspect("models").verified
     assert not registry.is_cached("models", "2.2.0")
     installed = registry.status("models")[0]
-    assert installed["generation"] == str(generation)
+    assert installed["bundle"] == str(bundle)
     assert installed["archive_size"] == len(data)
     assert installed["downloaded_sources"] == [url]
     assert ("models", "2.3.0") in paths
 
     source.unlink()
-    assert registry.local_path("models") == generation
+    assert registry.local_path("models") == bundle
     with pytest.raises(FileNotFoundError):
         registry.local_path("models", "2.2.0")
     with pytest.raises(ValueError, match="unknown archive"):
@@ -706,7 +741,7 @@ def test_versioned_archive_registry_default_layout_and_unverified_history(
     }, cache_root=tmp_path / "cache", verified=False)
 
     assert registry.store_path("data") == tmp_path / "cache/data/historical"
-    generation = registry.ensure("data")
-    assert generation.is_dir()
+    bundle = registry.ensure("data")
+    assert bundle.is_dir()
     assert registry.inspect("data").status == "available"
     assert not registry.inspect("data").verified

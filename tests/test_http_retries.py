@@ -15,7 +15,7 @@ from time import sleep as real_sleep
 import numpy as np
 import pytest
 import requests
-from requests.packages.urllib3 import exceptions as urllib3_errors
+from urllib3 import exceptions as urllib3_errors
 
 from datacache import Cache, FileValidationError, fetch_file
 from datacache import download, retries
@@ -172,11 +172,12 @@ def test_excessive_retry_after_stops_without_retrying_early(http_server, tmp_pat
     assert "Retry-After exceeds retry_max_delay" in caplog.text
 
 
-def test_configurable_backoff_is_capped(http_server, tmp_path, waits):
+@pytest.mark.parametrize("retry_backoff, expected", [(2, [2, 3, 3, 3]), (10, [3, 3, 3, 3])])
+def test_configurable_backoff_is_capped(http_server, tmp_path, waits, retry_backoff, expected):
     server = http_server(*([{"status": 504}] * 4), {})
     fetch_file(server.url, destination=tmp_path / "data",
-               max_retries=4, retry_backoff=2, retry_max_delay=3)
-    assert waits == [2, 3, 3, 3]
+               max_retries=4, retry_backoff=retry_backoff, retry_max_delay=3)
+    assert waits == expected
     assert len(server.requests) == 5
 
 

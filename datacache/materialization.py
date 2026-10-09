@@ -4,32 +4,26 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import hashlib
 import json
-import logging
 import os
 from pathlib import Path
-import shutil
-import stat
 from urllib.parse import urlsplit
 from urllib.request import url2pathname
 from uuid import uuid4
 
-from ._filesystem import file_lock, open_regular, path_present, read_json, write_json
-from .bundles import (
-    _directory, _file_mode, _generation, _initialize, _newest_generations_first, _relative_name, _store,
+from ._filesystem import open_regular, path_present, read_json, write_json
+from .bundle_store import (
+    CHUNK_SIZE, INVALID_STORE_ERRORS, MANIFEST, BundleStore, check_expected, check_tree,
+    discard_private_directory, hash_file, local_file_identity, private_directory,
+    parent_directories, require_directory, validate_distinct_paths, validate_file_record,
+    validate_no_sidecar_collisions, validate_relative_name,
 )
-from .inspection import FileInspection
+from .download import normal_creation_mode, validate_download_options
 from .integrity import FileValidationError, _validate_expectations
 from .progress import Progress
 from . import provenance
 
-STORE = '.datacache-materialization.json'
-MANIFEST = '.datacache-manifest.json'
-CURRENT = 'current.json'
 INPUTS = '.datacache-inputs.json'
 FORMAT = 1
-CHUNK_SIZE = 2 ** 20
-
-logger = logging.getLogger(__name__)
 
 
 def _json_copy(value):
@@ -45,12 +39,8 @@ def _inventory(mapping):
     if not isinstance(mapping, dict) or not mapping:
         raise ValueError('sources and outputs must be nonempty mappings')
     for name in mapping:
-        _relative_name(name)
-    folded = {name.casefold() for name in mapping}
-    parents = {'/'.join(name.split('/')[:i]).casefold()
-               for name in mapping for i in range(1, len(name.split('/')))}
-    if len(folded) != len(mapping) or folded & parents:
-        raise ValueError('paths collide as files/directories or ignoring case')
+        validate_relative_name(name)
+    validate_distinct_paths(mapping)
     return mapping
 
 
@@ -78,9 +68,8 @@ def _definition(sources, transform, outputs):
             raise ValueError('each source requires exactly one of url or path')
         expected = _expectations({key: spec[key] for key in ('sha256', 'size') if key in spec})
         if 'path' in spec:
-            source = Path(spec['path']).absolute()
-            origin = source.as_uri()
-            acquisition[name] = ('path', str(source))
+            origin = local_file_identity(spec['path'])
+            acquisition[name] = ('path', str(Path(spec['path']).absolute()))
         else:
             origin = spec['url']
             if not isinstance(origin, str) or not origin:
@@ -95,12 +84,7 @@ def _definition(sources, transform, outputs):
             else:
                 acquisition[name] = ('url', origin)
         normalized[name] = dict(expected, identity=_fingerprint(origin), origin=provenance.redact_url(origin))
-    sidecars = {Path(provenance.sidecar_path(name)).as_posix().casefold() for name in normalized}
-    occupied = {name.casefold() for name in normalized}
-    parents = {'/'.join(name.split('/')[:i]).casefold() for name in normalized
-               for i in range(1, len(name.split('/')))}
-    if sidecars & (occupied | parents):
-        raise ValueError('source paths collide with automatic provenance sidecars')
+    validate_no_sidecar_collisions(normalized)
     output_specs = {name: _expectations(spec) for name, spec in _inventory(outputs).items()}
     return dict(sources=normalized, transform=_transform(transform), outputs=output_specs), acquisition
 
@@ -122,39 +106,6 @@ def _recorded_definition(value):
     return value
 
 
-def _check_observed(path, observed, expected):
-    if not isinstance(observed, dict) or set(observed) != {'sha256', 'size'}:
-        raise ValueError('invalid observed file metadata')
-    _validate_expectations(observed['sha256'], observed['size'])
-    if observed['sha256'] is None or observed['size'] is None:
-        raise ValueError('observed hashes and sizes are required')
-    for key in ('sha256', 'size'):
-        if expected[key] is not None and observed[key] != expected[key]:
-            raise FileValidationError(path, '%s disagrees with dependency expectations' % key)
-
-
-def _observe(path, expected=None, *, verify_files=True, show_progress=False):
-    with os.fdopen(open_regular(path), 'rb') as handle:
-        info = os.fstat(handle.fileno())
-        if verify_files:
-            digest, size = hashlib.sha256(), 0
-            with Progress(show_progress, 'Verifying', info.st_size) as progress:
-                for chunk in iter(lambda: handle.read(CHUNK_SIZE), b''):
-                    digest.update(chunk)
-                    size += len(chunk)
-                    progress(size, info.st_size)
-            if size != info.st_size or os.fstat(handle.fileno()).st_mtime_ns != info.st_mtime_ns:
-                raise FileValidationError(path, 'file changed during verification')
-            observed = dict(sha256=digest.hexdigest(), size=size)
-            if expected is not None:
-                _check_observed(path, observed, expected)
-        else:
-            observed = dict(sha256=None, size=info.st_size)
-            if expected is not None and expected['size'] is not None and info.st_size != expected['size']:
-                raise FileValidationError(path, 'file size disagrees with receipt')
-    return observed, info
-
-
 def _source_records(value, definition):
     if not isinstance(value, dict) or set(value) != set(definition):
         raise ValueError('source receipt inventory disagrees with definition')
@@ -162,7 +113,7 @@ def _source_records(value, definition):
         if not isinstance(record, dict):
             raise ValueError('invalid source receipt')
         observed = {key: record.get(key) for key in ('sha256', 'size')}
-        _check_observed(name, observed, definition[name])
+        check_expected(name, validate_file_record(observed), definition[name])
         trusted = definition[name]['sha256'] is not None
         if (record.get('identity') != definition[name]['identity'] or
                 record.get('origin') != definition[name]['origin'] or
@@ -177,56 +128,25 @@ def _source_records(value, definition):
     return value
 
 
-def _tree(root, recorded, trusted=None, *, verify_files=True, show_progress=False, allow_manifest=True):
-    """Check the exact inventory without following directories or special files."""
-    files, found, stack = {}, set(), [(Path(root), '')]
-    parents = {'/'.join(name.split('/')[:i]) for name in recorded
-               for i in range(1, len(name.split('/')))}
-    while stack:
-        directory, prefix = stack.pop()
-        _directory(directory)
-        with os.scandir(directory) as entries:
-            for entry in entries:
-                name = prefix + entry.name
-                if allow_manifest and not prefix and name == MANIFEST:
-                    continue
-                _relative_name(name)
-                if entry.is_dir(follow_symlinks=False):
-                    if name not in parents:
-                        raise FileValidationError(entry.path, 'undeclared output directory')
-                    stack.append((Path(entry.path), name + '/'))
-                    continue
-                if name not in recorded:
-                    raise FileValidationError(entry.path, 'undeclared output file')
-                observed, info = _observe(entry.path, recorded[name], verify_files=verify_files,
-                                          show_progress=show_progress)
-                found.add(name)
-                files[name] = FileInspection(entry.path, 'available',
-                    verified=bool(verify_files and trusted and trusted[name]['sha256']),
-                    size=info.st_size, mtime=info.st_mtime)
-    if found != set(recorded):
-        raise FileValidationError(root, 'missing declared outputs: %s' % sorted(set(recorded) - found))
-    return files
-
-
 @dataclass(frozen=True)
 class MaterializationInspection:
-    """One read-only snapshot, including source provenance and transform identity.
+    """Read-only status of the current bundle of built outputs, with its sources.
 
-    verified refers only to outputs matched against caller-trusted hashes now.
+    status is available, missing, invalid or inaccessible. bundle is the
+    current bundle's directory. verified refers only to outputs matched against caller-trusted hashes now.
     Source records distinguish acquisition-time trusted hashes from observation.
     """
     path: str
     status: str
     verified: bool = False
-    generation: object = None
+    bundle: object = None
     files: dict = field(default_factory=dict)
     sources: dict = field(default_factory=dict)
     transform: object = None
     error: object = None
 
 
-def _inspect_tree(store, directory, expected=None, *, verify_files=True, show_progress=False):
+def _check_bundle(store, directory, expected=None, *, verify_files=True):
     receipt = read_json(directory / MANIFEST, limit=None)
     if not isinstance(receipt, dict) or receipt.get('format') != FORMAT:
         raise ValueError('unrecognized materialization receipt')
@@ -237,17 +157,21 @@ def _inspect_tree(store, directory, expected=None, *, verify_files=True, show_pr
     outputs = receipt.get('outputs')
     if not isinstance(outputs, dict) or set(outputs) != set(definition['outputs']):
         raise ValueError('output receipt inventory disagrees with definition')
-    for name, observed in outputs.items():
-        _check_observed(name, observed, definition['outputs'][name])
+    for name, record in outputs.items():
+        check_expected(name, validate_file_record(record), definition['outputs'][name])
     trusted = expected['outputs'] if expected is not None else None
-    files = _tree(directory, outputs, trusted, verify_files=verify_files, show_progress=show_progress)
+    hashed = check_tree(directory, outputs, parent_directories(outputs), ignore=(MANIFEST,),
+                        hash_contents=verify_files)
+    # Only a hash the caller supplied verifies an output; the receipt's own doesn't.
+    files = {name: value.inspection(verified=bool(verify_files and trusted and trusted[name]['sha256']))
+             for name, value in hashed.items()}
     verified = verify_files and trusted is not None and all(spec['sha256'] for spec in trusted.values())
-    return MaterializationInspection(str(store), 'available', bool(verified), str(directory),
+    return MaterializationInspection(str(store.path), 'available', bool(verified), str(directory),
                                       files, sources, definition['transform'])
 
 
 def inspect_materialization(destination, sources=None, *, transform=None, outputs=None, verify_files=True):
-    """Inspect offline without writes, locks, source access or automatic recovery.
+    """Check the current bundle offline, without writes, locks or source access.
 
     Supply all of sources/transform/outputs to check dependency identity; omit
     all three for receipt-only consistency checks. Metadata-only inspection
@@ -264,35 +188,16 @@ def inspect_materialization(destination, sources=None, *, transform=None, output
 
 def _inspect_materialization(destination, expected, *, verify_files=True):
     path = Path(destination)
+    store = BundleStore(path, 'materialization')
     try:
-        if not path_present(path):
+        bundle = store.current_bundle()
+        if bundle is None:
             return MaterializationInspection(str(path), 'missing')
-        try:
-            _store(path, marker=STORE)
-        except FileNotFoundError:
-            _directory(path)
-            if not any(path.iterdir()):
-                return MaterializationInspection(str(path), 'missing')
-            _store(path, marker=STORE)
-        try:
-            pointer = read_json(path / CURRENT)
-        except FileNotFoundError:
-            status = 'recovery-required' if any((path / 'generations').iterdir()) else 'missing'
-            return MaterializationInspection(str(path), status)
-        return _inspect_tree(path, _generation(path, pointer['generation']), expected, verify_files=verify_files)
+        return _check_bundle(store, bundle, expected, verify_files=verify_files)
     except PermissionError as error:
         return MaterializationInspection(str(path), 'inaccessible', error=error)
-    except (OSError, ValueError, KeyError, TypeError, RecursionError) as error:
+    except INVALID_STORE_ERRORS as error:
         return MaterializationInspection(str(path), 'invalid', error=error)
-
-
-def _private(path):
-    if not path_present(path):
-        path.mkdir(mode=0o700)
-    info = path.lstat()
-    if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or
-            stat.S_IMODE(info.st_mode) & 0o077):
-        raise FileValidationError(path, 'working directory must be private and owner-owned')
 
 
 def _input_directory(store, definition):
@@ -300,15 +205,13 @@ def _input_directory(store, definition):
 
 
 def _cleanup_inputs(store, definition, retain_sources):
-    directory = _input_directory(store, definition)
-    if not retain_sources and path_present(directory):
-        _private(directory)
-        shutil.rmtree(directory)
+    if not retain_sources:
+        discard_private_directory(_input_directory(store, definition))
 
 
 def _acquire_inputs(directory, definition, acquisition, options, *, force=False):
     from .download import fetch_file
-    _private(directory)
+    private_directory(directory)
     receipt_path = directory / INPUTS
     try:
         records = read_json(receipt_path, limit=None) if path_present(receipt_path) else {}
@@ -328,7 +231,7 @@ def _acquire_inputs(directory, definition, acquisition, options, *, force=False)
             current = directory / parent
             if not path_present(current):
                 current.mkdir(mode=0o700)
-            _directory(current)
+            require_directory(current)
         kind, source = acquisition[name]
         if force and kind == 'path' and name in records and path_present(Path(source)):
             # The caller may have corrected a local source in place without
@@ -343,7 +246,7 @@ def _acquire_inputs(directory, definition, acquisition, options, *, force=False)
         if name in records:
             try:
                 _source_records({name: records[name]}, {name: spec})
-                _observe(target, {key: records[name][key] for key in ('sha256', 'size')})
+                hash_file(target, records[name])
             except (FileNotFoundError, ValueError) as error:
                 if not force:
                     raise FileValidationError(
@@ -369,7 +272,7 @@ def _acquire_inputs(directory, definition, acquisition, options, *, force=False)
                 target.unlink()
             else:
                 try:
-                    _observe(target, spec)
+                    hash_file(target, spec)
                 except FileValidationError:
                     if not force:
                         raise FileValidationError(target, 'invalid private input; use force=True to repair')
@@ -396,14 +299,15 @@ def _acquire_inputs(directory, definition, acquisition, options, *, force=False)
                     output.flush()
                     os.fsync(output.fileno())
                 copied = dict(sha256=digest.hexdigest(), size=size)
-                _check_observed(temporary, copied, spec)
+                check_expected(temporary, copied, spec)
                 os.replace(temporary, target)
             finally:
                 temporary.unlink(missing_ok=True)
         if copied is not None:
             observed, info = copied, os.stat(target)
         else:
-            observed, info = _observe(target, spec, show_progress=options['show_progress'])
+            hashed = hash_file(target, spec, show_progress=options['show_progress'])
+            observed, info = hashed.record, hashed.info
         origin_record = provenance.read(target, info) or {}
         record = dict(observed, origin=spec['origin'], identity=spec['identity'],
                       verified=spec['sha256'] is not None,
@@ -418,21 +322,21 @@ def _acquire_inputs(directory, definition, acquisition, options, *, force=False)
 
 def materialize(destination, sources, *, transform, outputs, builder, force=False,
                 retain_sources=False, verify_files=True, download_options=None):
-    """Build all declared outputs and their receipt as one immutable generation.
+    """Build all declared outputs, then publish them together as a new bundle.
 
     builder(source_paths, output_paths) must create/close exactly the declared
     outputs and leave inputs unchanged. Source definitions contain url or path
     plus optional raw sha256/size; outputs map names to optional sha256/size.
     transform is {version: nonempty string, options: opaque JSON value}.
-    Changed dependencies and corrupt generations require explicit force=True.
+    Changed dependencies and a corrupt bundle require explicit force=True.
     Force rebuilds outputs while reusing any complete matching private inputs.
 
     Inputs survive failures, including without HTTP resume. resume=True enables
     existing raw HTTP resume rules for remote sources; local inputs are copied.
     Successful publication removes owned inputs unless retain_sources=True.
-    Caller-owned inputs and old output generations are never deleted. Cache
-    hits are offline and read-only; verify_files=False skips payload hashing
-    only on reuse. New publication and explicit recovery always check bytes.
+    Caller-owned inputs and old bundles are never deleted. Cache hits are
+    offline and read-only; verify_files=False skips payload hashing only on
+    reuse. New outputs are always hashed before publication.
     Download/copy/verification progress is on by default; builder progress is
     caller-owned. Installation requires POSIX locks and atomic local renames.
     """
@@ -441,74 +345,38 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
     if not callable(builder):
         raise ValueError('builder must be callable')
     definition, acquisition = _definition(sources, transform, outputs)
-    options = dict(download_options or {})
-    allowed = {'timeout', 'chunk_size', 'progress_callback', 'show_progress',
-               'max_retries', 'retry_backoff', 'retry_max_delay', 'resume'}
-    if set(options) - allowed:
-        raise ValueError('unsupported materialization download options')
+    options = validate_download_options(download_options, 'materialization')
     options.setdefault('show_progress', True)
-    if not isinstance(options['show_progress'], bool) or not isinstance(options.get('resume', False), bool):
-        raise ValueError('show_progress and resume must be booleans')
-    from .retries import validate_retry_options
-    from .download import DEFAULT_CHUNK_SIZE, DEFAULT_MAX_RETRIES, DEFAULT_RETRY_BACKOFF, DEFAULT_RETRY_MAX_DELAY
-    validate_retry_options(options.get('max_retries', DEFAULT_MAX_RETRIES),
-                           options.get('retry_backoff', DEFAULT_RETRY_BACKOFF),
-                           options.get('retry_max_delay', DEFAULT_RETRY_MAX_DELAY))
-    chunk_size = options.get('chunk_size', DEFAULT_CHUNK_SIZE)
-    if not isinstance(chunk_size, int) or isinstance(chunk_size, bool) or chunk_size <= 0:
-        raise ValueError('chunk_size must be a positive integer')
-    if options.get('progress_callback') is not None and not callable(options['progress_callback']):
-        raise ValueError('progress_callback must be callable')
     if options.get('resume'):
         from .resume import validate_resume
         for name, (kind, source) in acquisition.items():
             if kind == 'url':
                 validate_resume(source, definition['sources'][name]['sha256'], definition['sources'][name]['size'])
     path = Path(destination).absolute()
+    store = BundleStore(path, 'materialization')
 
     def inspect_current():
         # A forced refresh rebuilds whatever is there; it only needs to know
         # whether the store is readable, not to hash the old outputs.
         return _inspect_materialization(path, definition, verify_files=verify_files and not force)
 
-    def check_hit(inspection):
-        if inspection.status == 'inaccessible':
-            raise inspection.error
-        if not force and inspection.status == 'invalid':
-            raise FileValidationError(path, 'invalid materialization; use force=True to refresh or repair') from inspection.error
-        return not force and inspection.status == 'available'
-
     inspection = inspect_current()
-    if check_hit(inspection):
+    if store.can_reuse(inspection, force=force):
         return {name: value.path for name, value in inspection.files.items()}
     if os.name != 'posix':
         raise NotImplementedError('Materialization requires a POSIX local filesystem')
     path.parent.mkdir(parents=True, exist_ok=True)
-    key = hashlib.sha256(os.fsencode(path.name)).hexdigest()[:32]
-    with file_lock(path.parent / ('.datacache-materialization-lock-' + key)):
-        _initialize(path, marker=STORE)
+    with store.lock():
+        store.create()
         inspection = inspect_current()
-        if check_hit(inspection):
+        if store.can_reuse(inspection, force=force):
             return {name: value.path for name, value in inspection.files.items()}
-        if not force and inspection.status in ('missing', 'recovery-required'):
-            for name in _newest_generations_first(path, MANIFEST, 'created_at'):
-                try:
-                    candidate = _inspect_tree(path, _generation(path, name), definition)
-                except (OSError, ValueError, KeyError, TypeError, RecursionError):
-                    continue
-                write_json(path / CURRENT, {'generation': name}, mode=_file_mode(path))
-                _cleanup_inputs(path, definition, retain_sources)
-                return {name: value.path for name, value in candidate.files.items()}
         inputs = _input_directory(path, definition)
         source_paths, records = _acquire_inputs(inputs, definition['sources'], acquisition, options, force=force)
         working = path / ('.staging-%s-%d' % (_fingerprint(definition), os.getuid()))
-        _private(working)
-        # Only this user's installer-owned failed outputs are discarded.
-        for entry in working.iterdir():
-            if entry.is_dir() and not entry.is_symlink():
-                shutil.rmtree(entry)
-            else:
-                entry.unlink()
+        # Start from nothing: discard this user's own outputs from a failed build.
+        discard_private_directory(working)
+        private_directory(working)
         staged = working / 'files'
         staged.mkdir()
         output_paths = {name: str(staged / name) for name in definition['outputs']}
@@ -519,33 +387,23 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
             # Builder callbacks are trusted code, not a sandbox; enforce their
             # read-only-input contract before creating a dependency receipt.
             for name, source in source_paths.items():
-                _observe(source, {key: records[name][key] for key in ('sha256', 'size')})
-            observed = {}
+                hash_file(source, records[name])
             # Reject extras/links/specials before hashing any declared output.
-            _tree(staged, definition['outputs'], verify_files=False, allow_manifest=False)
-            mode = _file_mode(staged)
+            declared = definition['outputs']
+            check_tree(staged, declared, parent_directories(declared), hash_contents=False)
+            mode = normal_creation_mode(staged)
+            observed = {}
             for name, target in output_paths.items():
-                observed[name] = _observe(target, definition['outputs'][name],
-                                          show_progress=options['show_progress'])[0]
+                observed[name] = hash_file(target, declared[name], show_progress=options['show_progress']).record
                 os.chmod(target, mode)
             receipt = dict(format=FORMAT, created_at=datetime.now(timezone.utc).isoformat(),
                            definition=definition, sources=records, outputs=observed)
             write_json(staged / MANIFEST, receipt, mode=mode)
-            # The outputs were just hashed into the receipt; check its structure,
-            # inventory and sizes without hashing them again.
-            _inspect_tree(path, staged, definition, verify_files=False)
-            generation = uuid4().hex
-            final = path / 'generations' / generation
-            os.replace(staged, final)
-            # Remap only after validating the receipt in its private staging.
-            candidate = _inspect_tree(path, final, definition, verify_files=False)
-            write_json(path / CURRENT, {'generation': generation}, mode=_file_mode(path))
+            # The outputs were just hashed into the manifest; check its
+            # structure, inventory and sizes without hashing them again.
+            _check_bundle(store, staged, definition, verify_files=False)
+            bundle = store.publish(staged)
             _cleanup_inputs(path, definition, retain_sources)
-            return {name: value.path for name, value in candidate.files.items()}
+            return {name: str(bundle / name) for name in declared}
         finally:
-            # Cleanup never replaces the builder's error or fails a publication.
-            try:
-                _private(working)  # Only ever remove our own private directory.
-                shutil.rmtree(working)
-            except (OSError, ValueError) as error:
-                logger.warning("Could not remove the staging directory %s: %s", working, error)
+            discard_private_directory(working)

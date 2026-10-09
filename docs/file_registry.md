@@ -3,7 +3,7 @@
 `VersionedFileRegistry` supports applications whose single-file datasets already
 live at `<root>/<name>/<version>/<filename>` with a root `manifest.json`.
 It reuses those files in place. Use `VersionedDatasetRegistry` and bundles when
-you need immutable snapshots and atomic multi-file installation.
+you need several files installed together as one bundle.
 
 ```python
 from pathlib import Path
@@ -60,4 +60,4 @@ receipt are separate publications: if receipt publication fails after a valid
 download, the new file remains installed and the prior receipt remains intact.
 Concurrent registry writers serialize acquisition and receipt updates, so
 downloading different datasets cannot discard each other’s receipts. These are the
-established single-file semantics, not the guarantees of generation bundles.
+established single-file semantics, not the guarantees of bundles.

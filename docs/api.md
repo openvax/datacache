@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.19.1. Import these names from `datacache`.
+public `Cache` method in DataCache 1.20.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -1145,7 +1145,7 @@ install_archive(
 ```
 
 Safely extract a complete tar archive into a private directory and publish the
-tree as one immutable generation. `sources` is one URL, one `Path`, or an
+tree as a new bundle. `sources` is one URL, one `Path`, or an
 explicitly ordered sequence. A mapping may contain `url`, `path`, `sha256`, and
 `size`; supplying both `url` and `path` reads local bytes while retaining the URL
 as the logical source identity. Multiple sources are concatenated byte-for-byte,
@@ -1159,7 +1159,7 @@ hashes are still recorded and checked, but do not authenticate the source.
 `extra_files` maps safe relative names to text or bytes written after extraction
 and before publication. It is intended for consumer receipts such as
 `DOWNLOAD_INFO.csv`; collisions with archive content fail the installation.
-The complete metadata inventory participates in generation identity: additions,
+The complete metadata inventory is part of the archive's identity: additions,
 removals, and content changes require an explicit refresh.
 `download_options` accepts timeout, chunk size, progress, retry, and resume
 settings from `fetch_file`. Resumable URL parts each require a trusted hash and
@@ -1168,8 +1168,8 @@ files are extracted, as headers arrive; scanning stops when a limit is exceeded.
 Benign leading `./` paths are normalized and root `.` directory entries ignored.
 Local special files such as FIFOs are rejected without blocking.
 
-**Returns:** the immutable extracted-generation `Path`, not the managed store
-path. Existing returned paths remain usable across forced refreshes.
+**Returns:** the `Path` of the extracted tree, the store's current bundle; not
+the store path. Existing returned paths remain usable across forced refreshes.
 
 **Raises:** `ValueError` for invalid definitions or options;
 `FileValidationError` for integrity failures, unsafe members, malformed tar
@@ -1179,14 +1179,14 @@ foreign destination is never claimed, even with force.
 
 ```python
 archive_store = root / "archive-store"
-archive_generation = dc.install_archive(
+archive_bundle = dc.install_archive(
     archive_store,
     archive_source,
     expected_sha256=archive_sha256,
     expected_size=len(archive_contents),
     extra_files={"DOWNLOAD_INFO.csv": "url\n" + archive_source.as_uri() + "\n"},
 )
-assert (archive_generation / "models/model.json").is_file()
+assert (archive_bundle / "models/model.json").is_file()
 ```
 
 See the [archive installation guide](archives.md) for split sources, safe-member
@@ -1201,23 +1201,23 @@ inspect_archive(
 )
 ```
 
-Inspect one installed archive generation without writes, locks, repair, or
+Inspect the current archive bundle without writes, locks, repair, or
 network access. Omit `sources` for receipt-only consistency checking, which
 returns `verified=False`. Supply the same source definition, expectations, and
 consumer metadata used for installation to validate the requested identity.
-Set `verify_files=False` for a fast published-generation/source-identity check
-that does not hash the extracted tree. Fast results have an empty `files`
+Set `verify_files=False` for a fast check of the manifest and source identity
+that reads none of the extracted tree. Fast results have an empty `files`
 mapping and `verified=False`; use the default before asserting content integrity.
 
 ## ArchiveInspection
 
-A frozen record with `path`, `status`, `verified`, `generation`, `files`,
+A frozen record with `path`, `status`, `verified`, `bundle`, `files`,
 `error`, `source_urls`, `fetched_at`, `archive_size`, and `recorded_sha256`.
-Status is `available`, `missing`, `invalid`, `inaccessible`, or
-`recovery-required`. `generation` is the extracted tree applications should use;
-`files` maps every installed relative file name to a `FileInspection`, or is
-empty for a fast `verify_files=False` inspection. Source URLs are redacted for
-display. The recorded digest is observed receipt data, not trusted verification.
+Status is `available`, `missing`, `invalid` or `inaccessible`. `bundle` is the
+extracted tree applications should use;
+`files` maps every installed relative file name to a `FileInspection`; a file
+is `verified` only when a hash the caller supplied vouched for it. Source URLs
+are redacted for display. The recorded digest is observed receipt data, not trusted verification.
 
 ## VersionedArchiveRegistry
 
@@ -1242,13 +1242,13 @@ DataCache. `verified=False` explicitly enables historical unpinned catalogues.
 | Method | Result |
 | --- | --- |
 | `resolve_version(name, version=None)` | Concrete version, applying the pinned default. |
-| `store_path(name, version=None)` | Managed store `Path`, without creating or inspecting it. |
+| `store_path(name, version=None)` | Store `Path`, without creating or inspecting it. |
 | `inspect(name, version=None, *, verify_files=True)` | Offline `ArchiveInspection`. |
-| `download(name, version=None, *, force=False, source_paths=None, **download_options)` | Install/reuse and return the generation `Path`; `source_paths` overlays ordered local files while retaining catalogue identities. |
-| `local_path(name, version=None, *, verify_files=False)` | Resolve a published generation without network, writes, or repair. |
-| `ensure(name, version=None, **download_options)` | Install if needed and return the generation. |
-| `is_cached(name, version=None, *, verify_files=False)` | Whether a published generation is available; full verification is optional. |
-| `status(name=None, *, verify_files=False)` | One read-only row per concrete version, including catalogue and downloaded source URLs, store/generation paths, default flag, status, fetch time, observed archive size/hash and inspection. Metadata-only by default; `verify_files=True` hashes every file. |
+| `download(name, version=None, *, force=False, source_paths=None, **download_options)` | Install/reuse and return the current bundle's `Path`; `source_paths` overlays ordered local files while retaining catalogue identities. |
+| `local_path(name, version=None, *, verify_files=False)` | Resolve the current bundle without network, writes, or repair. |
+| `ensure(name, version=None, **download_options)` | Install if needed and return the current bundle. |
+| `is_cached(name, version=None, *, verify_files=False)` | Whether the current bundle is available; full verification is optional. |
+| `status(name=None, *, verify_files=False)` | One read-only row per concrete version, including catalogue and downloaded source URLs, store and bundle paths, default flag, status, fetch time, observed archive size/hash and inspection. Metadata-only by default; `verify_files=True` hashes every file. |
 
 ## install_bundle
 
@@ -1256,14 +1256,15 @@ DataCache. `verified=False` explicitly enables historical unpinned catalogues.
 install_bundle(destination, assets, *, force=False, verified=True, verify_files=True, download_options=None)
 ```
 
-Atomically install a mapping of relative asset names to `{url, sha256, size,
-decompress?}` metadata. Returns a dict of asset names to immutable generation
-paths. Invalid caches require `force=True`. `verified=False` explicitly permits
+Download a mapping of relative asset names to `{url, sha256, size,
+decompress?}` metadata and publish the files together as a new bundle. Returns a
+dict of asset names to paths in the current bundle. An invalid current bundle
+requires `force=True`. `verified=False` explicitly permits
 unpinned sources; their observed hashes are recorded without authenticating them.
-`verify_files=False` avoids payload reads for existing-generation checks; it
+`verify_files=False` avoids payload reads when checking an existing bundle; it
 checks readability, file types and recorded sizes but cannot detect same-size
-corruption. New generations and explicit recovery always validate bytes before
-publication, regardless of this cache-hit setting.
+corruption. New bundles are always hashed before publication, regardless of
+this cache-hit setting.
 `download_options` accepts timeout, chunk size, progress, retry settings and resume.
 Publication requires a POSIX local filesystem. [Complete guide](bundles.md).
 
@@ -1273,19 +1274,20 @@ Publication requires a POSIX local filesystem. [Complete guide](bundles.md).
 inspect_bundle(destination, assets=None, *, verify_files=True)
 ```
 
-Return a `BundleInspection` without writes, network, locks or recovery. Supply
-trusted assets to verify against the registry; omit them to check consistency
-against the installed generation's own recorded hashes (`verified=False`).
+Return a `BundleInspection` of the current bundle without writes, network, locks
+or repair. Supply trusted assets to verify against the registry; omit them to
+check consistency against the bundle's own recorded hashes (`verified=False`).
 `verify_files=False` validates metadata, source expectations, required file types,
 readability and recorded sizes without reading payloads. Its bundle and file
 results always have `verified=False`, even with trusted hashes in the registry.
 
 ## BundleInspection
 
-A frozen record with `path`, `status`, `verified`, `generation`, `files`, and
-`error`. Status is `available`, `missing`, `invalid`, `inaccessible`, or
-`recovery-required`. `files` maps asset names to `FileInspection` values from one
-generation. Paths remain usable across refreshes until explicitly removed.
+A frozen record with `path`, `status`, `verified`, `bundle`, `files`, and
+`error`. Status is `available`, `missing`, `invalid` or `inaccessible`. `bundle`
+is the current bundle's directory, and `files` maps asset names to
+`FileInspection` values from it. Paths remain usable across refreshes until
+explicitly removed.
 
 ## VersionedDatasetRegistry
 
@@ -1294,9 +1296,9 @@ VersionedDatasetRegistry(datasets, *, cache_root=None, cache_dir=None, store_pat
 ```
 
 Select exactly one root path, zero-argument `cache_dir` callable, or
-`store_path(name, version)` callback selecting the exact managed store path; it is called once per dataset version on first lookup, and each version needs its own store.
+`store_path(name, version)` callback selecting the exact store path; it is called once per dataset version on first lookup, and each version needs its own store.
 Root strategies keep `<root>/<name>/<version>`; the exact-path callback owns
-the consumer layout but not the internal generation layout. Each dataset
+the consumer layout but not the layout inside each store. Each dataset
 specifies a `default_version` and `versions`, mapping concrete versions to asset
 mappings. Construction validates metadata and performs no writes or networking,
 and does not invoke callbacks. Path callbacks should be pure path computations.
@@ -1305,10 +1307,10 @@ The [bundle guide](bundles.md) includes an example and downstream migration note
 | Method | Result |
 | --- | --- |
 | `resolve_version(name, version=None)` | Concrete version label, applying the pinned default. Unknown names/versions raise `ValueError`. |
-| `bundle_path(name, version=None)` | Expected managed store `Path`, without creating it. |
+| `store_path(name, version=None)` | Store `Path`, without creating it. |
 | `inspect(name, version=None, *, verify_files=True)` | Read-only `BundleInspection`; full payload verification by default. |
-| `download(name, version=None, *, force=False, verify_files=True, **download_options)` | Install/reuse and return a dict of asset snapshot paths; the flag selects cache-hit cost only. |
-| `local_path(name, version=None, *, asset=None, verify_files=True)` | Installed single asset's `Path`, or a multi-file generation directory; select one asset by name. Assets are hashed by default; `verify_files=False` checks metadata and sizes only. Missing raises `FileNotFoundError`; invalid/recovery-required raises `FileValidationError`. |
+| `download(name, version=None, *, force=False, verify_files=True, **download_options)` | Install/reuse and return a dict of asset paths in the current bundle; the flag selects cache-hit cost only. |
+| `local_path(name, version=None, *, asset=None, verify_files=True)` | Installed single asset's `Path`, or the current bundle's directory for several assets; select one asset by name. Assets are hashed by default; `verify_files=False` checks metadata and sizes only. Missing raises `FileNotFoundError`; invalid raises `FileValidationError`. |
 | `ensure(name, version=None, **download_options)` | Download/reuse, then return what `local_path` would, from the paths the download validated. `verify_files=False` among the options skips hashing on reuse. |
 | `is_cached(name, version=None, *, verify_files=True)` | Whether inspection reports `available`; `verify_files=False` skips hashing. |
 | `status(*, verify_files=True)` | One row per pinned default: name, version, description, available_versions and inspection. `verify_files=False` skips hashing. |
@@ -1320,22 +1322,22 @@ materialize(destination, sources, *, transform, outputs, builder, force=False,
             retain_sources=False, verify_files=True, download_options=None)
 ```
 
-Install caller-built outputs and their dependency receipt as one immutable
-generation. Sources map relative names to `{url: ...}` or `{path: ...}`, plus
+Build outputs with a caller's builder and publish them, with their dependency
+receipt, as a new bundle. Sources map relative names to `{url: ...}` or `{path: ...}`, plus
 optional raw-byte `sha256`/`size`; outputs map names to optional output-byte
 `sha256`/`size`. Transform is `{version: nonempty_string, options: JSON_value}`.
 The builder receives private `(source_paths, output_paths)` mappings, must leave
 inputs unchanged and create/close exactly the declared regular output files.
-Returns name-to-string snapshot paths; builder return values are ignored.
+Returns name-to-string paths in the new bundle; builder return values are ignored.
 
 Dependency mismatch/corruption requires explicit `force=True`. Completed inputs
 survive failures; successful publication removes owned inputs unless retention
-is requested. Caller-owned local inputs and old generations are never deleted.
-Cache hits are offline/read-only. Fast reuse is opt-in; new publication/recovery
-always hash files. Download/copy/verification progress defaults on, configurable
+is requested. Caller-owned local inputs and old bundles are never deleted.
+Cache hits are offline/read-only. Fast reuse is opt-in; new outputs are always
+hashed. Download/copy/verification progress defaults on, configurable
 through download options. Installation initially requires POSIX local storage.
 See the [materialization guide](materialization.md) for receipts, resume, callback
-contracts, retention, recovery and peak/retained disk use.
+contracts, retention and peak/retained disk use.
 
 ## inspect_materialization
 
@@ -1352,9 +1354,9 @@ and never claims trusted verification.
 
 ## MaterializationInspection
 
-A read-only snapshot with `path`, `status`, `verified`, `generation`, `files`,
-`sources`, `transform` and `error`. Status is available, missing, invalid,
-inaccessible or recovery-required. `verified` means all output files matched
+A read-only record with `path`, `status`, `verified`, `bundle`, `files`,
+`sources`, `transform` and `error`. Status is available, missing, invalid or
+inaccessible. `bundle` is the current bundle's directory. `verified` means all output files matched
 caller-trusted hashes now. Source records separately report raw observed hashes,
 sizes, redacted origins, identity, acquisition time, acquisition-time trusted
 verification and available validated transport metadata.
@@ -1367,7 +1369,7 @@ Fixed-path single-file compatibility registry. Definitions contain `filename`,
 `urls` (version to URL), `default_version`, and optional `description`. The
 zero-argument root callable may return a string or Path. Construction creates
 nothing. See the [fixed-path guide](file_registry.md) for legacy receipt semantics,
-trust boundaries, and the distinction from transactional generation bundles.
+trust boundaries, and the distinction from bundles.
 
 | Method | Result |
 | --- | --- |

@@ -1,4 +1,4 @@
-"""Versioned datasets published as complete, immutable local generations."""
+"""Versioned datasets installed as bundles of separately downloaded files."""
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -6,40 +6,21 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import shutil
-import stat
-import tempfile
+import unicodedata
 from uuid import uuid4
 
-from ._filesystem import file_lock, open_regular, path_present, read_json, write_json
+from ._filesystem import path_present, read_json, write_json
+from .bundle_store import (
+    INVALID_STORE_ERRORS, MANIFEST, BundleStore, discard_private_directory, hash_file, private_directory,
+    require_directory, source_fingerprint, validate_distinct_paths, validate_no_sidecar_collisions,
+    validate_path_component, validate_relative_name,
+)
+from .download import normal_creation_mode, validate_download_options
 from .integrity import FileValidationError, _validate_expectations
-from .inspection import FileInspection, inspect_file
-from .provenance import redact_url, sidecar_path
+from .provenance import redact_url
 
-STORE = '.datacache-bundle.json'
-MANIFEST = '.datacache-manifest.json'
-CURRENT = 'current.json'
 FORMAT = 1
-
-
-def _relative_name(value):
-    if not isinstance(value, str) or not value or '\\' in value:
-        raise ValueError('asset names must be nonempty relative POSIX paths')
-    for part in value.split('/'):
-        if (part in ('', '.', '..') or part.endswith((' ', '.')) or
-                re.search(r'[\x00-\x1f<>:"|?*]', part) or
-                part.lower().startswith('.datacache-') or
-                re.fullmatch(r'(?i:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?', part)):
-            raise ValueError('unsafe asset path: %r' % value)
-    return value
-
-
-def _component(value):
-    _relative_name(value)
-    if '/' in value:
-        raise ValueError('dataset names and versions must be single path components')
-    return value
 
 
 def _assets(assets, verified=True):
@@ -47,7 +28,7 @@ def _assets(assets, verified=True):
         raise ValueError('assets must be a nonempty mapping of relative names to metadata')
     result = {}
     for name, spec in assets.items():
-        _relative_name(name)
+        validate_relative_name(name)
         if isinstance(spec, str):
             spec = {'url': spec}
         if not isinstance(spec, dict):
@@ -67,39 +48,8 @@ def _assets(assets, verified=True):
             raise ValueError('decompress must be a boolean')
         result[name] = dict(url=url, sha256=digest.lower() if digest else None,
                             size=size, decompress=decompress)
-    folded = {name.casefold() for name in result}
-    parents = {'/'.join(name.split('/')[:i]).casefold()
-               for name in result for i in range(1, len(name.split('/')))}
-    if len(folded) != len(result) or folded & parents:
-        raise ValueError('asset paths collide as files/directories or ignoring case')
-    sidecars = {Path(sidecar_path(name)).as_posix().casefold() for name in result}
-    if sidecars & (folded | parents):
-        raise ValueError('asset paths collide with automatic provenance sidecars')
-    return result
-
-
-def _source_fingerprint(url):
-    """Identify the complete source without storing credentials or query text."""
-    return hashlib.sha256(url.encode('utf-8')).hexdigest()
-
-
-def _directory(path):
-    if not stat.S_ISDIR(path.lstat().st_mode):
-        raise FileValidationError(path, 'expected a directory, not a link')
-
-
-def _store(path, *, marker=STORE):
-    _directory(path)
-    if read_json(path / marker) != {'format': FORMAT}:
-        raise FileValidationError(path, 'unrecognized generation store')
-    _directory(path / 'generations')
-
-
-def _generation(path, generation):
-    if not isinstance(generation, str) or re.fullmatch('[0-9a-f]{32}', generation) is None:
-        raise FileValidationError(path, 'invalid generation pointer')
-    result = path / 'generations' / generation
-    _directory(result)
+    validate_distinct_paths(result)
+    validate_no_sidecar_collisions(result)
     return result
 
 
@@ -113,24 +63,24 @@ def _receipt_assets(receipt):
 
 @dataclass(frozen=True)
 class BundleInspection:
-    """Read-only bundle status; paths belong to one immutable generation.
+    """Read-only status of a store's current bundle; paths belong to that bundle.
 
-    status is available, missing, invalid, inaccessible, or recovery-required.
-    verified means every file matched caller-supplied trusted hashes now;
+    status is available, missing, invalid or inaccessible. bundle is the
+    current bundle's directory. verified means every file matched caller-supplied trusted hashes now;
     receipt-only full inspection checks recorded hashes without asserting trust.
     Metadata-only inspection checks readability and recorded sizes, not hashes.
     """
     path: str
     status: str
     verified: bool = False
-    generation: object = None
+    bundle: object = None
     files: dict = field(default_factory=dict)
     error: object = None
 
 
-def _inspect_generation(store, generation, assets, *, verify_files=True):
-    directory = _generation(store, generation)
-    receipt = read_json(directory / MANIFEST)
+def _check_bundle(store, directory, assets, *, verify_files=True):
+    # Manifests grow with the number of assets; the writer has no size cap.
+    receipt = read_json(directory / MANIFEST, limit=None)
     recorded = _receipt_assets(receipt)
     if assets is not None:
         if set(recorded) != set(assets):
@@ -139,7 +89,7 @@ def _inspect_generation(store, generation, assets, *, verify_files=True):
             if spec['sha256'] is None:
                 fingerprints = receipt.get('source_fingerprints')
                 if (not isinstance(fingerprints, dict) or
-                        fingerprints.get(name) != _source_fingerprint(spec['url'])):
+                        fingerprints.get(name) != source_fingerprint(spec['url'])):
                     raise FileValidationError(directory, 'manifest source identity is missing or disagrees with registry')
                 if spec['decompress'] != recorded[name]['decompress']:
                     raise FileValidationError(directory, 'manifest decompression setting disagrees with registry')
@@ -150,64 +100,36 @@ def _inspect_generation(store, generation, assets, *, verify_files=True):
     for name, spec in recorded.items():
         target = directory / name
         for parent in target.relative_to(directory).parents:
-            _directory(directory / parent)
-        # Reject symlinks and special files before the ordinary inspection API.
-        fd = open_regular(target)
-        try:
-            info = None if verify_files else os.fstat(fd)
-        finally:
-            os.close(fd)
-        if verify_files:
-            inspected = inspect_file(target, expected_sha256=spec['sha256'], expected_size=spec['size'])
-            if inspected.status != 'available':
-                raise inspected.error or FileValidationError(target, 'unavailable bundle asset')
-        else:
-            # Metadata only: an open, readable regular file of the recorded size.
-            if info.st_size != spec['size']:
-                raise FileValidationError(target, 'bundle asset size disagrees with manifest')
-            inspected = FileInspection(str(target), 'available', size=info.st_size, mtime=info.st_mtime)
-        files[name] = inspected
+            require_directory(directory / parent)
+        hashed = hash_file(target, spec, hash_contents=verify_files)
+        # Only a hash the caller supplied verifies a file; the manifest's own doesn't.
+        supplied = assets is not None and assets[name]['sha256'] is not None
+        files[name] = hashed.inspection(verified=verify_files and supplied)
     trusted = verify_files and assets is not None and all(spec['sha256'] for spec in assets.values())
-    return BundleInspection(str(store), 'available', bool(trusted), str(directory), files)
+    return BundleInspection(str(store.path), 'available', bool(trusted), str(directory), files)
 
 
 def inspect_bundle(destination, assets=None, *, verify_files=True):
-    """Validate one installed snapshot offline, without writes, locks or repair.
+    """Check the current bundle offline, without writes, locks or repair.
 
     Optional assets is the caller's trusted mapping (url, sha256, size). Without
-    it, verify consistency with the per-generation receipt, verified=False.
-    An interrupted install with completed local generations but no pointer is
-    recovery-required; explicit install_bundle can recover it without network.
+    it, check consistency with the bundle's own manifest, verified=False.
     verify_files=False checks the receipt, source expectations, required file
     types, readability and sizes without reading payloads; verified stays False.
     """
     if not isinstance(verify_files, bool):
         raise ValueError('verify_files must be a boolean')
     path = Path(destination)
+    store = BundleStore(path, 'bundle')
     expected = _assets(assets, verified=False) if assets is not None else None
     try:
-        if not path_present(path):
+        bundle = store.current_bundle()
+        if bundle is None:
             return BundleInspection(str(path), 'missing')
-        try:
-            _store(path)
-        except FileNotFoundError:
-            # A caller may create the destination before installing. Existing
-            # recognized stores need no directory listing merely to inspect.
-            if not any(path.iterdir()):
-                return BundleInspection(str(path), 'missing')
-            # Another installer may have initialized an empty directory after
-            # our missing-marker read. Recheck before calling it invalid.
-            _store(path)
-        try:
-            pointer = read_json(path / CURRENT)
-        except FileNotFoundError:
-            if any((path / 'generations').iterdir()):
-                return BundleInspection(str(path), 'recovery-required')
-            return BundleInspection(str(path), 'missing')
-        return _inspect_generation(path, pointer['generation'], expected, verify_files=verify_files)
+        return _check_bundle(store, bundle, expected, verify_files=verify_files)
     except PermissionError as error:
         return BundleInspection(str(path), 'inaccessible', error=error)
-    except (OSError, ValueError, KeyError, TypeError, RecursionError) as error:
+    except INVALID_STORE_ERRORS as error:
         return BundleInspection(str(path), 'invalid', error=error)
 
 
@@ -215,144 +137,59 @@ def _paths(inspection):
     return {name: value.path for name, value in inspection.files.items()}
 
 
-def _refuse_foreign(path, *, marker=STORE):
-    """Raise if path is a populated directory that isn't a generation store,
-    which neither installation nor force=True ever takes over."""
-    if (path_present(path) and stat.S_ISDIR(path.lstat().st_mode)
-            and not path_present(path / marker) and any(path.iterdir())):
-        raise FileValidationError(
-            path, 'not a datacache generation store; a populated directory is never taken over')
-
-
-def _initialize(path, *, marker=STORE):
-    existing_mode = None
-    if path_present(path):
-        _directory(path)
-        if any(path.iterdir()):
-            _refuse_foreign(path, marker=marker)
-            _store(path, marker=marker)  # Never adopt a foreign directory.
-            return
-        existing_mode = stat.S_IMODE(path.lstat().st_mode)
-    # Publish a complete store skeleton at once: concurrent first-time readers
-    # see absence or a recognized store, never a half-written ownership marker.
-    staging = Path(tempfile.mkdtemp(prefix='.datacache-store-', dir=path.parent))
-    try:
-        write_json(staging / marker, {'format': FORMAT}, mode=_file_mode(path.parent))
-        (staging / 'generations').mkdir()
-        os.chmod(staging, existing_mode if existing_mode is not None else
-                 stat.S_IMODE((staging / 'generations').stat().st_mode))
-        os.replace(staging, path)
-    finally:
-        if staging.exists():
-            shutil.rmtree(staging)
-
-
-def _file_mode(path):
-    from .download import _normal_creation_mode
-    return _normal_creation_mode(path)
-
-
-def _newest_generations_first(store, manifest, time_key):
-    """Generation names, newest first by the UTC time their receipt records
-    under time_key, else by directory modification time. Names are random
-    UUIDs, so their own order says nothing about age."""
-    def created(entry):
-        try:
-            recorded = datetime.fromisoformat(read_json(entry / manifest, limit=None)[time_key])
-            if recorded.tzinfo is None:
-                recorded = recorded.replace(tzinfo=timezone.utc)
-            return recorded.timestamp()
-        except (OSError, ValueError, KeyError, TypeError, RecursionError, OverflowError):
-            try:
-                return entry.lstat().st_mtime
-            except OSError:
-                return float('-inf')
-    entries = list((store / 'generations').iterdir())
-    return [entry.name for entry in sorted(entries, key=lambda e: (created(e), e.name), reverse=True)]
-
-
-def _recover(path, assets):
-    for name in _newest_generations_first(path, MANIFEST, 'fetched_at'):
-        entry = path / 'generations' / name
-        try:
-            candidate = _inspect_generation(path, entry.name, assets)
-        except (OSError, ValueError, KeyError, TypeError, RecursionError):
-            continue
-        write_json(path / CURRENT, {'generation': entry.name}, mode=_file_mode(path))
-        return candidate
-    return None
-
-
 def install_bundle(destination, assets, *, force=False, verified=True, verify_files=True, download_options=None):
-    """Install all assets before publishing one atomic generation pointer.
+    """Download every asset, then publish them together as a new bundle.
 
     assets maps relative names to {url, sha256, size, decompress?}. Trusted
     sha256 and size are mandatory unless verified=False is explicit. On a
     valid cache hit this is read-only, including on a read-only filesystem.
-    Invalid installations require force=True. Recoverable complete local
-    generations are preferred to network acquisition when the pointer is lost.
+    An invalid current bundle requires force=True, which installs a new one.
 
-    Returns a dict of asset names to snapshot paths. Published generations are
-    retained, so these paths survive later force installs. Generated outputs
-    belong outside this managed source store. Installation requires a POSIX
-    local filesystem with flock and atomic sibling os.replace.
-    verify_files controls existing-generation checks only. New generations and
-    explicit recovery always validate payloads before publication.
+    Returns a dict of asset names to paths in the current bundle. Old bundles
+    are kept, so these paths survive later force installs. Generated outputs
+    belong outside this store. Installation requires a POSIX local filesystem
+    with flock and atomic sibling os.replace. verify_files controls checks of
+    an existing bundle only; new downloads are always checked.
     """
     from .download import fetch_file
     if not all(isinstance(value, bool) for value in (verified, force, verify_files)):
         raise ValueError('verified, force and verify_files must be booleans')
     expected = _assets(assets, verified)
-    options = dict(download_options or {})
-    allowed = {'timeout', 'chunk_size', 'progress_callback', 'show_progress',
-               'max_retries', 'retry_backoff', 'retry_max_delay', 'resume'}
-    if set(options) - allowed:
-        raise ValueError('unsupported bundle download options: %s' % sorted(set(options) - allowed))
+    options = validate_download_options(download_options, 'bundle')
+    if options.get('resume'):
+        # Check before creating anything: a resumable install keeps its staging.
+        from .resume import validate_resume
+        for name, spec in expected.items():
+            validate_resume(spec['url'], spec['sha256'], spec['size'])
+            if spec['decompress']:
+                raise ValueError('resume=True supports raw downloads only; %s has decompress=True' % name)
     path = Path(destination)
-    inspection = inspect_bundle(path, expected, verify_files=verify_files)
-    if not force and inspection.status == 'available':
+    store = BundleStore(path, 'bundle')
+    # A forced install replaces the bundle whatever it holds: don't hash it.
+    inspection = inspect_bundle(path, expected, verify_files=verify_files and not force)
+    if store.can_reuse(inspection, force=force):
         return _paths(inspection)
-    if inspection.status == 'inaccessible':
-        raise inspection.error
-    if not force and inspection.status == 'invalid':
-        _refuse_foreign(path)
-        raise FileValidationError(path, 'invalid bundle; use force=True to explicitly repair') from inspection.error
     if os.name != 'posix':
         raise NotImplementedError('Bundle installation requires a POSIX local filesystem')
     path.parent.mkdir(parents=True, exist_ok=True)
-    key = hashlib.sha256(os.fsencode(path.name)).hexdigest()[:32]
-    with file_lock(path.parent / ('.datacache-bundle-lock-' + key)):
-        _initialize(path)
-        inspection = inspect_bundle(path, expected, verify_files=verify_files)
-        if not force and inspection.status == 'available':
+    with store.lock():
+        store.create()
+        inspection = inspect_bundle(path, expected, verify_files=verify_files and not force)
+        if store.can_reuse(inspection, force=force):
             return _paths(inspection)
-        if inspection.status == 'invalid' and not force:
-            raise FileValidationError(path, 'invalid bundle; use force=True to explicitly repair') from inspection.error
-        if inspection.status in ('missing', 'recovery-required', 'invalid'):
-            # No automatic rollback from an invalid current generation unless
-            # explicitly repairing. A missing pointer is explicit recovery.
-            recovered = _recover(path, expected)
-            if recovered is not None:
-                return _paths(recovered)
-        generation = uuid4().hex
         # A resumable bundle keeps its private working directory across calls,
         # including completed assets. The registry identity selects it, and
         # different users never inherit each other's private partials.
         resumable = options.get('resume', False)
         staging_key = (hashlib.sha256(json.dumps(expected, sort_keys=True).encode()).hexdigest()
-                       + '-%d' % os.getuid()) if resumable else generation
-        working = path / ('.staging-' + staging_key)
-        working.mkdir(mode=0o700, exist_ok=resumable)
-        info = working.lstat()
-        if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid()
-                or stat.S_IMODE(info.st_mode) & 0o077):
-            raise FileValidationError(working, 'bundle staging must be a private directory')
+                       + '-%d' % os.getuid()) if resumable else uuid4().hex
+        working = private_directory(path / ('.staging-' + staging_key))
         # The private parent protects unfinished bytes. The inner directory
-        # already has its final sharing mode, including during the atomic
-        # rename, so an interrupted publication is recoverable by other readers.
+        # already has its final sharing mode, so the bundle is readable by
+        # others the moment it is renamed into place.
         staged = working / 'files'
         staged.mkdir(exist_ok=resumable)
-        _directory(staged)
+        require_directory(staged)
         published = False
         try:
             recorded = {}
@@ -368,28 +205,29 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
                     # This is private, unpublished working state, not a user's
                     # installed bundle. Explicit installation may repair it.
                     fetch_file(spec['url'], force=True, **fetch_options)
-                observed_sha256 = spec['sha256']
-                if observed_sha256 is None:
-                    digest = hashlib.sha256()
-                    with target.open('rb') as source:
-                        for chunk in iter(lambda: source.read(2 ** 20), b''):
-                            digest.update(chunk)
-                    observed_sha256 = digest.hexdigest()
-                recorded[name] = dict(url=redact_url(spec['url']), sha256=observed_sha256,
-                                      size=target.stat().st_size, decompress=spec['decompress'])
+                # fetch_file already checked a trusted hash; hash only the rest.
+                hashed = hash_file(target, hash_contents=spec['sha256'] is None)
+                recorded[name] = dict(url=redact_url(spec['url']), sha256=hashed.sha256 or spec['sha256'],
+                                      size=hashed.size, decompress=spec['decompress'])
             receipt = dict(format=FORMAT, fetched_at=datetime.now(timezone.utc).isoformat(), assets=recorded,
-                           source_fingerprints={name: _source_fingerprint(spec['url'])
+                           source_fingerprints={name: source_fingerprint(spec['url'])
                                                 for name, spec in expected.items()})
-            write_json(staged / MANIFEST, receipt, mode=_file_mode(staged))
-            final = path / 'generations' / generation
-            os.replace(staged, final)
+            # Remove DataCache's own temporary files: resume state and anything
+            # an interrupted earlier attempt left. No asset is named .datacache-*.
+            for leftover in sorted(staged.rglob('.datacache-*'), reverse=True):
+                if leftover.is_dir() and not leftover.is_symlink():
+                    shutil.rmtree(leftover)
+                else:
+                    leftover.unlink(missing_ok=True)
+            write_json(staged / MANIFEST, receipt, mode=normal_creation_mode(staged))
+            # Check the complete bundle, hashes included, before publishing it.
+            _check_bundle(store, staged, expected)
+            bundle = store.publish(staged)
             published = True
-            candidate = _inspect_generation(path, generation, expected)
-            write_json(path / CURRENT, {'generation': generation}, mode=_file_mode(path))
-            return _paths(candidate)
+            return {name: str(bundle / name) for name in expected}
         finally:
             if published or not resumable:
-                shutil.rmtree(working)
+                discard_private_directory(working)
 
 
 class VersionedDatasetRegistry:
@@ -423,17 +261,21 @@ class VersionedDatasetRegistry:
         self.verified = verified
         self._datasets = {}
         for name, spec in datasets.items():
-            _component(name)
+            validate_path_component(name)
             versions = spec.get('versions')
             if versions is None:
                 versions = {version: {spec['filename']: {'url': url, 'decompress': True}}
                             for version, url in spec['urls'].items()}
-            normalized = {_component(version): _assets(assets, verified) for version, assets in versions.items()}
+            normalized = {validate_path_component(version): _assets(assets, verified) for version, assets in versions.items()}
+            # Versions are directories: case-insensitive filesystems would give
+            # two that differ only by case one store.
+            validate_distinct_paths(list(normalized))
             default = spec['default_version']
             if default not in normalized:
                 raise ValueError('default_version must name a pinned version')
             self._datasets[name] = dict(default_version=default, versions=normalized,
                                         description=spec.get('description', ''))
+        validate_distinct_paths(list(self._datasets))
 
     def resolve_version(self, name, version=None):
         if name not in self._datasets:
@@ -444,14 +286,14 @@ class VersionedDatasetRegistry:
             raise ValueError('unknown version %r for %s' % (version, name))
         return version
 
-    def bundle_path(self, name, version=None):
+    def store_path(self, name, version=None):
         """Resolve the store path without checking it or creating directories."""
         version = self.resolve_version(name, version)
         if self._custom_stores is None:
             path = self._store_path(name, version)
             # <root>/<name> is DataCache's own directory: never follow a link there.
             if path_present(path.parent):
-                _directory(path.parent)
+                require_directory(path.parent)
             return path
         # A custom store's parent belongs to the application and may be a link
         # (e.g. to another disk); the store itself is still never one.
@@ -467,30 +309,32 @@ class VersionedDatasetRegistry:
                 path = self._store_path(name, version)
                 if not isinstance(path, (str, os.PathLike)) or not os.fspath(path):
                     raise ValueError('store_path(%r, %r) returned %r, not a path' % (name, version, path))
-                key = os.path.normpath(os.path.abspath(path))
+                shown = os.path.normpath(os.path.abspath(path))
+                # Case-folded: case-insensitive filesystems store these as one.
+                key = unicodedata.normalize('NFC', shown.casefold())
                 if key in owners:
                     raise ValueError('store_path gives %s for both %s %s and %s %s; '
-                                     'each version needs its own store' % ((key,) + owners[key] + (name, version)))
+                                     'each version needs its own store' % ((shown,) + owners[key] + (name, version)))
                 owners[key] = (name, version)
                 stores[(name, version)] = Path(path)
         return stores
 
     def inspect(self, name, version=None, *, verify_files=True):
         version = self.resolve_version(name, version)
-        return inspect_bundle(self.bundle_path(name, version), self._datasets[name]['versions'][version],
+        return inspect_bundle(self.store_path(name, version), self._datasets[name]['versions'][version],
                               verify_files=verify_files)
 
     def download(self, name, version=None, *, force=False, verify_files=True, **download_options):
-        """Explicitly install/repair and return a mapping of asset snapshot paths."""
+        """Install if needed (or always, with force=True); return asset paths in the current bundle."""
         version = self.resolve_version(name, version)
-        return install_bundle(self.bundle_path(name, version), self._datasets[name]['versions'][version],
+        return install_bundle(self.store_path(name, version), self._datasets[name]['versions'][version],
                               force=force, verified=self.verified, verify_files=verify_files,
                               download_options=download_options)
 
     def local_path(self, name, version=None, *, asset=None, verify_files=True):
-        """Resolve an installed snapshot; no writes/network. Missing raises.
+        """Resolve the current bundle; no writes or network. Missing raises.
 
-        For one asset, return its Path; for multiple assets return the generation
+        For one asset, return its Path; for multiple assets return the bundle
         directory, or select an individual asset with asset=. Assets are hashed
         by default; verify_files=False checks metadata and sizes only, which
         cannot detect same-size corruption.
@@ -504,16 +348,16 @@ class VersionedDatasetRegistry:
             return Path(inspected.files[asset].path)
         if len(inspected.files) == 1:
             return Path(next(iter(inspected.files.values())).path)
-        return Path(inspected.generation)
+        return Path(inspected.bundle)
 
     def ensure(self, name, version=None, **download_options):
         """Download/reuse, then return what local_path would: the single asset's
-        Path, or the generation directory of several assets."""
+        Path, or the bundle directory of several assets."""
         paths = self.download(name, version, **download_options)
         if len(paths) == 1:
             return Path(next(iter(paths.values())))
         # The paths download validated: no second inspection, so a concurrent
-        # refresh cannot swap the generation between the two.
+        # refresh cannot swap the bundle between the two.
         asset_name, asset_path = next(iter(paths.items()))
         return Path(asset_path).parents[len(Path(asset_name).parts) - 1]
 

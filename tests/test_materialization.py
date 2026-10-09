@@ -1,4 +1,4 @@
-"""Caller-built generations, private retained inputs, and raw gzip dependencies."""
+"""Caller-built bundles, private retained inputs, and raw gzip dependencies."""
 
 from concurrent.futures import ThreadPoolExecutor
 import gzip
@@ -16,7 +16,7 @@ import time
 import pytest
 
 from datacache import FileValidationError, inspect_bundle, inspect_materialization, materialize
-from datacache import download, materialization as module
+from datacache import bundle_store, download, materialization as module
 from datacache.resume import _state_directory
 
 pytestmark = pytest.mark.skipif(os.name != 'posix', reason='POSIX materialization locks')
@@ -76,7 +76,7 @@ def test_transaction_receipt_cleanup_and_immutable_paths(tmp_path, sources, outp
     record = state.sources['dna.fa.gz']
     assert record['verified'] is True
     assert {key: record[key] for key in ('sha256', 'size')} == metadata(COMPRESSED)
-    receipt = json.loads((Path(state.generation) / module.MANIFEST).read_text())
+    receipt = json.loads((Path(state.bundle) / module.MANIFEST).read_text())
     assert receipt['definition']['transform'] == TRANSFORM
     assert set(receipt['outputs']) == set(outputs)
     assert Path(sources['dna.fa.gz']['path']).read_bytes() == COMPRESSED
@@ -103,8 +103,9 @@ def test_readonly_offline_hit_never_touches_sources(tmp_path, sources, outputs, 
         os.chmod(path, 0o555 if path.is_dir() else 0o444)
     try:
         monkeypatch.setattr(download, 'fetch_file', forbidden)
-        monkeypatch.setattr(module, 'file_lock', forbidden)
+        monkeypatch.setattr(bundle_store.BundleStore, 'lock', forbidden)
         monkeypatch.setattr(module, 'write_json', forbidden)
+        monkeypatch.setattr(bundle_store, 'write_json', forbidden)
         monkeypatch.setattr(Path, 'mkdir', forbidden)
         assert install(store, sources, outputs, builder=forbidden) == paths
         assert inspected(store, sources, outputs).verified
@@ -116,15 +117,15 @@ def test_readonly_offline_hit_never_touches_sources(tmp_path, sources, outputs, 
             os.chmod(path, mode)
 
 
-@pytest.mark.parametrize('failure', ['builder', 'keyboard', 'last-output', 'validation', 'rename', 'pointer'])
+@pytest.mark.parametrize('failure', ['builder', 'keyboard', 'last-output', 'validation', 'rename'])
 def test_failed_refresh_preserves_old_and_keeps_complete_input(tmp_path, sources, outputs, monkeypatch, failure):
     store = tmp_path / 'dna'
     old_paths = install(store, sources, outputs)
-    old_pointer = (store / module.CURRENT).read_bytes()
+    old_bundle = inspect_materialization(store).bundle
 
     def failing_build(inputs, targets):
         build(inputs, targets)
-        assert (store / module.CURRENT).read_bytes() == old_pointer
+        assert inspect_materialization(store).bundle == old_bundle
         if failure == 'builder':
             raise RuntimeError('biological validation failed')
         if failure == 'keyboard':
@@ -134,62 +135,42 @@ def test_failed_refresh_preserves_old_and_keeps_complete_input(tmp_path, sources
         if failure == 'validation':
             Path(targets['index/info.json']).write_bytes(b'wrong')
 
-    original_replace, original_write = module.os.replace, module.write_json
+    original_replace = module.os.replace
     if failure == 'rename':
         def fail_replace(source, target):
-            if Path(target).parent.name == 'generations':
-                raise OSError('generation rename failed')
+            if Path(target).parent.name == 'bundles':
+                raise OSError('bundle rename failed')
             return original_replace(source, target)
         monkeypatch.setattr(module.os, 'replace', fail_replace)
-    if failure == 'pointer':
-        def fail_write(path, value, **options):
-            if Path(path).name == module.CURRENT:
-                raise OSError('pointer failed')
-            return original_write(path, value, **options)
-        monkeypatch.setattr(module, 'write_json', fail_write)
     with pytest.raises((RuntimeError, KeyboardInterrupt, FileValidationError, OSError)):
         install(store, sources, outputs, builder=failing_build, force=True)
-    assert (store / module.CURRENT).read_bytes() == old_pointer
+    assert inspect_materialization(store).bundle == old_bundle
     assert inspected(store, sources, outputs).verified
     assert all(Path(path).exists() for path in old_paths.values())
     assert (input_dir(store) / 'dna.fa.gz').read_bytes() == COMPRESSED
     assert not list(store.glob('.staging-*'))
     Path(sources['dna.fa.gz']['path']).unlink()
     monkeypatch.setattr(module.os, 'replace', original_replace)
-    monkeypatch.setattr(module, 'write_json', original_write)
     assert install(store, sources, outputs, force=True) != old_paths
     assert not list(store.glob('.inputs-*'))
 
 
-def test_missing_pointer_recovers_locally_and_only_then_discards_inputs(tmp_path, sources, outputs, monkeypatch):
+def test_outputs_are_installed_once_renamed(tmp_path, sources, outputs, monkeypatch):
     store = tmp_path / 'dna'
-    original = module.write_json
-    def interrupted(path, value, **options):
-        if Path(path).name == module.CURRENT:
+    replace = os.replace
+    def interrupted(source, target):
+        replace(source, target)
+        if Path(target).parent == store / 'bundles':
             raise KeyboardInterrupt
-        return original(path, value, **options)
-    monkeypatch.setattr(module, 'write_json', interrupted)
+    monkeypatch.setattr(os, 'replace', interrupted)
     with pytest.raises(KeyboardInterrupt):
         install(store, sources, outputs)
-    assert inspected(store, sources, outputs).status == 'recovery-required'
-    assert (input_dir(store) / 'dna.fa.gz').exists()
+    monkeypatch.setattr(os, 'replace', replace)
     Path(sources['dna.fa.gz']['path']).unlink()
-    monkeypatch.setattr(module, 'write_json', original)
     monkeypatch.setattr(download, 'fetch_file', forbidden)
     paths = install(store, sources, outputs, builder=forbidden)
     assert Path(paths['dna.fa']).read_bytes() == DATA
     assert inspected(store, sources, outputs).verified
-    assert not list(store.glob('.inputs-*'))
-
-
-def test_recovery_always_hashes_outputs_even_with_fast_hit_flag(tmp_path, sources, outputs):
-    store = tmp_path / 'dna'
-    paths = install(store, sources, outputs, retain_sources=True)
-    (store / module.CURRENT).unlink()
-    Path(paths['dna.fa']).write_bytes(b'x' * len(DATA))
-    repaired = install(store, sources, outputs, verify_files=False)
-    assert repaired != paths
-    assert Path(repaired['dna.fa']).read_bytes() == DATA
 
 
 @pytest.mark.parametrize('change', ['source', 'transform-version', 'transform-options', 'output-inventory'])
@@ -266,7 +247,7 @@ def test_unsafe_or_undeclared_builder_results_are_never_published(tmp_path, sour
     with pytest.raises(FileValidationError):
         install(store, sources, outputs, builder=unsafe)
     assert inspected(store, sources, outputs).status == 'missing'
-    assert list((store / 'generations').iterdir()) == []
+    assert list((store / 'bundles').iterdir()) == []
     assert Path(sources['dna.fa.gz']['path']).read_bytes() == COMPRESSED
 
 
@@ -291,7 +272,8 @@ def test_foreign_directory_never_adopted(tmp_path, sources, outputs, force):
     store = tmp_path / 'foreign'
     store.mkdir()
     (store / 'precious').write_text('keep')
-    with pytest.raises((FileValidationError, OSError)):
+    # Never a suggestion to use force=True, which can't help here.
+    with pytest.raises(FileValidationError, match='never taken over'):
         install(store, sources, outputs, force=force)
     assert (store / 'precious').read_text() == 'keep'
 
@@ -339,17 +321,17 @@ def test_same_artifact_serializes_but_unrelated_builders_can_run(tmp_path, sourc
     assert calls == [1]
 
 
-def test_reader_sees_whole_old_pair_until_pointer_publication(tmp_path, sources, outputs, monkeypatch):
+def test_reader_sees_whole_old_pair_until_the_new_bundle_is_renamed_in(tmp_path, sources, outputs, monkeypatch):
     store = tmp_path / 'dna'
     old = install(store, sources, outputs)
     entered, release = threading.Event(), threading.Event()
-    original = module.write_json
-    def paused(path, value, **options):
-        if Path(path).name == module.CURRENT:
+    replace = os.replace
+    def paused(source, target):
+        if Path(target).parent == store / 'bundles':
             entered.set()
             assert release.wait(8)
-        return original(path, value, **options)
-    monkeypatch.setattr(module, 'write_json', paused)
+        return replace(source, target)
+    monkeypatch.setattr(os, 'replace', paused)
     with ThreadPoolExecutor() as pool:
         future = pool.submit(install, store, sources, outputs, force=True)
         assert entered.wait(8)
@@ -426,7 +408,7 @@ def test_resume_gzip_and_record_validated_transport(server, tmp_path, outputs, t
     assert record['verified'] is trusted
     assert record['transport'] == {'header': 'ETag', 'value': '"dna-110"'}
     assert record['origin'] == url.split('?')[0]
-    assert 'secret' not in (Path(state.generation) / module.MANIFEST).read_text()
+    assert 'secret' not in (Path(state.bundle) / module.MANIFEST).read_text()
     assert not list(store.glob('.inputs-*'))
 
 
@@ -516,11 +498,12 @@ def test_invalid_options_fail_before_creating_store(tmp_path, sources, outputs, 
 def test_fast_reuse_does_not_hash_payloads(tmp_path, sources, outputs, monkeypatch):
     store = tmp_path / 'dna'
     paths = install(store, sources, outputs)
-    original = module._observe
+    original = bundle_store.hash_file
     def no_hash(*args, **options):
-        assert options.get('verify_files') is False
+        assert options.get('hash_contents') is False
         return original(*args, **options)
-    monkeypatch.setattr(module, '_observe', no_hash)
+    monkeypatch.setattr(bundle_store, 'hash_file', no_hash)
+    monkeypatch.setattr(module, 'hash_file', no_hash)
     assert install(store, sources, outputs, verify_files=False, builder=forbidden) == paths
 
 
@@ -529,12 +512,12 @@ def test_input_hash_failure_and_bad_final_output_never_publish(tmp_path, sources
     sources['dna.fa.gz']['sha256'] = '0' * 64
     with pytest.raises(FileValidationError):
         install(store, sources, outputs, verify_files=False)
-    assert not list((store / 'generations').iterdir())
+    assert not list((store / 'bundles').iterdir())
     sources['dna.fa.gz'].update(metadata(COMPRESSED))
     outputs['dna.fa']['sha256'] = '0' * 64
     with pytest.raises(FileValidationError):
         install(store, sources, outputs, verify_files=False)
-    assert not list((store / 'generations').iterdir())
+    assert not list((store / 'bundles').iterdir())
 
 
 def test_source_file_url_is_private_copy_and_not_deleted(tmp_path, sources, outputs):
@@ -782,21 +765,6 @@ def unpinned_outputs():
     return {'dna.fa': {}, 'index/info.json': {}}
 
 
-def test_recovery_picks_the_newest_generation_not_the_highest_name(tmp_path):
-    source, sources = unpinned(tmp_path, DATA)
-    store = tmp_path / 'dna'
-    older = Path(install(store, sources, unpinned_outputs())['dna.fa']).parent
-    source.write_bytes(gzip.compress(b'>chr1\nTTTTTTTT\n', mtime=0))
-    newer = Path(install(store, sources, unpinned_outputs(), force=True)['dna.fa']).parent
-    # Names are random: make the older generation's name sort highest.
-    older.rename(store / 'generations' / ('f' * 32))
-    newer.rename(store / 'generations' / ('0' * 32))
-    (store / module.CURRENT).unlink()
-    recovered = install(store, sources, unpinned_outputs())
-    assert Path(recovered['dna.fa']).parent.name == '0' * 32
-    assert Path(recovered['dna.fa']).read_bytes() == b'>chr1\nTTTTTTTT\n'
-
-
 def test_forced_refresh_copies_an_edited_local_source_again(tmp_path):
     source, sources = unpinned(tmp_path, DATA)
     store = tmp_path / 'dna'
@@ -812,10 +780,9 @@ def test_force_repairs_a_corrupt_private_input_receipt(tmp_path, sources, output
     import shutil
     store = tmp_path / 'dna'
     install(store, sources, outputs, retain_sources=True)
-    # No generations left, so the next call has to acquire inputs again.
-    (store / module.CURRENT).unlink()
-    for generation in (store / 'generations').iterdir():
-        shutil.rmtree(generation)
+    # No bundles left, so the next call has to acquire inputs again.
+    for bundle in (store / 'bundles').iterdir():
+        shutil.rmtree(bundle)
     (input_dir(store) / module.INPUTS).write_text('{')
     with pytest.raises(FileValidationError, match='use force=True to repair'):
         install(store, sources, outputs)
@@ -823,10 +790,9 @@ def test_force_repairs_a_corrupt_private_input_receipt(tmp_path, sources, output
     assert Path(paths['dna.fa']).read_bytes() == DATA
 
 
-def test_force_rebuilds_instead_of_recovering_a_lost_pointer(tmp_path, sources, outputs):
+def test_force_always_rebuilds(tmp_path, sources, outputs):
     store = tmp_path / 'dna'
     old = install(store, sources, outputs)
-    (store / module.CURRENT).unlink()
     built = []
 
     def counting_build(inputs, targets):
@@ -835,8 +801,7 @@ def test_force_rebuilds_instead_of_recovering_a_lost_pointer(tmp_path, sources, 
 
     new = install(store, sources, outputs, builder=counting_build, force=True)
     assert built == [True] and new != old
-    (store / module.CURRENT).unlink()
-    assert install(store, sources, outputs, builder=counting_build) == new  # Plain call recovers.
+    assert install(store, sources, outputs, builder=counting_build) == new
     assert built == [True]
 
 
@@ -858,14 +823,15 @@ def test_forced_refresh_does_not_hash_the_old_outputs(tmp_path, sources, outputs
 @pytest.mark.parametrize('builder_fails', [True, False])
 def test_cleanup_failure_never_masks_the_outcome(tmp_path, sources, outputs, monkeypatch, caplog, builder_fails):
     store = tmp_path / 'dna'
-    original = module.shutil.rmtree
+    import shutil
+    original = shutil.rmtree
 
     def failing_rmtree(path, *args, **kwargs):
         if Path(path).name.startswith('.staging-'):
             raise OSError('busy')
         return original(path, *args, **kwargs)
 
-    monkeypatch.setattr(module.shutil, 'rmtree', failing_rmtree)
+    monkeypatch.setattr(shutil, 'rmtree', failing_rmtree)
 
     def failing_build(inputs, targets):
         raise RuntimeError('builder failed')
@@ -875,4 +841,4 @@ def test_cleanup_failure_never_masks_the_outcome(tmp_path, sources, outputs, mon
             install(store, sources, outputs, builder=failing_build)
     else:
         assert Path(install(store, sources, outputs)['dna.fa']).read_bytes() == DATA
-    assert 'Could not remove the staging directory' in caplog.text
+    assert 'Could not remove the working directory' in caplog.text
