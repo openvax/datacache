@@ -28,7 +28,7 @@ from .bundle_store import (
     hash_file, list_tree, local_file_identity, private_directory, source_fingerprint, validate_distinct_paths,
     validate_file_record, validate_path_component, validate_relative_name,
 )
-from .download import normal_creation_mode, validate_download_options
+from .download import normal_creation_mode, validate_download_options, validate_limit, validate_size_within_limit
 from .integrity import FileValidationError, _validate_expectations
 from .provenance import redact_url
 
@@ -404,10 +404,6 @@ def _extract_tar(
         raise FileValidationError(archive_path, "invalid tar archive: %s" % error) from error
 
 
-def _validate_limit(name, value):
-    if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 0):
-        raise ValueError("%s must be a non-negative integer" % name)
-
 
 def _working_key(definition):
     serializable = {
@@ -497,12 +493,16 @@ def install_archive(
     """
     if not isinstance(force, bool) or not isinstance(verified, bool):
         raise ValueError("force and verified must be booleans")
-    _validate_limit("max_members", max_members)
-    _validate_limit("max_extracted_size", max_extracted_size)
+    validate_limit("max_members", max_members)
+    validate_limit("max_extracted_size", max_extracted_size)
     definition = _definition(
         sources, expected_sha256, expected_size, extra_files,
         require_verified=verified)
     options = validate_download_options(download_options, "archive")
+    for index, source in enumerate(definition["sources"]):
+        if source["path"] is None:
+            size = _part_expectations(definition, index)[1]
+            validate_size_within_limit(size, options.get("max_bytes"), "part %d size" % index)
     if options.get("resume"):
         # Check before creating anything: a resumable install keeps its staging.
         from .resume import validate_resume
@@ -629,8 +629,8 @@ class VersionedArchiveRegistry:
                         raise ValueError("unknown archive version options: %s" % sorted(unknown))
                 else:
                     options = {"sources": value}
-                _validate_limit("max_members", options.get("max_members"))
-                _validate_limit("max_extracted_size", options.get("max_extracted_size"))
+                validate_limit("max_members", options.get("max_members"))
+                validate_limit("max_extracted_size", options.get("max_extracted_size"))
                 definition = _definition(
                     options["sources"], options.get("expected_sha256"),
                     options.get("expected_size"), options.get("extra_files"),

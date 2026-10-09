@@ -181,6 +181,52 @@ restart. The same `timeout` is passed to each request; Requests timeouts govern
 connection/read inactivity, not an overall elapsed-time deadline. Retry count
 and waiting time are bounded independently of the transfer duration.
 
+## Byte limits
+
+Use `max_bytes` when a download's exact size isn't known yet but its largest
+acceptable size is, for example to keep a first download of a metadata file
+within a disk budget:
+
+```python
+from datacache import fetch_file
+
+path = fetch_file(
+    "https://data.example.org/inventory.tsv",
+    destination=cache / "inventory.tsv",
+    raw=True,
+    max_bytes=30 * 2 ** 20,  # Refuse anything over 30 MiB.
+)
+```
+
+The limit is checked before every write, so no file this fetch writes ever
+holds more than `max_bytes` bytes:
+
+- The download is the body after HTTP transfer decoding, such as gzip
+  `Content-Encoding`, counted as it arrives, so it holds whether or not the
+  server sends `Content-Length`. A `Content-Length` over the limit is refused
+  before the body is read, unless chunked transfer makes it meaningless.
+- With `decompress=True`, the installed file is limited too, so a download and
+  its decompressed file together never need more than twice `max_bytes`. The
+  compressed download must fit as well; leave room for it when the data
+  barely compresses.
+- A larger transfer raises `FileValidationError` and isn't retried. Any
+  existing file stays as it was, and temporary files are removed.
+- Cache hits write nothing, so the limit doesn't apply to them.
+
+`expected_size` keeps its exact meaning and must not exceed `max_bytes`.
+HTML-to-CSV conversion can't be bounded while it writes, so `max_bytes`
+rejects it; pass `raw=True` to keep the HTML itself. Like other options that
+can't work together, these raise `ValueError` before anything else, cache hits
+included. `max_bytes=0` needs `allow_empty=True`.
+
+`fetch_bytes` accepts `max_bytes` for bodies held in memory: the result never
+grows past it, and the body is read in chunks no larger than the limit.
+`install_bundle`, `install_archive` and `materialize` accept it in
+`download_options` for each download they make, and check every size they
+already know against it before creating anything.
+This works the same on every platform, unlike `resume=True`, which needs a
+POSIX filesystem.
+
 ## Small metadata and freshness
 
 `fetch_bytes` returns a resource's bytes in memory with the same transport,

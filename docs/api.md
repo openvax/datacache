@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.20.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.21.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -73,9 +73,9 @@ fetch_file(
     download_url, filename=None, decompress=False, subdir=None, force=False,
     timeout=None, use_wget_if_available=None, chunk_size=1048576,
     progress_callback=None, *, destination=None, cache_root=None, expected_sha256=None,
-    expected_size=None, max_retries=2, retry_backoff=1.0, retry_max_delay=30.0,
-    show_progress=False, record_provenance=False, allow_empty=False, resume=False,
-    raw=False, expire_after=None, return_stale_on_error=False, validator=None
+    expected_size=None, max_bytes=None, max_retries=2, retry_backoff=1.0,
+    retry_max_delay=30.0, show_progress=False, record_provenance=False, allow_empty=False,
+    resume=False, raw=False, expire_after=None, return_stale_on_error=False, validator=None
 )
 ```
 
@@ -101,6 +101,7 @@ replacement leaves the previous file intact.
 | `cache_root` | Exact directory containing cached files, as a string or `Path`. Overrides `subdir`; relative roots stay relative to the working directory. |
 | `expected_sha256` | Optional trusted 64-character hexadecimal SHA-256 digest of the **installed bytes**, after decompression or conversion. Case-insensitive. |
 | `expected_size` | Optional non-negative integer size of those installed bytes; booleans are rejected. |
+| `max_bytes` | Optional non-negative integer: the most bytes any file this fetch writes may hold, checked before every write. It bounds the download (the body after HTTP transfer decoding, such as gzip `Content-Encoding`, whatever `Content-Length` says) and the installed file after `decompress=True`. A larger transfer raises `FileValidationError` without retrying, keeps any existing file and removes temporary files. Cache hits write nothing and are unaffected. `expected_size` must not exceed it; HTML-to-CSV conversion can't be bounded. See [byte limits](downloads.md#byte-limits). |
 | `max_retries` | Non-negative integer number of additional attempts after transient HTTP failures. Default `2` allows three total attempts; `0` disables retries. File and FTP downloads are not retried. |
 | `retry_backoff` | Initial retry delay in seconds, doubled for subsequent retries. Must be finite and non-negative. |
 | `retry_max_delay` | Maximum retry delay in seconds, finite and non-negative. A server `Retry-After` exceeding this limit stops retries. |
@@ -125,7 +126,7 @@ See [format selection](downloads.md#verified-downloads) and
 relative `destination` or `cache_root`.
 
 **Raises:** `ValueError` for conflicting paths or invalid expectations,
-chunk size, retry options, callback, or progress flag;
+chunk size, byte limit, retry options, callback, or progress flag;
 [`FileValidationError`](#filevalidationerror) for non-regular files or integrity
 mismatches; `OSError` subclasses for filesystem failures; Requests exceptions
 for HTTP failures; `urllib.error.URLError` for URL-handler failures; archive
@@ -161,7 +162,7 @@ assert fresh == path
 ```text
 fetch_bytes(
     download_url, *, timeout=None, max_retries=2, retry_backoff=1.0,
-    retry_max_delay=30.0, allow_empty=False
+    retry_max_delay=30.0, allow_empty=False, max_bytes=None
 )
 ```
 
@@ -175,9 +176,10 @@ cache is read-only.
 | `download_url` | Source URL string: HTTP, HTTPS, FTP, or `file://`. |
 | `timeout`, `max_retries`, `retry_backoff`, `retry_max_delay` | As for [fetch_file](#fetch_file). Only HTTP(S) transfers are retried. |
 | `allow_empty` | Boolean accepting an empty body; default `False`. An empty HTTP response is otherwise retried as transient, then rejected. |
+| `max_bytes` | Optional non-negative integer: the largest body to accept, after HTTP transfer decoding. Checked before each chunk is kept, so the returned bytes never grow past it, and the body is read in chunks no larger than the limit; a larger body raises `ValueError` without retrying. `0` requires `allow_empty=True`. |
 
-**Returns:** `bytes`. **Raises:** `ValueError` for invalid options or an empty
-body; Requests exceptions for HTTP failures, preserved after retry exhaustion;
+**Returns:** `bytes`. **Raises:** `ValueError` for invalid options, an empty
+body, or a body larger than `max_bytes`; Requests exceptions for HTTP failures, preserved after retry exhaustion;
 `urllib.error.URLError` for file and FTP failures.
 
 ```python
@@ -927,8 +929,8 @@ assert cache.cache_directory_path == str(root / "object-cache")
 Cache.fetch(
     url, filename=None, decompress=False, force=False, timeout=None,
     use_wget_if_available=None, *, chunk_size=1048576, progress_callback=None,
-    expected_sha256=None, expected_size=None, max_retries=2, retry_backoff=1.0,
-    retry_max_delay=30.0, show_progress=False, record_provenance=False,
+    expected_sha256=None, expected_size=None, max_bytes=None, max_retries=2,
+    retry_backoff=1.0, retry_max_delay=30.0, show_progress=False, record_provenance=False,
     allow_empty=False, resume=False, raw=False, expire_after=None, return_stale_on_error=False,
     validator=None
 )
@@ -1161,8 +1163,8 @@ and before publication. It is intended for consumer receipts such as
 `DOWNLOAD_INFO.csv`; collisions with archive content fail the installation.
 The complete metadata inventory is part of the archive's identity: additions,
 removals, and content changes require an explicit refresh.
-`download_options` accepts timeout, chunk size, progress, retry, and resume
-settings from `fetch_file`. Resumable URL parts each require a trusted hash and
+`download_options` accepts timeout, chunk size, progress, retry, resume, and
+`max_bytes` settings from `fetch_file`. Resumable URL parts each require a trusted hash and
 size. Optional `max_members` and `max_extracted_size` limits are checked before
 files are extracted, as headers arrive; scanning stops when a limit is exceeded.
 Benign leading `./` paths are normalized and root `.` directory entries ignored.
@@ -1265,7 +1267,7 @@ unpinned sources; their observed hashes are recorded without authenticating them
 checks readability, file types and recorded sizes but cannot detect same-size
 corruption. New bundles are always hashed before publication, regardless of
 this cache-hit setting.
-`download_options` accepts timeout, chunk size, progress, retry settings and resume.
+`download_options` accepts timeout, chunk size, progress, retry, resume and `max_bytes` settings.
 Publication requires a POSIX local filesystem. [Complete guide](bundles.md).
 
 ## inspect_bundle

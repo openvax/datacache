@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.21.0
+
+- Add `max_bytes` to `fetch_file`, `Cache.fetch` and `fetch_bytes`, and to
+  the `download_options` of `install_bundle`, `install_archive` and
+  `materialize`, for downloads whose exact size isn't known but whose largest
+  acceptable size is (#108). It is checked before every write, so no file a
+  fetch writes ever holds more: the download itself, which is the body after
+  HTTP transfer decoding whatever `Content-Length` says, and the installed file
+  after `decompress=True`. A `Content-Length` over the limit is refused before
+  the body is read. A larger transfer raises `FileValidationError` without
+  retrying, keeps any existing file and removes temporary files. It works on
+  every platform, unlike `resume=True`. `expected_size` keeps its exact
+  meaning and must not exceed `max_bytes`; HTML-to-CSV conversion can't be
+  bounded and is rejected with it. Installs check every size they already know
+  against `max_bytes` before creating anything.
+
 ## 1.20.0
 
 - Bundles, archive trees and materializations share one simple store layout,

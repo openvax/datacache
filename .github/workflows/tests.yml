@@ -72,5 +72,5 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[test]"
-      - name: Test cross-platform archive publication
-        run: python -m pytest -q tests/test_archives.py
+      - name: Test cross-platform archive publication and download byte limits
+        run: python -m pytest -q tests/test_archives.py tests/test_byte_limits.py

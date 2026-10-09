@@ -17,7 +17,7 @@ from .bundle_store import (
     parent_directories, require_directory, validate_distinct_paths, validate_file_record,
     validate_no_sidecar_collisions, validate_relative_name,
 )
-from .download import normal_creation_mode, validate_download_options
+from .download import normal_creation_mode, validate_download_options, validate_size_within_limit
 from .integrity import FileValidationError, _validate_expectations
 from .progress import Progress
 from . import provenance
@@ -347,6 +347,10 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
     definition, acquisition = _definition(sources, transform, outputs)
     options = validate_download_options(download_options, 'materialization')
     options.setdefault('show_progress', True)
+    for name, (kind, source) in acquisition.items():
+        if kind == 'url':
+            validate_size_within_limit(definition['sources'][name]['size'], options.get('max_bytes'),
+                                       '%s size' % name)
     if options.get('resume'):
         from .resume import validate_resume
         for name, (kind, source) in acquisition.items():

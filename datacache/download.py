@@ -67,6 +67,49 @@ class EmptyResponse(Exception):
     """
 
 
+class MaxBytesExceeded(Exception):
+    """Writing more would make a file larger than the caller's max_bytes.
+
+    Never retried: the same request would deliver the same oversized bytes.
+    """
+
+
+def validate_limit(name, value):
+    """Raise ValueError unless value is None (no limit) or a non-negative integer."""
+    if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 0):
+        raise ValueError("%s must be a non-negative integer" % name)
+
+
+def validate_size_within_limit(size, max_bytes, what="expected_size"):
+    """Raise ValueError when a known size can never fit within max_bytes."""
+    if max_bytes is not None and size is not None and size > max_bytes:
+        raise ValueError("%s %d is larger than max_bytes %d" % (what, size, max_bytes))
+
+
+def refuse_if_over(size, max_bytes):
+    """Raise MaxBytesExceeded if size is more than max_bytes."""
+    if max_bytes is not None and size > max_bytes:
+        raise MaxBytesExceeded("more than max_bytes=%d bytes" % max_bytes)
+
+
+class LimitedWriter:
+    """A file that refuses any write that would take it past max_bytes.
+
+    The refused write raises MaxBytesExceeded before anything is written, so
+    the file never holds more than max_bytes bytes.
+    """
+
+    def __init__(self, file, max_bytes):
+        self.file = file
+        self.max_bytes = max_bytes
+        self.written = 0
+
+    def write(self, data):
+        refuse_if_over(self.written + len(data), self.max_bytes)
+        self.written += len(data)
+        return self.file.write(data)
+
+
 def _content_length(header_value):
     """Parse a Content-Length header value into an int, or None if it's
     absent or not a valid integer."""
@@ -84,7 +127,8 @@ def _stream_to_file(
         file_handle,
         timeout=None,
         chunk_size=DEFAULT_CHUNK_SIZE,
-        progress_callback=None):
+        progress_callback=None,
+        max_bytes=None):
     """
     Stream the contents of `download_url` into an already-open binary file
     handle, one chunk at a time, so the entire payload never has to be held in
@@ -99,9 +143,17 @@ def _stream_to_file(
     header (or None when the server doesn't report a size). This lets callers
     drive an application's own progress display instead of the built-in bar.
 
+    max_bytes, if given, is checked before each write, so no more than that
+    many bytes are ever written; a larger Content-Length is refused before
+    the body is read. Exceeding it raises MaxBytesExceeded.
+
     Returns the total number of bytes written.
     """
     bytes_downloaded = 0
+    if max_bytes is not None:
+        file_handle = LimitedWriter(file_handle, max_bytes)
+        # Never read, and so never decode, much more than the limit at once.
+        chunk_size = min(chunk_size, max_bytes + 1)
 
     def report(total_bytes):
         if progress_callback is not None:
@@ -117,6 +169,9 @@ def _stream_to_file(
             encoding = response.headers.get("Content-Encoding", "identity").lower()
             total_bytes = (_content_length(response.headers.get("Content-Length"))
                            if encoding == "identity" else None)
+            # Chunked transfer makes Content-Length meaningless (RFC 9112).
+            if "Transfer-Encoding" not in response.headers:
+                refuse_if_over(total_bytes or 0, max_bytes)
             for chunk in response.iter_content(chunk_size=chunk_size):
                 if not chunk:
                     # skip keep-alive chunks that carry no data
@@ -128,6 +183,7 @@ def _stream_to_file(
         req = urllib.request.Request(download_url)
         with urllib.request.urlopen(req, data=None, timeout=timeout) as response:
             total_bytes = _content_length(response.headers.get("Content-Length"))
+            refuse_if_over(total_bytes or 0, max_bytes)
             while True:
                 chunk = response.read(chunk_size)
                 if not chunk:
@@ -191,7 +247,8 @@ def _download_to_temp_file(
         retry_backoff=DEFAULT_RETRY_BACKOFF,
         retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
         show_progress=False,
-        allow_empty=True):
+        allow_empty=True,
+        max_bytes=None):
 
     retry_backoff, retry_max_delay = validate_retry_options(max_retries, retry_backoff, retry_max_delay)
     if not download_url:
@@ -223,7 +280,8 @@ def _download_to_temp_file(
                     tmp,
                     timeout=timeout,
                     chunk_size=chunk_size,
-                    progress_callback=report if progress_callback is not None or show_progress else None)
+                    progress_callback=report if progress_callback is not None or show_progress else None,
+                    max_bytes=max_bytes)
                 if count == 0:
                     progress(0, 0)
                     if not allow_empty:
@@ -246,7 +304,8 @@ def fetch_bytes(
         max_retries=DEFAULT_MAX_RETRIES,
         retry_backoff=DEFAULT_RETRY_BACKOFF,
         retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
-        allow_empty=False):
+        allow_empty=False,
+        max_bytes=None):
     """
     Return a remote resource's bytes in memory, transferred and retried
     exactly as fetch_file downloads are. Nothing is written to disk.
@@ -269,7 +328,14 @@ def fetch_bytes(
         Accept an empty body, default False. An empty HTTP response is
         otherwise retried as transient, then rejected with ValueError.
 
-    Raises ValueError for invalid options or an empty body; Requests
+    max_bytes : int, optional
+        The largest body to accept, after HTTP transfer decoding. It is
+        checked before each chunk is kept, so the returned bytes never grow
+        past it, and the body is read in chunks no larger than the limit. A
+        larger body raises ValueError without retrying. Default None: no limit.
+
+    Raises ValueError for invalid options, an empty body or one larger than
+    max_bytes; Requests
     exceptions for HTTP failures, preserved after retry exhaustion; and
     urllib.error.URLError for file and FTP failures.
     """
@@ -278,10 +344,13 @@ def fetch_bytes(
         raise ValueError("URL not provided")
     if not isinstance(allow_empty, bool):
         raise ValueError("allow_empty must be a boolean")
+    validate_limit("max_bytes", max_bytes)
+    if max_bytes == 0 and not allow_empty:
+        raise ValueError("max_bytes=0 allows only an empty body; pass allow_empty=True")
 
     def attempt():
         buffer = io.BytesIO()
-        _stream_to_file(download_url, buffer, timeout=timeout)
+        _stream_to_file(download_url, buffer, timeout=timeout, max_bytes=max_bytes)
         if not buffer.getbuffer().nbytes and not allow_empty:
             raise EmptyResponse("the transfer delivered no bytes")
         return buffer.getvalue()
@@ -294,6 +363,8 @@ def fetch_bytes(
         raise ValueError(
             "%s returned no bytes; pass allow_empty=True if an empty body is expected"
             % provenance.redact_url(download_url)) from error
+    except MaxBytesExceeded as error:
+        raise ValueError("%s returned %s" % (provenance.redact_url(download_url), error)) from error
 
 
 def _open_staging_file(directory=None, prefix=".datacache-", suffix="", mode=0o600):
@@ -393,7 +464,9 @@ def _publish_file(staged_path, full_path, record=None):
             _remove_staging_file(staged_record)
 
 
-def _copy_with_progress(source, destination, show_progress, total=None):
+def _copy_with_progress(source, destination, show_progress, total=None, max_bytes=None):
+    if max_bytes is not None:
+        destination = LimitedWriter(destination, max_bytes)
     if not show_progress:
         return copyfileobj(source, destination)
     with Progress(True, "Decompressing", total) as progress:
@@ -451,7 +524,8 @@ def _download_and_decompress_if_necessary(
         show_progress=False,
         record_provenance=False,
         allow_empty=False,
-        validator=None):
+        validator=None,
+        max_bytes=None):
     """
     Download, transform and validate in sibling staging files, then publish
     with one atomic replace. Expectations always describe installed bytes.
@@ -482,6 +556,8 @@ def _download_and_decompress_if_necessary(
         html = download_url.endswith(("html", "htm")) and full_path.endswith(".csv")
     else:
         html = convert_html and source_suffix in (".html", ".htm") and output_suffix == ".csv"
+    if html and max_bytes is not None:
+        raise ValueError("max_bytes can't bound HTML-to-CSV conversion; use raw=True for the HTML itself")
     # expected_size=0 states that an empty file is the right result.
     reject_empty = not allow_empty and expected_size != 0
     try:
@@ -496,9 +572,12 @@ def _download_and_decompress_if_necessary(
             retry_backoff=retry_backoff,
             retry_max_delay=retry_max_delay,
             show_progress=show_progress,
-            allow_empty=not reject_empty)
+            allow_empty=not reject_empty,
+            max_bytes=max_bytes)
     except EmptyResponse as error:
         raise FileValidationError(full_path, "downloaded file is empty; pass allow_empty=True if an empty file is expected") from error
+    except MaxBytesExceeded as error:
+        raise FileValidationError(full_path, "download has %s" % error) from error
 
     staged_path = tmp_path
     try:
@@ -513,11 +592,12 @@ def _download_and_decompress_if_necessary(
                         raise ValueError("Empty zip archive")
                     # Never extract stored paths: stream one member's contents.
                     chosen = _choose_zip_member(infos, filename, warn=explicit_output is not False)
+                    refuse_if_over(chosen.file_size, max_bytes)
                     with z.open(chosen) as src, open(staged_path, "wb") as dst:
-                        _copy_with_progress(src, dst, show_progress, chosen.file_size)
+                        _copy_with_progress(src, dst, show_progress, chosen.file_size, max_bytes)
             elif gunzip:
                 with gzip.GzipFile(tmp_path) as src, open(staged_path, "wb") as dst:
-                    _copy_with_progress(src, dst, show_progress)
+                    _copy_with_progress(src, dst, show_progress, max_bytes=max_bytes)
             else:
                 import pandas as pd
                 df = pd.read_html(tmp_path, header=0)[0]
@@ -542,6 +622,9 @@ def _download_and_decompress_if_necessary(
             except OSError as error:
                 logger.debug("Could not describe provenance for %s: %s", full_path, error)
         _publish_file(staged_path, full_path, record)
+    except MaxBytesExceeded as error:
+        # Only decompression writes here; the download was limited above.
+        raise FileValidationError(full_path, "decompressed file has %s" % error) from error
     finally:
         if staged_path != tmp_path:
             _remove_staging_file(staged_path)
@@ -645,7 +728,7 @@ def file_exists(
 
 DOWNLOAD_OPTIONS = frozenset((
     "timeout", "chunk_size", "progress_callback", "show_progress",
-    "max_retries", "retry_backoff", "retry_max_delay", "resume"))
+    "max_retries", "retry_backoff", "retry_max_delay", "resume", "max_bytes"))
 
 
 def validate_download_options(options, kind):
@@ -661,6 +744,8 @@ def validate_download_options(options, kind):
     unsupported = set(options) - DOWNLOAD_OPTIONS
     if unsupported:
         raise ValueError("unsupported %s download options: %s" % (kind, sorted(unsupported)))
+    if options.get("max_bytes") == 0:
+        raise ValueError("max_bytes=0 allows only empty downloads")
     validate_transfer_settings(
         chunk_size=options.get("chunk_size", DEFAULT_CHUNK_SIZE),
         progress_callback=options.get("progress_callback"),
@@ -668,14 +753,16 @@ def validate_download_options(options, kind):
         resume=options.get("resume", False),
         max_retries=options.get("max_retries", DEFAULT_MAX_RETRIES),
         retry_backoff=options.get("retry_backoff", DEFAULT_RETRY_BACKOFF),
-        retry_max_delay=options.get("retry_max_delay", DEFAULT_RETRY_MAX_DELAY))
+        retry_max_delay=options.get("retry_max_delay", DEFAULT_RETRY_MAX_DELAY),
+        max_bytes=options.get("max_bytes"))
     return options
 
 
 def validate_transfer_settings(
         *, chunk_size, progress_callback, show_progress, resume,
-        max_retries, retry_backoff, retry_max_delay):
+        max_retries, retry_backoff, retry_max_delay, max_bytes=None):
     """Check fetch_file's transfer settings; return the retry delays as floats."""
+    validate_limit("max_bytes", max_bytes)
     if not isinstance(resume, bool):
         raise ValueError("resume must be a boolean")
     if not isinstance(show_progress, bool):
@@ -702,6 +789,7 @@ def fetch_file(
         cache_root=None,
         expected_sha256=None,
         expected_size=None,
+        max_bytes=None,
         max_retries=DEFAULT_MAX_RETRIES,
         retry_backoff=DEFAULT_RETRY_BACKOFF,
         retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
@@ -790,6 +878,19 @@ def fetch_file(
     expected_size : int, optional
         Expected non-negative byte count of the same installed bytes.
 
+    max_bytes : int, optional
+        The most bytes any file this fetch writes may hold, checked before
+        every write. It bounds the download itself, which is the body after
+        HTTP transfer decoding such as gzip Content-Encoding (whether or not
+        Content-Length is sent), and the installed file after decompress=True,
+        so allow for the compressed download too; together they never need
+        more than twice max_bytes. A larger transfer raises FileValidationError
+        without retrying: an existing file stays and temporary files are
+        removed. Cache hits write nothing and are unaffected. expected_size
+        must not be larger, and HTML-to-CSV conversion can't be bounded;
+        options that can't work together raise ValueError, even on a cache
+        hit. Default None: no limit.
+
     max_retries : int, optional
         Additional attempts after transient HTTP/transport failures, default 2.
         Set 0 to disable retries. File and FTP transfers are not retried.
@@ -871,7 +972,7 @@ def fetch_file(
     retry_backoff, retry_max_delay = validate_transfer_settings(
         chunk_size=chunk_size, progress_callback=progress_callback, show_progress=show_progress,
         resume=resume, max_retries=max_retries, retry_backoff=retry_backoff,
-        retry_max_delay=retry_max_delay)
+        retry_max_delay=retry_max_delay, max_bytes=max_bytes)
     if not isinstance(raw, bool):
         raise ValueError("raw must be a boolean")
     if raw and decompress:
@@ -880,6 +981,9 @@ def fetch_file(
         from .resume import validate_resume
         validate_resume(download_url, expected_sha256, expected_size)
     _validate_expectations(expected_sha256, expected_size)
+    validate_size_within_limit(expected_size, max_bytes)
+    if max_bytes == 0 and not allow_empty and expected_size != 0:
+        raise ValueError("max_bytes=0 allows only an empty file; pass allow_empty=True")
     if not isinstance(record_provenance, bool):
         raise ValueError("record_provenance must be a boolean")
     if not isinstance(allow_empty, bool):
@@ -909,6 +1013,8 @@ def fetch_file(
         decompress or (explicit_output and output_suffix != source_suffix))
     html_conversion = (not raw and explicit_output and source_suffix in (".htm", ".html")
                        and output_suffix == ".csv")
+    if html_conversion and max_bytes is not None:
+        raise ValueError("max_bytes can't bound HTML-to-CSV conversion; use raw=True for the HTML itself")
     if resume and (decompress or
                    (source_suffix in (".gz", ".zip") and archive_decompression) or
                    html_conversion):
@@ -985,7 +1091,8 @@ def fetch_file(
                 show_progress=show_progress,
                 record_provenance=record_provenance,
                 allow_empty=allow_empty,
-                validator=validator)
+                validator=validator,
+                max_bytes=max_bytes)
     except Exception as error:
         if not return_stale_on_error or any(error is cancel for cancel in callback_errors):
             raise

@@ -119,6 +119,7 @@ class Cache:
             progress_callback=None,
             expected_sha256=None,
             expected_size=None,
+            max_bytes=None,
             max_retries=download.DEFAULT_MAX_RETRIES,
             retry_backoff=download.DEFAULT_RETRY_BACKOFF,
             retry_max_delay=download.DEFAULT_RETRY_MAX_DELAY,
@@ -142,6 +143,8 @@ class Cache:
         record_provenance=True records where the file came from, for
         inspect_file, as described for fetch_file.
         allow_empty=True accepts an empty file, which is otherwise rejected.
+        max_bytes bounds every file the fetch writes, as described for
+        fetch_file.
         raw=True disables decompression and HTML conversion even for an explicit
         filename. It cannot be combined with decompress=True. Resume options
         have the same size, hash, and strong-ETag requirements as fetch_file.
@@ -166,6 +169,7 @@ class Cache:
             progress_callback=progress_callback,
             expected_sha256=expected_sha256,
             expected_size=expected_size,
+            max_bytes=max_bytes,
             max_retries=max_retries,
             retry_backoff=retry_backoff,
             retry_max_delay=retry_max_delay,

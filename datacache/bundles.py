@@ -16,7 +16,7 @@ from .bundle_store import (
     require_directory, source_fingerprint, validate_distinct_paths, validate_no_sidecar_collisions,
     validate_path_component, validate_relative_name,
 )
-from .download import normal_creation_mode, validate_download_options
+from .download import normal_creation_mode, validate_download_options, validate_size_within_limit
 from .integrity import FileValidationError, _validate_expectations
 from .provenance import redact_url
 
@@ -156,6 +156,8 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
         raise ValueError('verified, force and verify_files must be booleans')
     expected = _assets(assets, verified)
     options = validate_download_options(download_options, 'bundle')
+    for name, spec in expected.items():
+        validate_size_within_limit(spec['size'], options.get('max_bytes'), '%s size' % name)
     if options.get('resume'):
         # Check before creating anything: a resumable install keeps its staging.
         from .resume import validate_resume
