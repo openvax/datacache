@@ -33,7 +33,7 @@ from .common import (
     build_local_filename
 )
 from .cache import Cache
-from .resume import discard_partial
+from .resume import CannotResume, discard_partial
 from .bundles import BundleInspection, VersionedDatasetRegistry, inspect_bundle, install_bundle
 from .bundle_store import list_bundles, prune_bundles
 from .archives import (
@@ -47,6 +47,7 @@ __all__ = [
     'fetch_file',
     'fetch_bytes',
     'discard_partial',
+    'CannotResume',
     'BundleInspection',
     'MaterializationInspection',
     'inspect_materialization',

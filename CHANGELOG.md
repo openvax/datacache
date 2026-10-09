@@ -9,6 +9,20 @@
   platform cache directory. Empty folders and files operating systems leave
   behind don't count as data. This replaces the root resolvers several OpenVax
   packages keep. The shared-caches guide shows the pattern.
+- Drop the `typechecks` dependency: three small checks in the SQLite code
+  replace it, raising the same `TypeError`s. One fewer package to install for
+  libraries that only download.
+- `fetch_file(..., resume="auto")`, also accepted by `Cache.fetch` and the
+  installs' `download_options`, resumes interrupted transfers when it can and
+  otherwise downloads normally: on Windows, without a known size, with
+  decompression or a validator, or when the server turns out not to support
+  resuming (the partial is discarded and the file downloaded in full). This
+  replaces `os.name` checks and error-message matching downstream.
+  `resume=True` still raises in those cases, now with `CannotResume`, a new
+  `FileValidationError` subclass exported from `datacache`, when the server
+  or the destination's filesystem is the reason. With `"auto"`, installs keep
+  partial downloads between attempts only when every file is pinned by hash
+  and size.
 
 ## 1.23.0
 

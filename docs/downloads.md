@@ -354,6 +354,21 @@ New integrations should use the public download and inspection APIs.
 
 ## Resumable HTTP downloads
 
+The simplest choice is `resume="auto"`: it resumes interrupted transfers when
+it can, and otherwise downloads normally. That covers Windows, a size that
+isn't known, decompression, a `validator`, and a server that turns out not to
+support resuming, or a filesystem that can't hold private resume state or
+locks; the partial is then discarded and the file downloaded in full. No
+`os.name` checks or error-message matching are needed. Learning that a server
+can't resume costs one extra request, whose body isn't read:
+
+```python
+path = fetch_file(url, destination=dest, raw=True, expected_size=size, resume="auto")
+```
+
+The rest of this section describes `resume=True`, which instead raises
+whenever resuming isn't possible.
+
 Use `fetch_file(..., resume=True, expected_sha256=sha256, expected_size=size)`
 (or the same options on `Cache.fetch`) for large immutable raw HTTP/HTTPS files.
 `expected_size` is required. Prefer a trusted `expected_sha256` when available.

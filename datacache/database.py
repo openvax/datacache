@@ -18,9 +18,29 @@ import string
 from pathlib import Path
 from itertools import chain, islice
 
-from typechecks import require_integer, require_string, require_iterable_of
-
 from .progress import Progress
+
+
+def require_integer(value, name):
+    """Raise TypeError unless value is an int."""
+    if not isinstance(value, int):
+        raise TypeError("%s: expected an integer, got %r" % (name, value))
+
+
+def require_string(value, name):
+    """Raise TypeError unless value is a str."""
+    if not isinstance(value, str):
+        raise TypeError("%s: expected a string, got %r" % (name, value))
+
+
+def require_iterable_of(values, types, name="values"):
+    """Raise TypeError unless values is iterable and every item is one of types."""
+    try:
+        wrong = [value for value in values if not isinstance(value, types)]
+    except TypeError:
+        raise TypeError("%s: expected an iterable, got %r" % (name, values)) from None
+    if wrong:
+        raise TypeError("%s: expected items of type %s, got %r" % (name, types, wrong[0]))
 
 
 logger = logging.getLogger(__name__)

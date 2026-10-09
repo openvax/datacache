@@ -17,7 +17,7 @@ explain the longer workflows and compatibility guarantees.
 | Downloading | [fetch_file](#fetch_file), [fetch_bytes](#fetch_bytes), [fetch_csv_dataframe](#fetch_csv_dataframe), [fetch_and_transform](#fetch_and_transform), [discard_partial](#discard_partial) |
 | Paths and presence | [expected_path](#expected_path), [file_exists](#file_exists), [build_local_filename](#build_local_filename), [get_data_dir](#get_data_dir), [get_cache_root](#get_cache_root), [resolve_path](#resolve_path), [build_path](#build_path), [ensure_dir](#ensure_dir), [clear_cache](#clear_cache) |
 | Integrity and permissions | [validate_file](#validate_file), [inspect_file](#inspect_file), [inspect_files](#inspect_files), [make_file_readable](#make_file_readable) |
-| Results and exceptions | [FileInspection](#fileinspection), [CacheInspection](#cacheinspection), [FileValidationError](#filevalidationerror) |
+| Results and exceptions | [FileInspection](#fileinspection), [CacheInspection](#cacheinspection), [FileValidationError](#filevalidationerror), [CannotResume](#cannotresume) |
 | SQLite | [db_from_dataframe](#db_from_dataframe), [db_from_dataframes](#db_from_dataframes), [db_from_dataframes_with_absolute_path](#db_from_dataframes_with_absolute_path), [fetch_csv_db](#fetch_csv_db), [connect_if_correct_version](#connect_if_correct_version) |
 | Cache object | [Cache](#cache), [fetch](#cachefetch), [local_filename](#cachelocal_filename), [local_path](#cachelocal_path), [exists](#cacheexists), [inspect](#cacheinspect), [make_readable](#cachemake_readable), [db_from_dataframe](#cachedb_from_dataframe), [delete_url](#cachedelete_url), [delete_all](#cachedelete_all) |
 | Complete archive trees | [install_archive](#install_archive), [inspect_archive](#inspect_archive), [ArchiveInspection](#archiveinspection), [VersionedArchiveRegistry](#versionedarchiveregistry) |
@@ -107,7 +107,7 @@ replacement leaves the previous file intact.
 | `retry_backoff` | Initial retry delay in seconds, doubled for subsequent retries. Must be finite and non-negative. |
 | `retry_max_delay` | Maximum retry delay in seconds, finite and non-negative. A server `Retry-After` exceeding this limit stops retries. |
 | `show_progress` | Boolean enabling tqdm download, decompression, and hash bars. tqdm is installed with datacache; no extra is needed. Displays are opt-in and cache hits are quiet. |
-| `resume` | Boolean retaining private partials for raw HTTP transfers. Requires size and a POSIX local filesystem. Without an expected SHA-256, every accepted response must supply a strong ETag. Size-only cache hits check only byte count. See [resumable downloads](downloads.md#resumable-http-downloads). |
+| `resume` | `True`, `False` or `"auto"`, retaining private partials for raw HTTP transfers. `"auto"` resumes whenever it can and otherwise downloads normally, including when the server turns out not to support resuming (no strong ETag, encoded responses); `True` raises in those cases. Requires size and a POSIX local filesystem. Without an expected SHA-256, every accepted response must supply a strong ETag. Size-only cache hits check only byte count. See [resumable downloads](downloads.md#resumable-http-downloads). |
 | `record_provenance` | Boolean; after publishing a download, also write a hidden `.<name>.datacache.json` record of the source URL (without user name, password, query string, or fragment; the path is kept as is, so avoid recording URLs with secrets in their path), the fetch time, the size, and the SHA-256 when `expected_sha256` verified it. [inspect_file](#inspect_file) reports these offline. The record has the file's permissions. Default `False`: a caller that downloads to a temporary name and then moves the file would leave the record behind. Cache hits never write one, any new download removes a previous record first, and a failure to write one never fails the download. |
 | `allow_empty` | Boolean accepting an empty installed file; default `False`. A complete but empty response, such as a withdrawn upstream record, is otherwise never published: HTTP retries it as transient, then raises `FileValidationError`. An empty cached file is likewise an invalid hit. `expected_size=0` also allows an empty file. |
 | `expire_after` | How long a cached file stays fresh: non-negative seconds or a `datetime.timedelta`, as in requests-cache. An older cached file is downloaded again, as is one that no longer validates; `0` refreshes every time. Age comes from the provenance record's fetch time when one describes the file, otherwise from its modification time; a future time counts as new. Default `None` reuses a valid file however old and raises for an invalid one. |
@@ -693,6 +693,15 @@ except dc.FileValidationError as error:
     assert error.path == path
     assert "size mismatch" in error.reason
 ```
+
+### `CannotResume`
+
+A `FileValidationError` subclass raised by `resume=True` when a resumable
+transfer isn't possible but a normal one may be: the server sends no strong
+ETag (without a trusted SHA-256), encodes the response, answers ranges
+inconsistently or with an unexpected status, or the destination's filesystem
+can't keep private resume state or locks. `resume="auto"` catches it and
+downloads the file in full instead. The installed file is unchanged.
 
 ### `make_file_readable`
 

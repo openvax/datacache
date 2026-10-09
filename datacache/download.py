@@ -763,8 +763,8 @@ def validate_transfer_settings(
         max_retries, retry_backoff, retry_max_delay, max_bytes=None):
     """Check fetch_file's transfer settings; return the retry delays as floats."""
     validate_limit("max_bytes", max_bytes)
-    if not isinstance(resume, bool):
-        raise ValueError("resume must be a boolean")
+    if not isinstance(resume, bool) and resume != "auto":
+        raise ValueError('resume must be True, False or "auto"')
     if not isinstance(show_progress, bool):
         raise ValueError("show_progress must be a boolean")
     if progress_callback is not None and not callable(progress_callback):
@@ -904,8 +904,12 @@ def fetch_file(
         honored when within this limit; longer server waits stop retries.
         timeout still applies per attempt, not as a total download deadline.
 
-    resume : bool, optional
+    resume : bool or "auto", optional
         Keep private partials and resume raw HTTP(S) transfers, default False.
+        "auto" resumes whenever it can and otherwise downloads normally: when
+        the platform, URL, size or options don't allow it, and when the server
+        turns out not to support it (the partial is then discarded and the
+        file downloaded in full). resume=True instead raises in those cases.
         Requires expected_size and a POSIX local filesystem. If expected_sha256
         is omitted, the server must supply a strong ETag on every accepted
         response; it is sent as If-Range when resuming. ETags prevent mixing
@@ -973,6 +977,10 @@ def fetch_file(
         chunk_size=chunk_size, progress_callback=progress_callback, show_progress=show_progress,
         resume=resume, max_retries=max_retries, retry_backoff=retry_backoff,
         retry_max_delay=retry_max_delay, max_bytes=max_bytes)
+    # "auto" is decided once the download's shape is known, below.
+    resume_if_possible = resume == "auto"
+    if resume_if_possible:
+        resume = False
     if not isinstance(raw, bool):
         raise ValueError("raw must be a boolean")
     if raw and decompress:
@@ -1015,10 +1023,13 @@ def fetch_file(
                        and output_suffix == ".csv")
     if html_conversion and max_bytes is not None:
         raise ValueError("max_bytes can't bound HTML-to-CSV conversion; use raw=True for the HTML itself")
-    if resume and (decompress or
-                   (source_suffix in (".gz", ".zip") and archive_decompression) or
-                   html_conversion):
+    transformed = bool(decompress or (source_suffix in (".gz", ".zip") and archive_decompression)
+                       or html_conversion)
+    if resume and transformed:
         raise ValueError("resume=True supports raw downloads only; use raw=True or retain the archive suffix")
+    if resume_if_possible:
+        from .resume import can_resume
+        resume = can_resume(download_url, expected_sha256, expected_size) and not transformed and validator is None
     # Whether the cached file is known valid, for a failed refresh to fall
     # back to (return_stale_on_error); with force=True it is checked only on failure.
     cached = False
@@ -1064,16 +1075,7 @@ def fetch_file(
     try:
         os.makedirs(os.path.dirname(full_path) or ".", exist_ok=True)
         logger.info("Fetching %s from URL %s", full_path, download_url)
-        if resume:
-            from .resume import download_resumable
-            download_resumable(
-                download_url, full_path, expected_sha256=expected_sha256,
-                expected_size=expected_size, timeout=timeout, chunk_size=chunk_size,
-                progress_callback=progress_callback, show_progress=show_progress,
-                max_retries=max_retries, retry_backoff=retry_backoff,
-                retry_max_delay=retry_max_delay, record_provenance=record_provenance,
-                force=refresh)
-        else:
+        def download_in_full():
             _download_and_decompress_if_necessary(
                 full_path=full_path,
                 download_url=download_url,
@@ -1093,6 +1095,28 @@ def fetch_file(
                 allow_empty=allow_empty,
                 validator=validator,
                 max_bytes=max_bytes)
+
+        if resume:
+            from .resume import CannotResume, discard_partial, download_resumable
+            try:
+                download_resumable(
+                    download_url, full_path, expected_sha256=expected_sha256,
+                    expected_size=expected_size, timeout=timeout, chunk_size=chunk_size,
+                    progress_callback=progress_callback, show_progress=show_progress,
+                    max_retries=max_retries, retry_backoff=retry_backoff,
+                    retry_max_delay=retry_max_delay, record_provenance=record_provenance,
+                    force=refresh)
+            except CannotResume as error:
+                if not resume_if_possible:
+                    raise
+                logger.info("Cannot resume %s (%s); downloading it in full", full_path, error.reason)
+                try:
+                    discard_partial(full_path)
+                except (OSError, FileValidationError) as discard_error:
+                    logger.debug("Could not discard resume state for %s: %s", full_path, discard_error)
+                download_in_full()
+        else:
+            download_in_full()
     except Exception as error:
         if not return_stale_on_error or any(error is cancel for cancel in callback_errors):
             raise
