@@ -2313,7 +2313,7 @@
 
 <h1 id="public-api-reference">Public API reference<a class="headerlink" href="#public-api-reference" title="Permanent link">&para;</a></h1>
 <p>This reference covers every name exported in <code>datacache.__all__</code> and every
-public <code>Cache</code> method in DataCache 1.20.0. Import these names from <code>datacache</code>.
+public <code>Cache</code> method in DataCache 1.21.0. Import these names from <code>datacache</code>.
 Signatures below show all defaults; arguments after <code>*</code> are keyword-only.
 Method signatures omit <code>self</code> and are called on a <code>Cache</code> instance.</p>
 <p>Start with the <a href="../#cache-and-verify-a-file">quickstart</a> for a first download.
@@ -2412,9 +2412,9 @@ temporary directory. Cleanup is shown at the end of the page.</p>
     download_url, filename=None, decompress=False, subdir=None, force=False,
     timeout=None, use_wget_if_available=None, chunk_size=1048576,
     progress_callback=None, *, destination=None, cache_root=None, expected_sha256=None,
-    expected_size=None, max_retries=2, retry_backoff=1.0, retry_max_delay=30.0,
-    show_progress=False, record_provenance=False, allow_empty=False, resume=False,
-    raw=False, expire_after=None, return_stale_on_error=False, validator=None
+    expected_size=None, max_bytes=None, max_retries=2, retry_backoff=1.0,
+    retry_max_delay=30.0, show_progress=False, record_provenance=False, allow_empty=False,
+    resume=False, raw=False, expire_after=None, return_stale_on_error=False, validator=None
 )
 </code></pre></div>
 <p>Download a missing file or reuse a readable regular file at its cache path.
@@ -2487,6 +2487,10 @@ replacement leaves the previous file intact.</p>
 <td>Optional non-negative integer size of those installed bytes; booleans are rejected.</td>
 </tr>
 <tr>
+<td><code>max_bytes</code></td>
+<td>Optional non-negative integer: the most bytes any file this fetch writes may hold, checked before every write. It bounds the download (the body after HTTP transfer decoding, such as gzip <code>Content-Encoding</code>, whatever <code>Content-Length</code> says) and the installed file after <code>decompress=True</code>. A larger transfer raises <code>FileValidationError</code> without retrying, keeps any existing file and removes temporary files. Cache hits write nothing and are unaffected. <code>expected_size</code> must not exceed it; HTML-to-CSV conversion can't be bounded. See <a href="../downloads/#byte-limits">byte limits</a>.</td>
+</tr>
+<tr>
 <td><code>max_retries</code></td>
 <td>Non-negative integer number of additional attempts after transient HTTP failures. Default <code>2</code> allows three total attempts; <code>0</code> disables retries. File and FTP downloads are not retried.</td>
 </tr>
@@ -2539,7 +2543,7 @@ See <a href="../downloads/#verified-downloads">format selection</a> and
 <p><strong>Returns:</strong> local path string. It is not necessarily absolute when given a
 relative <code>destination</code> or <code>cache_root</code>.</p>
 <p><strong>Raises:</strong> <code>ValueError</code> for conflicting paths or invalid expectations,
-chunk size, retry options, callback, or progress flag;
+chunk size, byte limit, retry options, callback, or progress flag;
 <a href="#filevalidationerror"><code>FileValidationError</code></a> for non-regular files or integrity
 mismatches; <code>OSError</code> subclasses for filesystem failures; Requests exceptions
 for HTTP failures; <code>urllib.error.URLError</code> for URL-handler failures; archive
@@ -2570,7 +2574,7 @@ are preserved after retry exhaustion.</p>
 <h3 id="fetch_bytes"><code>fetch_bytes</code><a class="headerlink" href="#fetch_bytes" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>fetch_bytes(
     download_url, *, timeout=None, max_retries=2, retry_backoff=1.0,
-    retry_max_delay=30.0, allow_empty=False
+    retry_max_delay=30.0, allow_empty=False, max_bytes=None
 )
 </code></pre></div>
 <p>Return a resource's bytes in memory, transferred and retried exactly as
@@ -2597,10 +2601,14 @@ cache is read-only.</p>
 <td><code>allow_empty</code></td>
 <td>Boolean accepting an empty body; default <code>False</code>. An empty HTTP response is otherwise retried as transient, then rejected.</td>
 </tr>
+<tr>
+<td><code>max_bytes</code></td>
+<td>Optional non-negative integer: the largest body to accept, after HTTP transfer decoding. Checked before each chunk is kept, so the returned bytes never grow past it, and the body is read in chunks no larger than the limit; a larger body raises <code>ValueError</code> without retrying. <code>0</code> requires <code>allow_empty=True</code>.</td>
+</tr>
 </tbody>
 </table>
-<p><strong>Returns:</strong> <code>bytes</code>. <strong>Raises:</strong> <code>ValueError</code> for invalid options or an empty
-body; Requests exceptions for HTTP failures, preserved after retry exhaustion;
+<p><strong>Returns:</strong> <code>bytes</code>. <strong>Raises:</strong> <code>ValueError</code> for invalid options, an empty
+body, or a body larger than <code>max_bytes</code>; Requests exceptions for HTTP failures, preserved after retry exhaustion;
 <code>urllib.error.URLError</code> for file and FTP failures.</p>
 <div class="highlight"><pre><span></span><code><span class="k">assert</span> <span class="n">dc</span><span class="o">.</span><span class="n">fetch_bytes</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">30</span><span class="p">)</span> <span class="o">==</span> <span class="n">contents</span>
 </code></pre></div>
@@ -3227,8 +3235,8 @@ errors, or platform directory lookup errors from <code>get_data_dir</code>.</p>
 <div class="highlight"><pre><span></span><code>Cache.fetch(
     url, filename=None, decompress=False, force=False, timeout=None,
     use_wget_if_available=None, *, chunk_size=1048576, progress_callback=None,
-    expected_sha256=None, expected_size=None, max_retries=2, retry_backoff=1.0,
-    retry_max_delay=30.0, show_progress=False, record_provenance=False,
+    expected_sha256=None, expected_size=None, max_bytes=None, max_retries=2,
+    retry_backoff=1.0, retry_max_delay=30.0, show_progress=False, record_provenance=False,
     allow_empty=False, resume=False, raw=False, expire_after=None, return_stale_on_error=False,
     validator=None
 )
@@ -3386,8 +3394,8 @@ and before publication. It is intended for consumer receipts such as
 <code>DOWNLOAD_INFO.csv</code>; collisions with archive content fail the installation.
 The complete metadata inventory is part of the archive's identity: additions,
 removals, and content changes require an explicit refresh.
-<code>download_options</code> accepts timeout, chunk size, progress, retry, and resume
-settings from <code>fetch_file</code>. Resumable URL parts each require a trusted hash and
+<code>download_options</code> accepts timeout, chunk size, progress, retry, resume, and
+<code>max_bytes</code> settings from <code>fetch_file</code>. Resumable URL parts each require a trusted hash and
 size. Optional <code>max_members</code> and <code>max_extracted_size</code> limits are checked before
 files are extracted, as headers arrive; scanning stops when a limit is exceeded.
 Benign leading <code>./</code> paths are normalized and root <code>.</code> directory entries ignored.
@@ -3501,7 +3509,7 @@ unpinned sources; their observed hashes are recorded without authenticating them
 checks readability, file types and recorded sizes but cannot detect same-size
 corruption. New bundles are always hashed before publication, regardless of
 this cache-hit setting.
-<code>download_options</code> accepts timeout, chunk size, progress, retry settings and resume.
+<code>download_options</code> accepts timeout, chunk size, progress, retry, resume and <code>max_bytes</code> settings.
 Publication requires a POSIX local filesystem. <a href="../bundles/">Complete guide</a>.</p>
 <h2 id="inspect_bundle">inspect_bundle<a class="headerlink" href="#inspect_bundle" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>inspect_bundle(destination, assets=None, *, verify_files=True)
