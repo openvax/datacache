@@ -393,11 +393,17 @@ of these that applies is the root, with `~` expanded:
 
 1. `override`, when not `None`: an explicit choice, such as a command-line flag;
 2. the first environment variable in `envkeys` set to a non-blank value;
-3. the first path in `legacy` that already holds data, meaning a file at its top
-   level or one directory down, so a cache made before a move keeps working
-   (empty leftover folders don't count);
-4. the platform cache directory for `name`, the same one `get_data_dir(name)`
-   selects.
+3. the platform cache directory for `name` (the one `get_data_dir(name)`
+   selects), when it already holds data;
+4. the first path in `legacy` that already holds data, so a cache made before a
+   move keeps working;
+5. the platform cache directory for `name`.
+
+A directory holds data when it contains a file anywhere inside, other than
+files operating systems or DataCache leave on their own (`.DS_Store`,
+`Thumbs.db`, `desktop.ini`, `.datacache-*`); empty folders don't count, and
+unreadable entries are skipped. `legacy` paths must be absolute. The legacy
+check reads the disk, so resolve the root once and pass it on.
 
 Nothing is appended to an environment value, unlike `get_data_dir(subdir,
 envkey)`, so every package that reads the same variable agrees on one
@@ -406,8 +412,9 @@ override it. Pass the result as `cache_root`. A relative value stays relative
 to the working directory. See [choosing where data lives](shared-caches.md#choosing-where-data-lives).
 
 **Returns:** directory path string. **Raises:** `ValueError` for an empty
-`name`, a non-string or empty variable name, or an empty `override`, and
-platform directory lookup errors.
+`name`, a non-string or empty variable name, an empty or non-text `override`,
+or a non-text, empty or relative `legacy` path (checked whichever rule
+applies), and platform directory lookup errors.
 
 ```python
 os.environ["EXAMPLE_SHARED"] = str(root / "shared")

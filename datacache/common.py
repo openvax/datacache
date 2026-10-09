@@ -83,54 +83,78 @@ def get_cache_root(name, *envkeys, override=None, legacy=()):
 
     1. override, when not None: an explicit choice, such as a command-line flag;
     2. the first environment variable in envkeys set to a non-blank value;
-    3. the first path in legacy that already holds data (a file at its top
-       level or one directory down), so a cache made before a move keeps
-       working; empty leftover folders don't count;
-    4. the platform's cache directory for name.
+    3. the platform's cache directory for name, when it already holds data;
+    4. the first path in legacy that already holds data, so a cache made
+       before a move keeps working;
+    5. the platform's cache directory for name.
 
-    Unlike get_data_dir(subdir, envkey), nothing is appended to an
-    environment value, so every package reading the same variable agrees on
-    one location. Nothing is created.
+    A directory holds data when it contains a file anywhere inside, other than
+    files operating systems or DataCache leave on their own (.DS_Store,
+    Thumbs.db, desktop.ini, .datacache-*). Empty folders don't count, and
+    unreadable entries are skipped. legacy paths must be absolute; a relative
+    one would depend on the working directory. Unlike get_data_dir(subdir,
+    envkey), nothing is appended to an environment value, so every package
+    reading the same variable agrees on one location. Nothing is created.
+    The legacy check reads the disk, so resolve the root once and pass it on.
     """
     if not isinstance(name, str) or not name:
         raise ValueError("name must be a non-empty string")
     if not all(isinstance(envkey, str) and envkey for envkey in envkeys):
         raise ValueError("environment variable names must be non-empty strings")
-    if isinstance(legacy, (str, os.PathLike)):
+    if legacy is None:
+        legacy = ()
+    elif isinstance(legacy, (str, os.PathLike)):
         legacy = (legacy,)
+    legacy = [_path_text(path, "legacy") for path in legacy]
+    if any(not os.path.isabs(path) for path in legacy):
+        raise ValueError("legacy locations must be absolute paths")
     if override is not None:
-        if not isinstance(override, (str, os.PathLike)) or not os.fspath(override):
-            raise ValueError("override must be a non-empty path")
-        return os.path.expanduser(os.fspath(override))
+        return _path_text(override, "override")
     for envkey in envkeys:
         value = environ.get(envkey, "").strip()
         if value:
             return os.path.expanduser(value)
-    for path in legacy:
-        path = os.path.expanduser(os.fspath(path))
-        if _holds_data(path):
-            return path
-    return appdirs.user_cache_dir(name)
+    platform = appdirs.user_cache_dir(name)
+    if legacy and not _holds_data(platform):
+        for path in legacy:
+            if _holds_data(path):
+                return path
+    return platform
+
+
+def _path_text(value, what):
+    """value as a stripped, ~-expanded text path, or ValueError naming what."""
+    if not isinstance(value, (str, os.PathLike)) or not isinstance(os.fspath(value), str):
+        raise ValueError("%s must be a text path, not %r" % (what, value))
+    text = os.fspath(value).strip()
+    if not text:
+        raise ValueError("%s must be a non-empty path" % what)
+    return os.path.expanduser(text)
+
+
+# Files operating systems and DataCache leave in a folder on their own.
+_INCIDENTAL_FILES = (".DS_Store", "Thumbs.db", "desktop.ini")
 
 
 def _holds_data(directory):
-    """Whether directory holds a regular file at its top level or one level down."""
-    try:
-        with os.scandir(directory) as entries:
-            entries = list(entries)
-    except OSError:
-        return False
-    if any(entry.is_file() for entry in entries):
-        return True
-    for entry in entries:
-        if entry.is_dir():
-            try:
-                with os.scandir(entry.path) as inner:
-                    if any(item.is_file() for item in inner):
-                        return True
-            except OSError:
-                continue
+    """Whether directory has a file anywhere inside, besides incidental ones."""
+    pending = [directory]
+    while pending:
+        try:
+            with os.scandir(pending.pop()) as entries:
+                for entry in entries:
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            pending.append(entry.path)
+                        elif (entry.is_file() and entry.name not in _INCIDENTAL_FILES
+                              and not entry.name.startswith(".datacache-")):
+                            return True
+                    except OSError:
+                        continue  # An unreadable entry says nothing either way.
+        except OSError:
+            continue
     return False
+
 
 def resolve_path(filename, subdir=None, *, cache_root=None):
     """Resolve a cache path without filesystem access or directory creation.

@@ -18,7 +18,7 @@ lists every public signature, default, return value, exception, and example.
 | Refresh a cached file periodically, keeping it when the source is unreachable | `fetch_file(..., expire_after=..., return_stale_on_error=True, validator=...)` | Local path string |
 | Read a small resource into memory | `fetch_bytes(...)` | `bytes` |
 | Compute a path without filesystem access | `expected_path(...)`, `Cache.local_path(...)` | Path string |
-| Choose a root shared by several packages | `get_cache_root(name, *envkeys)` | Path string |
+| Choose where a package keeps its data, shared or not | `get_cache_root(name, *envkeys, override=..., legacy=...)` | Path string |
 | Check presence | `file_exists(...)`, `Cache.exists(...)` | Boolean; does not establish integrity |
 | Validate bytes, raising on failure | `validate_file(...)` | Path string |
 | Inspect without repair or network access | `inspect_file(...)`, `Cache.inspect(...)` | `FileInspection` |

@@ -139,22 +139,64 @@ def test_cache_root_rejects_empty_names(arguments):
 
 
 def test_cache_root_prefers_an_override_then_variables_then_legacy_data(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
+    for home in ("HOME", "USERPROFILE"):  # expanduser reads USERPROFILE on Windows.
+        monkeypatch.setenv(home, str(tmp_path))
     monkeypatch.delenv("EXAMPLE_ROOT", raising=False)
-    legacy = tmp_path / ".example"
-    platform = get_cache_root("example")
-    assert get_cache_root("example", "EXAMPLE_ROOT", legacy=["~/.example"]) == platform
+    platform = tmp_path / "platform"
+    monkeypatch.setattr(common.appdirs, "user_cache_dir", lambda name: str(platform))
+    old, older = tmp_path / ".example", tmp_path / ".older"
+    assert get_cache_root("example", "EXAMPLE_ROOT", legacy=["~/.example"]) == str(platform)
 
-    # Empty leftover folders don't make a legacy location count.
-    (legacy / "proteomes").mkdir(parents=True)
-    assert get_cache_root("example", "EXAMPLE_ROOT", legacy=["~/.example"]) == platform
-    (legacy / "proteomes" / "human.fa").write_text(">p\n")
-    assert get_cache_root("example", "EXAMPLE_ROOT", legacy=["~/.example"]) == str(legacy)
-    assert get_cache_root("example", "EXAMPLE_ROOT", legacy="~/.example") == str(legacy)
+    # Empty folders and incidental files don't count; a file at any depth does.
+    (old / "proteomes" / "human").mkdir(parents=True)
+    (old / ".DS_Store").write_text("")
+    (old / ".datacache-file-registry.lock").write_text("")
+    assert get_cache_root("example", legacy=["~/.example"]) == str(platform)
+    (older / "a" / "b" / "c").mkdir(parents=True)
+    (older / "a" / "b" / "c" / "data.fa").write_text(">p\n")
+    assert get_cache_root("example", legacy=["~/.example", "~/.older"]) == str(older)
+    (old / "proteomes" / "human" / "human.fa").write_text(">p\n")
+    assert get_cache_root("example", legacy=["~/.example", "~/.older"]) == str(old)
+    assert get_cache_root("example", legacy="~/.example") == str(old)
+
+    # Once the platform directory holds data, it stays the root.
+    platform.mkdir()
+    (platform / "downloaded.fa").write_text(">p\n")
+    assert get_cache_root("example", legacy=["~/.example"]) == str(platform)
 
     monkeypatch.setenv("EXAMPLE_ROOT", "~/chosen")
     assert get_cache_root("example", "EXAMPLE_ROOT", legacy=["~/.example"]) == str(tmp_path / "chosen")
     assert get_cache_root("example", "EXAMPLE_ROOT", override=tmp_path / "flag") == str(tmp_path / "flag")
-    assert get_cache_root("example", override="~/flag") == str(tmp_path / "flag")
-    with pytest.raises(ValueError, match="override"):
-        get_cache_root("example", override="")
+    assert get_cache_root("example", override="  ~/flag ") == str(tmp_path / "flag")
+
+
+@pytest.mark.parametrize("options, message", [
+    (dict(override=""), "override"),
+    (dict(override="   "), "override"),
+    (dict(override=b"/bytes"), "text path"),
+    (dict(legacy=[None]), "text path"),
+    (dict(legacy=["relative/old"]), "absolute"),
+    (dict(legacy=[""]), "non-empty"),
+])
+def test_cache_root_rejects_bad_locations_wherever_they_are(monkeypatch, options, message):
+    monkeypatch.setenv("SET_ROOT", "/somewhere")
+    # Checked up front, so a bad argument fails even when a variable is set.
+    with pytest.raises(ValueError, match=message):
+        get_cache_root("example", "SET_ROOT", **options)
+    assert get_cache_root("example", "SET_ROOT", legacy=None) == "/somewhere"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX symlinks and permissions")
+def test_unreadable_legacy_entries_are_skipped(tmp_path, monkeypatch):
+    monkeypatch.setattr(common.appdirs, "user_cache_dir", lambda name: str(tmp_path / "platform"))
+    old = tmp_path / "old"
+    old.mkdir()
+    (old / "loop").symlink_to(old / "loop")
+    (old / "locked").mkdir()
+    (old / "locked").chmod(0)
+    try:
+        assert get_cache_root("example", legacy=[str(old)]) == str(tmp_path / "platform")
+        (old / "data.fa").write_text(">p\n")
+        assert get_cache_root("example", legacy=[str(old)]) == str(old)
+    finally:
+        (old / "locked").chmod(0o700)

@@ -21,8 +21,14 @@ path = fetch_file(url, cache_root=root)
 ```
 
 The first of these that applies is the root: the override, then the first
-environment variable that is set, then the first legacy location holding a file
-(at its top level or one folder down), then the platform cache directory.
+environment variable that is set, then the platform cache directory if it
+already holds data, then the first legacy location holding data, and finally
+the platform cache directory. A location holds data when it contains a file
+anywhere inside other than the `.DS_Store`-style files operating systems leave
+behind, so empty leftover folders never pin a user to an old location, and a
+user who has already downloaded into the platform directory stays there.
+Legacy paths must be absolute. The legacy check reads the disk, so resolve the
+root once, for example at startup, and pass it along.
 Environment values are used exactly as given, never with a package name added,
 so several packages reading one variable agree on one directory. Nothing is
 created until something is downloaded. Pass the root to `fetch_file`, `Cache`
