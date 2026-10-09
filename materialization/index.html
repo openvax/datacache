@@ -1180,7 +1180,9 @@ logged; it never replaces a builder's error or fails a published build.</p>
 removed by default. <code>retain_sources=True</code> keeps them privately for future
 builds. Cache hits never perform cleanup: a crash between publication and
 cleanup may leave inputs for an explicit later refresh. Inputs for other source
-definitions/users and old bundles are never removed implicitly. Abandoned input/staging variants require deliberate operator
+definitions/users and old bundles are never removed implicitly; use
+<code>prune_bundles</code> to delete old bundles (see
+<a href="../bundles/#removing-old-bundles">removing old bundles</a>). Abandoned input/staging variants require deliberate operator
 cleanup; general inventory/pruning is separate work. Retention is installation
 policy, not output identity, so toggling it on a cache hit does not mutate disk.</p>
 <p>The store marker, <code>.datacache-store.json</code>, records that this is a

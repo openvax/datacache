@@ -1405,6 +1405,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#list_bundles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        list_bundles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prune_bundles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        prune_bundles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#versioneddatasetregistry" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2237,6 +2259,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#list_bundles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        list_bundles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prune_bundles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        prune_bundles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#versioneddatasetregistry" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2313,7 +2357,7 @@
 
 <h1 id="public-api-reference">Public API reference<a class="headerlink" href="#public-api-reference" title="Permanent link">&para;</a></h1>
 <p>This reference covers every name exported in <code>datacache.__all__</code> and every
-public <code>Cache</code> method in DataCache 1.22.0. Import these names from <code>datacache</code>.
+public <code>Cache</code> method in DataCache 1.23.0. Import these names from <code>datacache</code>.
 Signatures below show all defaults; arguments after <code>*</code> are keyword-only.
 Method signatures omit <code>self</code> and are called on a <code>Cache</code> instance.</p>
 <p>Start with the <a href="../#cache-and-verify-a-file">quickstart</a> for a first download.
@@ -2339,7 +2383,7 @@ explain the longer workflows and compatibility guarantees.</p>
 </tr>
 <tr>
 <td>Versioned file bundles</td>
-<td><a href="#install_bundle">install_bundle</a>, <a href="#inspect_bundle">inspect_bundle</a>, <a href="#bundleinspection">BundleInspection</a>, <a href="#versioneddatasetregistry">VersionedDatasetRegistry</a>, <a href="#versionedfileregistry">VersionedFileRegistry</a></td>
+<td><a href="#install_bundle">install_bundle</a>, <a href="#inspect_bundle">inspect_bundle</a>, <a href="#bundleinspection">BundleInspection</a>, <a href="#list_bundles">list_bundles</a>, <a href="#prune_bundles">prune_bundles</a>, <a href="#versioneddatasetregistry">VersionedDatasetRegistry</a>, <a href="#versionedfileregistry">VersionedFileRegistry</a></td>
 </tr>
 <tr>
 <td>Derived artifacts</td>
@@ -3495,13 +3539,22 @@ DataCache. <code>verified=False</code> explicitly enables historical unpinned ca
 <td><code>status(name=None, *, verify_files=False)</code></td>
 <td>One read-only row per concrete version, including catalogue and downloaded source URLs, store and bundle paths, default flag, status, fetch time, observed archive size/hash and inspection. Metadata-only by default; <code>verify_files=True</code> hashes every file.</td>
 </tr>
+<tr>
+<td><code>prune(name, version=None, *, keep=1)</code></td>
+<td>Delete all but the newest <code>keep</code> bundles of one version, as <a href="#prune_bundles">prune_bundles</a> does.</td>
+</tr>
 </tbody>
 </table>
 <h2 id="install_bundle">install_bundle<a class="headerlink" href="#install_bundle" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>install_bundle(destination, assets, *, force=False, verified=True, verify_files=True, download_options=None)
+<div class="highlight"><pre><span></span><code>install_bundle(destination, assets, *, force=False, verified=True, verify_files=True, download_options=None,
+               source_paths=None)
 </code></pre></div>
 <p>Download a mapping of relative asset names to <code>{url, sha256, size,
-decompress?}</code> metadata and publish the files together as a new bundle. Returns a
+decompress?}</code> metadata and publish the files together as a new bundle. <code>path</code>
+in place of <code>url</code> names a local file, identified by its <code>file://</code> URL.
+<code>source_paths</code> maps asset names to local files to read instead of downloading,
+such as files downloaded by hand; each asset keeps its declared URL as its
+identity, so later installs treat the bundle as if it had been downloaded. Returns a
 dict of asset names to paths in the current bundle. An invalid current bundle
 requires <code>force=True</code>. <code>verified=False</code> explicitly permits
 unpinned sources; their observed hashes are recorded without authenticating them.
@@ -3526,6 +3579,22 @@ results always have <code>verified=False</code>, even with trusted hashes in the
 is the current bundle's directory, and <code>files</code> maps asset names to
 <code>FileInspection</code> values from it. Paths remain usable across refreshes until
 explicitly removed.</p>
+<h2 id="list_bundles">list_bundles<a class="headerlink" href="#list_bundles" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>list_bundles(destination)
+</code></pre></div>
+<p>Every bundle in a bundle, archive or materialization store, as <code>Path</code>s ordered
+oldest first; the last is the current bundle. Read-only. A store with nothing
+installed, or no directory at all, has none. A directory that isn't a datacache
+store raises <code>FileValidationError</code>.</p>
+<h2 id="prune_bundles">prune_bundles<a class="headerlink" href="#prune_bundles" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>prune_bundles(destination, *, keep=1)
+</code></pre></div>
+<p>Delete all but the newest <code>keep</code> bundles from a bundle, archive or
+materialization store, and return the deleted <code>Path</code>s, oldest first. The newest
+bundle is the current one, so it is always kept: <code>keep</code> must be a positive
+integer. Paths into deleted bundles stop working, so prune only when no running
+program still uses them. Pruning holds the store's lock, so it never races an
+install. See <a href="../bundles/#removing-old-bundles">removing old bundles</a>.</p>
 <h2 id="versioneddatasetregistry">VersionedDatasetRegistry<a class="headerlink" href="#versioneddatasetregistry" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>VersionedDatasetRegistry(datasets, *, cache_root=None, cache_dir=None, store_path=None, verified=True)
 </code></pre></div>
@@ -3558,8 +3627,8 @@ The <a href="../bundles/">bundle guide</a> includes an example and downstream mi
 <td>Read-only <code>BundleInspection</code>; full payload verification by default.</td>
 </tr>
 <tr>
-<td><code>download(name, version=None, *, force=False, verify_files=True, **download_options)</code></td>
-<td>Install/reuse and return a dict of asset paths in the current bundle; the flag selects cache-hit cost only.</td>
+<td><code>download(name, version=None, *, force=False, verify_files=True, source_paths=None, **download_options)</code></td>
+<td>Install/reuse and return a dict of asset paths in the current bundle; the flag selects cache-hit cost only. <code>source_paths</code> reads named assets from local files while keeping their declared URLs as identity.</td>
 </tr>
 <tr>
 <td><code>local_path(name, version=None, *, asset=None, verify_files=True)</code></td>
@@ -3576,6 +3645,10 @@ The <a href="../bundles/">bundle guide</a> includes an example and downstream mi
 <tr>
 <td><code>status(*, verify_files=True)</code></td>
 <td>One row per pinned default: name, version, description, available_versions and inspection. <code>verify_files=False</code> skips hashing.</td>
+</tr>
+<tr>
+<td><code>prune(name, version=None, *, keep=1)</code></td>
+<td>Delete all but the newest <code>keep</code> bundles of one version, as <a href="#prune_bundles">prune_bundles</a> does.</td>
 </tr>
 </tbody>
 </table>

@@ -587,6 +587,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#removing-old-bundles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Removing old bundles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#local-and-predownloaded-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local and predownloaded files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#large-raw-assets" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1032,6 +1054,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#removing-old-bundles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Removing old bundles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#local-and-predownloaded-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local and predownloaded files
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#large-raw-assets" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1231,9 +1275,10 @@ all, so readers see the old bundle or the new one, never a mix, and need no
 locks or write permission. Installs into one store take turns, using a lock
 file beside the store.</p>
 <p>Old bundles are kept, so paths returned by one install keep working after later
-installs. Forced refreshes therefore use more disk space; DataCache never deletes
-bundles itself. Never modify files in a bundle. Resolve paths once for a
-multi-file operation: a later lookup can return a newer bundle.</p>
+installs. Forced refreshes therefore use more disk space until you
+<a href="#removing-old-bundles">remove old bundles</a>; DataCache never deletes them on its
+own. Never modify files in a bundle. Resolve paths once for a multi-file
+operation: a later lookup can return a newer bundle.</p>
 <p>Installation works on local filesystems with atomic sibling renames, on Linux,
 macOS and Windows; resumable downloads (<code>resume=True</code>) need POSIX. Shared caches use normal umask-derived
 permissions; readers need only read/search access. The staging directory stays
@@ -1245,6 +1290,40 @@ process interruption, not guaranteed durability after power loss. Distributed
 coordination and arbitrary network filesystem semantics are outside this API.
 An unhandled termination can leave staging directories; only complete bundles
 are ever returned to callers.</p>
+<h2 id="removing-old-bundles">Removing old bundles<a class="headerlink" href="#removing-old-bundles" title="Permanent link">&para;</a></h2>
+<p>Every forced refresh adds a complete bundle and keeps the old ones, so a
+multi-GB reference refreshed three times takes four times the space. Delete the
+old ones explicitly when nothing still uses them:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">datacache</span><span class="w"> </span><span class="kn">import</span> <span class="n">list_bundles</span><span class="p">,</span> <span class="n">prune_bundles</span>
+
+<span class="n">list_bundles</span><span class="p">(</span><span class="n">store</span><span class="p">)</span>                 <span class="c1"># Every bundle, oldest first; the last is current.</span>
+<span class="n">prune_bundles</span><span class="p">(</span><span class="n">store</span><span class="p">)</span>                <span class="c1"># Keep only the current bundle.</span>
+<span class="n">prune_bundles</span><span class="p">(</span><span class="n">store</span><span class="p">,</span> <span class="n">keep</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>        <span class="c1"># Keep the current bundle and the one before it.</span>
+<span class="n">registry</span><span class="o">.</span><span class="n">prune</span><span class="p">(</span><span class="s2">"reference"</span><span class="p">,</span> <span class="s2">"110"</span><span class="p">)</span>  <span class="c1"># The same, through a registry.</span>
+</code></pre></div>
+<p><code>prune_bundles</code> returns the paths it deleted. The current bundle is always
+kept. Paths into deleted bundles stop working, so prune when no running program
+still uses them, for example from a cleanup command rather than during an
+analysis. Pruning takes the store's lock, so it never races an install. It works
+the same for archive and materialization stores.</p>
+<h2 id="local-and-predownloaded-files">Local and predownloaded files<a class="headerlink" href="#local-and-predownloaded-files" title="Permanent link">&para;</a></h2>
+<p>An asset can name a local file with <code>path</code> instead of <code>url</code>; its identity is the
+file's <code>file://</code> URL:</p>
+<div class="highlight"><pre><span></span><code><span class="n">assets</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"genes.gtf"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"path"</span><span class="p">:</span> <span class="s2">"/data/custom/genes.gtf"</span><span class="p">,</span> <span class="s2">"sha256"</span><span class="p">:</span> <span class="n">genes_sha256</span><span class="p">,</span> <span class="s2">"size"</span><span class="p">:</span> <span class="n">genes_size</span><span class="p">}}</span>
+</code></pre></div>
+<p>To install from files someone already downloaded, while keeping the declared
+URLs as the assets' identity, pass <code>source_paths</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="n">paths</span> <span class="o">=</span> <span class="n">registry</span><span class="o">.</span><span class="n">download</span><span class="p">(</span>
+    <span class="s2">"reference"</span><span class="p">,</span> <span class="s2">"110"</span><span class="p">,</span>
+    <span class="n">source_paths</span><span class="o">=</span><span class="p">{</span><span class="s2">"genes.gtf"</span><span class="p">:</span> <span class="s2">"/downloads/Homo_sapiens.GRCh38.110.gtf"</span><span class="p">},</span>
+<span class="p">)</span>
+</code></pre></div>
+<p>Each local file is checked against the asset's trusted hash and size exactly as
+a download would be, and copied in; the original stays where it is. The
+manifest records the declared URL, so later installs and inspections treat the
+bundle as if it had been downloaded, including assets without trusted hashes.
+For an asset with <code>decompress=True</code>, the local file must keep its <code>.gz</code> or
+<code>.zip</code> suffix.</p>
 <h2 id="large-raw-assets">Large raw assets<a class="headerlink" href="#large-raw-assets" title="Permanent link">&para;</a></h2>
 <p>For integrity-pinned HTTP assets that need no decompression or conversion, use
 <code>registry.download(name, resume=True)</code> or

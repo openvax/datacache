@@ -1253,8 +1253,9 @@ beside the store. Downloads, concatenation, extraction, consumer metadata and
 the manifest are completed in private staging and read back and checked there.
 Only then is the tree renamed into <code>bundles/</code>, which publishes it in one step.
 A failed or interrupted install leaves the previous bundle current.</p>
-<p>Old bundles are kept so paths already returned to readers remain valid.
-DataCache never deletes them itself. Installs lock a file beside the store
+<p>Old bundles are kept so paths already returned to readers remain valid, until
+you delete them with <code>prune_bundles</code> or <code>registry.prune</code>; see
+<a href="../bundles/#removing-old-bundles">removing old bundles</a>. Installs lock a file beside the store
 (<code>flock</code> on POSIX, the <code>filelock</code> package on Windows) and publish with
 same-filesystem atomic renames, supporting ordinary local filesystems on Linux,
 macOS and Windows. Distributed coordination, arbitrary
