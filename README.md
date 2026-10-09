@@ -60,7 +60,7 @@ guides; their old links land on the guide that replaced them.
 - [Tables, SQLite and transformations](https://github.com/openvax/datacache/blob/master/docs/data.md)
 - [Shared caches](https://github.com/openvax/datacache/blob/master/docs/shared-caches.md)
 - [Progress and logging](https://github.com/openvax/datacache/blob/master/docs/progress.md)
-- <a id="versioned-datasets-and-large-downloads"></a>[Pinned bundles](https://github.com/openvax/datacache/blob/master/docs/bundles.md), [archive trees](https://github.com/openvax/datacache/blob/master/docs/archives.md) and the [legacy file registry](https://github.com/openvax/datacache/blob/master/docs/file_registry.md)
+- <a id="versioned-datasets-and-large-downloads"></a>[Pinned bundles](https://github.com/openvax/datacache/blob/master/docs/bundles.md), [archive trees](https://github.com/openvax/datacache/blob/master/docs/archives.md) and the [fixed-path file registry](https://github.com/openvax/datacache/blob/master/docs/file_registry.md)
 - <a id="choose-the-right-api"></a><a id="guarantees-and-limits"></a>[Interface selection and guarantees](https://github.com/openvax/datacache/blob/master/docs/reference/choosing.md)
 - [Derived-artifact materialization](https://github.com/openvax/datacache/blob/master/docs/materialization.md): caller-owned
   builders, outputs published together as one bundle, dependency receipts and resumable inputs.

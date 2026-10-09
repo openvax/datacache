@@ -273,9 +273,10 @@ class VersionedDatasetRegistry:
     """A plain mapping of dataset names, pinned defaults, versions and assets.
 
     Each dataset is {default_version, versions: {version: {asset: metadata}}}.
-    The hitlist shape {filename, urls: {version: url}, default_version} is also
-    accepted with verified=False. cache_root is a path; cache_dir optionally
-    accepts hitlist's zero-argument root callable. Alternatively, store_path is
+    The single-file shape {filename, urls: {version: url}, default_version} is
+    also accepted with verified=False; its file is installed with
+    decompress=True. Give the root as cache_root, a path, or as cache_dir, a
+    zero-argument callable consulted on every lookup. Alternatively, store_path is
     a two-argument (name, version) callback selecting an exact managed store.
     Construction never writes or invokes either callback.
     """
@@ -290,7 +291,7 @@ class VersionedDatasetRegistry:
         if store_path is not None and not callable(store_path):
             raise ValueError('store_path must be callable')
         if store_path is None:
-            # A root callable is consulted on every lookup, as hitlist expects.
+            # A root callable is consulted on every lookup, so it can change.
             root = cache_dir if cache_dir is not None else lambda: cache_root
             self._store_path = lambda name, version: Path(root()) / name / version
         else:
