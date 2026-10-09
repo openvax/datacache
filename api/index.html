@@ -1074,6 +1074,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#cannotresume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CannotResume
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#make_file_readable" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2007,6 +2018,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#cannotresume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CannotResume
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#make_file_readable" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2545,7 +2567,7 @@ explain the longer workflows and compatibility guarantees.</p>
 </tr>
 <tr>
 <td>Results and exceptions</td>
-<td><a href="#fileinspection">FileInspection</a>, <a href="#cacheinspection">CacheInspection</a>, <a href="#filevalidationerror">FileValidationError</a></td>
+<td><a href="#fileinspection">FileInspection</a>, <a href="#cacheinspection">CacheInspection</a>, <a href="#filevalidationerror">FileValidationError</a>, <a href="#cannotresume">CannotResume</a></td>
 </tr>
 <tr>
 <td>SQLite</td>
@@ -2714,7 +2736,7 @@ replacement leaves the previous file intact.</p>
 </tr>
 <tr>
 <td><code>resume</code></td>
-<td>Boolean retaining private partials for raw HTTP transfers. Requires size and a POSIX local filesystem. Without an expected SHA-256, every accepted response must supply a strong ETag. Size-only cache hits check only byte count. See <a href="../downloads/#resumable-http-downloads">resumable downloads</a>.</td>
+<td><code>True</code>, <code>False</code> or <code>"auto"</code>, retaining private partials for raw HTTP transfers. <code>"auto"</code> resumes whenever it can and otherwise downloads normally, including when the server turns out not to support resuming (no strong ETag, encoded responses); <code>True</code> raises in those cases. Requires size and a POSIX local filesystem. Without an expected SHA-256, every accepted response must supply a strong ETag. Size-only cache hits check only byte count. See <a href="../downloads/#resumable-http-downloads">resumable downloads</a>.</td>
 </tr>
 <tr>
 <td><code>record_provenance</code></td>
@@ -3262,6 +3284,13 @@ inspection results when applicable.</p>
     <span class="k">assert</span> <span class="n">error</span><span class="o">.</span><span class="n">path</span> <span class="o">==</span> <span class="n">path</span>
     <span class="k">assert</span> <span class="s2">"size mismatch"</span> <span class="ow">in</span> <span class="n">error</span><span class="o">.</span><span class="n">reason</span>
 </code></pre></div>
+<h3 id="cannotresume"><code>CannotResume</code><a class="headerlink" href="#cannotresume" title="Permanent link">&para;</a></h3>
+<p>A <code>FileValidationError</code> subclass raised by <code>resume=True</code> when a resumable
+transfer isn't possible but a normal one may be: the server sends no strong
+ETag (without a trusted SHA-256), encodes the response, answers ranges
+inconsistently or with an unexpected status, or the destination's filesystem
+can't keep private resume state or locks. <code>resume="auto"</code> catches it and
+downloads the file in full instead. The installed file is unchanged.</p>
 <h3 id="make_file_readable"><code>make_file_readable</code><a class="headerlink" href="#make_file_readable" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>make_file_readable(path, *, group=True, others=False)
 </code></pre></div>

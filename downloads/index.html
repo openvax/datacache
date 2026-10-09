@@ -1471,6 +1471,17 @@ The IEDB download endpoints used by pepdata continue to decompress archives
 named at the end of the URL query into the requested CSV filenames.
 New integrations should use the public download and inspection APIs.</p>
 <h2 id="resumable-http-downloads">Resumable HTTP downloads<a class="headerlink" href="#resumable-http-downloads" title="Permanent link">&para;</a></h2>
+<p>The simplest choice is <code>resume="auto"</code>: it resumes interrupted transfers when
+it can, and otherwise downloads normally. That covers Windows, a size that
+isn't known, decompression, a <code>validator</code>, and a server that turns out not to
+support resuming, or a filesystem that can't hold private resume state or
+locks; the partial is then discarded and the file downloaded in full. No
+<code>os.name</code> checks or error-message matching are needed. Learning that a server
+can't resume costs one extra request, whose body isn't read:</p>
+<div class="highlight"><pre><span></span><code><span class="n">path</span> <span class="o">=</span> <span class="n">fetch_file</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">destination</span><span class="o">=</span><span class="n">dest</span><span class="p">,</span> <span class="n">raw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">expected_size</span><span class="o">=</span><span class="n">size</span><span class="p">,</span> <span class="n">resume</span><span class="o">=</span><span class="s2">"auto"</span><span class="p">)</span>
+</code></pre></div>
+<p>The rest of this section describes <code>resume=True</code>, which instead raises
+whenever resuming isn't possible.</p>
 <p>Use <code>fetch_file(..., resume=True, expected_sha256=sha256, expected_size=size)</code>
 (or the same options on <code>Cache.fetch</code>) for large immutable raw HTTP/HTTPS files.
 <code>expected_size</code> is required. Prefer a trusted <code>expected_sha256</code> when available.
