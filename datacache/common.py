@@ -18,7 +18,8 @@ import re
 from urllib.parse import parse_qsl, urlsplit
 
 from shutil import rmtree
-import appdirs
+import platformdirs
+from platformdirs.macos import MacOS
 
 from .version import __version__
 
@@ -73,7 +74,28 @@ def get_data_dir(subdir=None, envkey=None):
             return join(envdir, subdir)
         else:
             return envdir
-    return appdirs.user_cache_dir(subdir if subdir else "datacache")
+    return _platform_cache_dir(subdir if subdir else "datacache")
+
+
+def _platform_cache_dir(name):
+    """name's directory in the platform's user cache, as platformdirs gives it.
+
+    Two exceptions keep the location the same whichever platformdirs version
+    another package pulled in:
+
+    - macOS always uses ~/Library/Caches, as appdirs did before DataCache 1.25.0,
+      so existing caches stay put. platformdirs 4.6 and later honour
+      XDG_CACHE_HOME there instead.
+    - A relative XDG_CACHE_HOME falls back to ~/.cache, as platformdirs 4.11.8 and
+      later do. appdirs and earlier platformdirs used it as given, so the cache
+      followed the working directory.
+    """
+    if issubclass(platformdirs.PlatformDirs, MacOS):
+        return join(os.path.expanduser("~/Library/Caches"), name)
+    path = platformdirs.user_cache_dir(name)
+    if not os.path.isabs(path):
+        return join(os.path.expanduser("~/.cache"), name)
+    return path
 
 
 def get_cache_root(name, *envkeys, override=None, legacy=()):
@@ -114,7 +136,7 @@ def get_cache_root(name, *envkeys, override=None, legacy=()):
         value = environ.get(envkey, "").strip()
         if value:
             return os.path.expanduser(value)
-    platform = appdirs.user_cache_dir(name)
+    platform = _platform_cache_dir(name)
     if legacy and not _holds_data(platform):
         for path in legacy:
             if _holds_data(path):

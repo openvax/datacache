@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.25.0
+
+- Find the platform cache directory with platformdirs instead of appdirs,
+  which is deprecated and unmaintained since 2020. Windows and Linux paths are
+  unchanged, except that an empty or relative `XDG_CACHE_HOME` now falls back
+  to `~/.cache`; appdirs made the cache relative to the working directory. macOS
+  keeps `~/Library/Caches` even when `XDG_CACHE_HOME` is set, which platformdirs
+  4.6 and later would honour, so no existing cache moves and the location
+  doesn't depend on which platformdirs version is installed. Requires
+  `platformdirs>=3.0`.
+
 ## 1.24.0
 
 - `get_cache_root(name, *envkeys, override=None, legacy=())` resolves a

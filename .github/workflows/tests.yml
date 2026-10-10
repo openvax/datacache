@@ -35,9 +35,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[test]"
-      - name: Install older supported pandas and tqdm
+      - name: Install older supported pandas, tqdm and platformdirs
         if: matrix.dependencies == 'minimum'
-        run: python -m pip install "pandas==1.5.3" "numpy<2" "tqdm==4.64.0"
+        run: python -m pip install "pandas==1.5.3" "numpy<2" "tqdm==4.64.0" "platformdirs==3.0.0"
       - name: Check pre-1.5 pandas compatibility
         if: matrix.dependencies == 'legacy'
         run: python -m pip install "pandas==1.4.4" "numpy<2" "tqdm==4.64.0"
