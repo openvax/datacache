@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.24.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.25.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -371,20 +371,26 @@ directory nested under the default datacache cache.
 
 | Platform | Path for an application named `my-project` |
 | --- | --- |
-| Linux / Unix | `$XDG_CACHE_HOME/my-project`, or `~/.cache/my-project` when unset |
-| macOS | `~/Library/Caches/my-project` |
+| Linux / Unix | `$XDG_CACHE_HOME/my-project`, or `~/.cache/my-project` when it is unset, empty or relative |
+| macOS | `~/Library/Caches/my-project`, even when `XDG_CACHE_HOME` is set |
 | Windows | `%LOCALAPPDATA%\my-project\my-project\Cache` |
 
-Paths follow `appdirs.user_cache_dir`, including Windows' repeated application
-name. The function's return value is authoritative for the current platform.
+Paths follow `platformdirs.user_cache_dir`, including Windows' repeated
+application name, with two exceptions that keep a location the same whichever
+platformdirs version is installed. macOS ignores `XDG_CACHE_HOME`, as appdirs
+did before DataCache 1.25.0, so existing caches stay put; platformdirs 4.6 and
+later would honour it. A relative `XDG_CACHE_HOME` is ignored, as in
+platformdirs 4.11.8 and later, so the cache never depends on the working
+directory. The function's return value is authoritative for the current platform.
 If `envkey` names a nonempty environment variable, use that variable's value as
 the root and append `subdir` if supplied. `envkey` is opt-in for this helper;
 there is no implicit `DATACACHE_*` environment override for all APIs. Pass the
 returned path as `cache_root` to use that selection elsewhere.
 
 **Returns:** directory path string. **Raises:** platform directory lookup
-errors from appdirs if it cannot determine the location; invalid argument
-types can raise `TypeError`. Does not require the directory to exist.
+errors from platformdirs if it cannot determine the location, such as
+`RuntimeError` when there is no home directory; invalid argument types can
+raise `TypeError`. Does not require the directory to exist.
 
 ```python
 print(dc.get_data_dir())  # Platform cache directory for datacache.

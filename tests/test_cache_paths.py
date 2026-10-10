@@ -3,8 +3,13 @@
 import os
 from pathlib import Path
 import stat
+import sys
 
 import pandas as pd
+import platformdirs
+import platformdirs.macos
+import platformdirs.unix
+import platformdirs.windows
 import pytest
 
 from datacache import Cache, common, ensure_dir, get_cache_root, get_data_dir
@@ -132,6 +137,65 @@ def test_cache_root_falls_back_to_the_platform_directory(monkeypatch):
     assert get_cache_root("openvax") == get_data_dir("openvax")
 
 
+
+@pytest.fixture
+def platform_home(tmp_path, monkeypatch):
+    """Simulate a platform through platformdirs, with tmp_path as the home directory."""
+    for home in ("HOME", "USERPROFILE"):  # expanduser reads USERPROFILE on Windows.
+        monkeypatch.setenv(home, str(tmp_path))
+    monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+
+    def simulate(kind):
+        monkeypatch.setattr(platformdirs, "PlatformDirs", kind)
+        monkeypatch.setattr(platformdirs.windows, "get_win_folder",
+                            lambda csidl: str(tmp_path / "Local"))
+    return simulate
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX path separators")
+@pytest.mark.parametrize("xdg", [None, "/elsewhere", "", "relative/cache"])
+def test_macos_caches_stay_in_library_caches(platform_home, tmp_path, monkeypatch, xdg):
+    # appdirs ignored XDG_CACHE_HOME on macOS; platformdirs 4.6+ honours it.
+    platform_home(platformdirs.macos.MacOS)
+    if xdg is not None:
+        monkeypatch.setenv("XDG_CACHE_HOME", xdg)
+    expected = str(tmp_path / "Library" / "Caches" / "example")
+    assert get_data_dir("example") == expected
+    assert get_cache_root("example") == expected
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX path separators")
+@pytest.mark.parametrize("xdg, under", [
+    (None, ".cache"),
+    ("", ".cache"),
+    ("relative/cache", ".cache"),  # Never relative to the working directory.
+    ("{tmp}/xdg", "xdg"),
+])
+def test_linux_caches_follow_an_absolute_xdg_cache_home(platform_home, tmp_path, monkeypatch, xdg, under):
+    platform_home(platformdirs.unix.Unix)
+    if xdg is not None:
+        monkeypatch.setenv("XDG_CACHE_HOME", xdg.format(tmp=tmp_path))
+    assert get_data_dir("example") == str(tmp_path / under / "example")
+    assert get_cache_root("example") == str(tmp_path / under / "example")
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX path separators")
+def test_windows_caches_repeat_the_application_name(platform_home, tmp_path):
+    platform_home(platformdirs.windows.Windows)
+    local = tmp_path / "Local"
+    assert get_data_dir("example") == str(local / "example" / "example" / "Cache")
+    # pyensembl's per-genome caches from before get_cache_root nest the name twice.
+    assert get_data_dir("pyensembl/GRCh38/ensembl82") == str(
+        local / "pyensembl" / "GRCh38" / "ensembl82" / "pyensembl" / "GRCh38" / "ensembl82" / "Cache")
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="real macOS lookup")
+def test_this_mac_ignores_xdg_cache_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    assert get_data_dir("example") == str(tmp_path / "Library" / "Caches" / "example")
+
+
 @pytest.mark.parametrize("arguments", [("",), (None,), ("openvax", ""), ("openvax", None)])
 def test_cache_root_rejects_empty_names(arguments):
     with pytest.raises(ValueError):
@@ -143,7 +207,7 @@ def test_cache_root_prefers_an_override_then_variables_then_legacy_data(tmp_path
         monkeypatch.setenv(home, str(tmp_path))
     monkeypatch.delenv("EXAMPLE_ROOT", raising=False)
     platform = tmp_path / "platform"
-    monkeypatch.setattr(common.appdirs, "user_cache_dir", lambda name: str(platform))
+    monkeypatch.setattr(common, "_platform_cache_dir", lambda name: str(platform))
     old, older = tmp_path / ".example", tmp_path / ".older"
     assert get_cache_root("example", "EXAMPLE_ROOT", legacy=["~/.example"]) == str(platform)
 
@@ -188,7 +252,7 @@ def test_cache_root_rejects_bad_locations_wherever_they_are(monkeypatch, options
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX symlinks and permissions")
 def test_unreadable_legacy_entries_are_skipped(tmp_path, monkeypatch):
-    monkeypatch.setattr(common.appdirs, "user_cache_dir", lambda name: str(tmp_path / "platform"))
+    monkeypatch.setattr(common, "_platform_cache_dir", lambda name: str(tmp_path / "platform"))
     old = tmp_path / "old"
     old.mkdir()
     (old / "loop").symlink_to(old / "loop")
