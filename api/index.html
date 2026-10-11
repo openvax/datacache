@@ -2537,7 +2537,7 @@
 
 <h1 id="public-api-reference">Public API reference<a class="headerlink" href="#public-api-reference" title="Permanent link">&para;</a></h1>
 <p>This reference covers every name exported in <code>datacache.__all__</code> and every
-public <code>Cache</code> method in DataCache 1.25.0. Import these names from <code>datacache</code>.
+public <code>Cache</code> method in DataCache 1.25.1. Import these names from <code>datacache</code>.
 Signatures below show all defaults; arguments after <code>*</code> are keyword-only.
 Method signatures omit <code>self</code> and are called on a <code>Cache</code> instance.</p>
 <p>Start with the <a href="../#cache-and-verify-a-file">quickstart</a> for a first download.
@@ -2998,9 +2998,9 @@ directory nested under the default datacache cache.</p>
 application name, with two exceptions that keep a location the same whichever
 platformdirs version is installed. macOS ignores <code>XDG_CACHE_HOME</code>, as appdirs
 did before DataCache 1.25.0, so existing caches stay put; platformdirs 4.6 and
-later would honour it. A relative <code>XDG_CACHE_HOME</code> is ignored, as in
-platformdirs 4.11.8 and later, so the cache never depends on the working
-directory. The function's return value is authoritative for the current platform.
+later would honour it. <code>XDG_CACHE_HOME</code> is read as platformdirs 4.11.8 and
+later read it: surrounding whitespace is stripped, and a relative value is
+ignored, so the cache never depends on the working directory. The function's return value is authoritative for the current platform.
 If <code>envkey</code> names a nonempty environment variable, use that variable's value as
 the root and append <code>subdir</code> if supplied. <code>envkey</code> is opt-in for this helper;
 there is no implicit <code>DATACACHE_*</code> environment override for all APIs. Pass the
