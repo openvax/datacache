@@ -169,7 +169,9 @@ def test_macos_caches_stay_in_library_caches(platform_home, tmp_path, monkeypatc
     (None, ".cache"),
     ("", ".cache"),
     ("relative/cache", ".cache"),  # Never relative to the working directory.
+    ("~/cache", ".cache"),  # Not expanded: relative, as XDG specifies.
     ("{tmp}/xdg", "xdg"),
+    (" {tmp}/xdg \t", "xdg"),  # Stripped, which platformdirs before 4.6 didn't do.
 ])
 def test_linux_caches_follow_an_absolute_xdg_cache_home(platform_home, tmp_path, monkeypatch, xdg, under):
     platform_home(platformdirs.unix.Unix)

@@ -86,15 +86,17 @@ def _platform_cache_dir(name):
     - macOS always uses ~/Library/Caches, as appdirs did before DataCache 1.25.0,
       so existing caches stay put. platformdirs 4.6 and later honour
       XDG_CACHE_HOME there instead.
-    - A relative XDG_CACHE_HOME falls back to ~/.cache, as platformdirs 4.11.8 and
-      later do. appdirs and earlier platformdirs used it as given, so the cache
-      followed the working directory.
+    - XDG_CACHE_HOME is read as platformdirs 4.11.8 and later read it: padding is
+      stripped, and a relative value falls back to ~/.cache. Earlier versions
+      kept the padding (before 4.6) and used a relative value as given, so the
+      cache followed the working directory.
     """
     if issubclass(platformdirs.PlatformDirs, MacOS):
         return join(os.path.expanduser("~/Library/Caches"), name)
     path = platformdirs.user_cache_dir(name)
     if not os.path.isabs(path):
-        return join(os.path.expanduser("~/.cache"), name)
+        xdg = environ.get("XDG_CACHE_HOME", "").strip()
+        return join(xdg if os.path.isabs(xdg) else os.path.expanduser("~/.cache"), name)
     return path
 
 
