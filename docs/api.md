@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.25.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.25.1. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -379,9 +379,9 @@ Paths follow `platformdirs.user_cache_dir`, including Windows' repeated
 application name, with two exceptions that keep a location the same whichever
 platformdirs version is installed. macOS ignores `XDG_CACHE_HOME`, as appdirs
 did before DataCache 1.25.0, so existing caches stay put; platformdirs 4.6 and
-later would honour it. A relative `XDG_CACHE_HOME` is ignored, as in
-platformdirs 4.11.8 and later, so the cache never depends on the working
-directory. The function's return value is authoritative for the current platform.
+later would honour it. `XDG_CACHE_HOME` is read as platformdirs 4.11.8 and
+later read it: surrounding whitespace is stripped, and a relative value is
+ignored, so the cache never depends on the working directory. The function's return value is authoritative for the current platform.
 If `envkey` names a nonempty environment variable, use that variable's value as
 the root and append `subdir` if supplied. `envkey` is opt-in for this helper;
 there is no implicit `DATACACHE_*` environment override for all APIs. Pass the

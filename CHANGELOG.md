@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.25.1
+
+- Read a padded `XDG_CACHE_HOME` the same way whichever platformdirs version
+  is installed: surrounding whitespace is stripped, as platformdirs 4.6 and
+  later do. Before, platformdirs 3.0 to 4.5 kept the padding and DataCache fell
+  back to `~/.cache`, so 1.25.0's location still depended on the version there.
+
 ## 1.25.0
 
 - Find the platform cache directory with platformdirs instead of appdirs,
