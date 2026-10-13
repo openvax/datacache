@@ -2537,7 +2537,7 @@
 
 <h1 id="public-api-reference">Public API reference<a class="headerlink" href="#public-api-reference" title="Permanent link">&para;</a></h1>
 <p>This reference covers every name exported in <code>datacache.__all__</code> and every
-public <code>Cache</code> method in DataCache 1.25.1. Import these names from <code>datacache</code>.
+public <code>Cache</code> method in DataCache 1.26.0. Import these names from <code>datacache</code>.
 Signatures below show all defaults; arguments after <code>*</code> are keyword-only.
 Method signatures omit <code>self</code> and are called on a <code>Cache</code> instance.</p>
 <p>Start with the <a href="../#cache-and-verify-a-file">quickstart</a> for a first download.
@@ -3624,7 +3624,7 @@ works with an explicit <code>cache_root</code>.</p>
 <div class="highlight"><pre><span></span><code>install_archive(
     destination, sources, *, expected_sha256=None, expected_size=None,
     extra_files=None, force=False, verified=True, download_options=None,
-    max_members=None, max_extracted_size=None
+    max_members=None, max_extracted_size=None, validator=None
 )
 </code></pre></div>
 <p>Safely extract a complete tar archive into a private directory and publish the
@@ -3648,6 +3648,14 @@ size. Optional <code>max_members</code> and <code>max_extracted_size</code> limi
 files are extracted, as headers arrive; scanning stops when a limit is exceeded.
 Benign leading <code>./</code> paths are normalized and root <code>.</code> directory entries ignored.
 Local special files such as FIFOs are rejected without blocking.</p>
+<p><code>validator(tree)</code> optionally checks application requirements after extraction
+and extra-file creation, before publication, and on cache reuse. It receives a
+<code>Path</code> and must leave the tree unchanged. Raising or returning <code>False</code> rejects
+the tree with <code>FileValidationError</code>; a failed refresh leaves the old bundle
+active. A cached tree rejected by the callback requires an explicit
+<code>force=True</code> repair. The callback does not alter source identity or establish
+cryptographic verification. Non-callable validators raise <code>ValueError</code> before
+any filesystem writes.</p>
 <p><strong>Returns:</strong> the <code>Path</code> of the extracted tree, the store's current bundle; not
 the store path. Existing returned paths remain usable across forced refreshes.</p>
 <p><strong>Raises:</strong> <code>ValueError</code> for invalid definitions or options;
