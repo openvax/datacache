@@ -2,13 +2,17 @@
 
 See the [API reference](api.md) for signatures, defaults, return values, and errors.
 
-tqdm is a required dependency, installed by `python -m pip install datacache`.
-The old `datacache[progress]` extra remains a supported compatibility alias.
 Set `show_progress=True` on `fetch_file`, `Cache.fetch`, or the CSV and database
-helpers. DataCache uses [tqdm.auto](https://tqdm.github.io/docs/shortcuts/), which
+helpers to display progress bars. Displays are quiet by default and close on
+success, exceptions, and handled cancellation. The exception is
+`materialize`, which shows download, copy and hash progress unless you pass
+`show_progress=False` in its download options.
+
+DataCache uses [tqdm.auto](https://tqdm.github.io/docs/shortcuts/), which
 selects a terminal or notebook display. Terminal bars use stderr; stdout remains
-available for application output. Displays are quiet by default and close on
-success, exceptions, and handled cancellation.
+available for application output. tqdm is a required dependency, installed by
+`python -m pip install datacache`; the old `datacache[progress]` extra remains a
+supported compatibility alias.
 
 Downloads display bytes and a total when the server provides a usable size.
 Compressed HTTP content encoding can make the wire size differ from the

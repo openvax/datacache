@@ -120,7 +120,7 @@ root, then an exact-case match, then the largest. If none matches, the largest
 non-directory member is installed, with a logged warning when the output was
 named explicitly and the archive has several. HTML-to-CSV conversion is enabled
 by an explicit `.csv` output for an HTML source and requires `datacache[html]`.
-See [format selection](downloads.md#verified-downloads) and
+See [format selection](downloads.md#archives-and-decompression) and
 [HTTP retry behavior](downloads.md#transient-http-failures).
 
 **Returns:** local path string. It is not necessarily absolute when given a

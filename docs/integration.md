@@ -102,14 +102,6 @@ SQLite's filesystem locking and journaling. New database publication needs
 hard-link support. Validate deployment-specific network filesystems and ACL
 requirements in the consuming application.
 
-## Regression coverage
-
-The test suite includes raw/gzip/ZIP downloads, private downstream helper
-contracts, shared-file modes, immutable inspection, HTTP retries, callback
-failure, concurrent publication, integer precision, nullable dtypes, constraint
-normalization, failed database rebuilds, and transformation failure cleanup.
-Released-code fixtures also check legacy cache names and SQLite schemas,
-read-only reuse, and unchanged contents and permissions across upgrades.
 The runnable [offline example](https://github.com/openvax/datacache/blob/master/examples/basic_usage.py) exercises the public
 download, transform, inspection, CSV, and database APIs together.
 
