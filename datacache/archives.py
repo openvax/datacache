@@ -29,7 +29,7 @@ from .bundle_store import (
     validate_distinct_paths,
     validate_file_record, validate_path_component, validate_relative_name,
 )
-from .download import normal_creation_mode, validate_download_options, validate_limit, validate_size_within_limit
+from .download import _run_validator, normal_creation_mode, validate_download_options, validate_limit, validate_size_within_limit
 from .integrity import FileValidationError, _validate_expectations
 from .provenance import redact_url
 
@@ -481,7 +481,7 @@ def _assemble_archive(working, definition, options, keep_parts):
 def install_archive(
         destination, sources, *, expected_sha256=None, expected_size=None,
         extra_files=None, force=False, verified=True, download_options=None,
-        max_members=None, max_extracted_size=None):
+        max_members=None, max_extracted_size=None, validator=None):
     """Safely extract a complete tar archive and publish the tree as a new bundle.
 
     ``sources`` is one URL/path or an ordered sequence. Source mappings accept
@@ -490,9 +490,17 @@ def install_archive(
     concatenated byte-for-byte in the supplied order. ``extra_files`` are
     written after extraction and before the tree receipt, which lets consumers
     publish their own source record in the same transaction.
+
+    ``validator(tree)`` may inspect the extracted tree (including extra files)
+    and reject it by raising or returning False. It must not modify the tree.
+    Validation runs before publication and on reuse; rejection raises
+    FileValidationError and leaves the current bundle unchanged. It does not
+    change source identity or establish cryptographic verification.
     """
     if not isinstance(force, bool) or not isinstance(verified, bool):
         raise ValueError("force and verified must be booleans")
+    if validator is not None and not callable(validator):
+        raise ValueError("validator must be callable")
     validate_limit("max_members", max_members)
     validate_limit("max_extracted_size", max_extracted_size)
     definition = _definition(
@@ -520,6 +528,7 @@ def install_archive(
         expected_size=expected_size, extra_files=extra_files,
         verify_files=not force)  # A forced install replaces it unhashed.
     if store.can_reuse(inspection, force=force):
+        _run_validator(validator, Path(inspection.bundle), path, "archive tree")
         return Path(inspection.bundle)
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -529,6 +538,7 @@ def install_archive(
             path, sources, expected_sha256=expected_sha256,
             expected_size=expected_size, extra_files=extra_files, verify_files=not force)
         if store.can_reuse(inspection, force=force):
+            _run_validator(validator, Path(inspection.bundle), path, "archive tree")
             return Path(inspection.bundle)
 
         # Parts are kept across attempts only when each is pinned, so a kept
@@ -560,6 +570,7 @@ def install_archive(
                     raise FileValidationError(target, "extra file collides with archive content") from error
                 with os.fdopen(descriptor, "wb") as output:
                     output.write(value)
+            _run_validator(validator, tree, path, "archive tree")
             listing = list_tree(tree)
             files = {name: hash_file(file_path).record for name, file_path in listing.files.items()}
             receipt = {
