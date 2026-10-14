@@ -1150,20 +1150,19 @@ they are published.</p>
 Completed inputs persist in owner-only source-keyed directories even without
 HTTP resume. <code>download_options={"resume": True}</code> also preserves partial raw
 HTTP(S) downloads, using existing hash/size or size/strong-ETag resume rules.
-Remote resumable inputs require <code>size</code>; local inputs are simply copied.
-The supported transport options are timeout, chunk size, progress callback,
+Remote resumable inputs require <code>size</code>; local inputs are simply copied.</p>
+<p>The supported transport options are timeout, chunk size, progress callback,
 progress display, retry count/backoff/delay, resume and <code>max_bytes</code>, which
-limits each remote download. Download, copy and hash
-progress is enabled by default; set <code>show_progress=False</code> in download options
-for noninteractive use. Valid cache hits remain quiet.</p>
+limits each remote download. Download, copy and hash progress is enabled by
+default; set <code>show_progress=False</code> in download options for noninteractive use.
+Valid cache hits remain quiet.</p>
 <p>Download, gzip, validation and builder failures leave the current bundle
 untouched. Failed builder outputs are discarded; completed
 inputs survive for retry without another download. A killed builder can leave
 private partial outputs, which the next transaction with the same definition
-discards. Changing only the transform can reuse retained matching inputs.
-<code>force=True</code> always rebuilds outputs, and it doesn't hash the outputs it
-replaces.
-It reuses remote inputs that still match, copies a local source again while
+discards. Changing only the transform can reuse retained matching inputs.</p>
+<p><code>force=True</code> always rebuilds outputs, and it doesn't hash the outputs it
+replaces. It reuses remote inputs that still match, copies a local source again while
 the original exists (so an in-place correction is picked up; once the original
 is gone, a retained copy still serves), and repairs corrupted private inputs or
 input receipts. It never adopts unsafe paths or foreign directories.</p>
@@ -1182,17 +1181,18 @@ builds. Cache hits never perform cleanup: a crash between publication and
 cleanup may leave inputs for an explicit later refresh. Inputs for other source
 definitions/users and old bundles are never removed implicitly; use
 <code>prune_bundles</code> to delete old bundles (see
-<a href="../bundles/#removing-old-bundles">removing old bundles</a>). Abandoned input/staging variants require deliberate operator
-cleanup; general inventory/pruning is separate work. Retention is installation
-policy, not output identity, so toggling it on a cache hit does not mutate disk.</p>
+<a href="../bundles/#removing-old-bundles">removing old bundles</a>). Abandoned
+input/staging variants require deliberate operator cleanup; general
+inventory/pruning is separate work. Retention is installation policy, not output
+identity, so toggling it on a cache hit does not mutate disk.</p>
 <p>The store marker, <code>.datacache-store.json</code>, records that this is a
 materialization store, so DataCache never adopts a populated legacy directory or
-another kind of store, even with force.
-An empty precreated directory becomes the store in place, keeping its owner,
-group and permissions. Installation works on local filesystems with atomic
-sibling renames, on Linux, macOS and Windows; <code>resume=True</code> needs POSIX.
-Read-only existing hits require no lock.
-This is atomic visibility, not a guarantee against filesystem/power-loss faults.</p>
+another kind of store, even with force. An empty precreated directory becomes
+the store in place, keeping its owner, group and permissions.</p>
+<p>Installation works on local filesystems with atomic sibling renames, on Linux,
+macOS and Windows; <code>resume=True</code> needs POSIX. Read-only existing hits require no
+lock. This is atomic visibility, not a guarantee against filesystem/power-loss
+faults.</p>
 <h2 id="disk-use">Disk use<a class="headerlink" href="#disk-use" title="Permanent link">&para;</a></h2>
 <p>Let <code>C</code> be total completed raw inputs, <code>D</code> the new bundle of outputs, and <code>O</code>
 all old bundles. During a build, storage is approximately

@@ -382,6 +382,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Verified downloads">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#archives-and-decompression" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Archives and decompression
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#validation-errors-and-empty-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation errors and empty files
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -440,10 +468,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#downstream-compatibility" class="md-nav__link">
+  <a href="#resumable-http-downloads" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Downstream compatibility
+        Resumable HTTP downloads
       
     </span>
   </a>
@@ -451,10 +479,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#resumable-http-downloads" class="md-nav__link">
+  <a href="#downstream-compatibility" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Resumable HTTP downloads
+        Downstream compatibility
       
     </span>
   </a>
@@ -1040,6 +1068,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Verified downloads">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#archives-and-decompression" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Archives and decompression
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#validation-errors-and-empty-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation errors and empty files
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1098,10 +1154,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#downstream-compatibility" class="md-nav__link">
+  <a href="#resumable-http-downloads" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Downstream compatibility
+        Resumable HTTP downloads
       
     </span>
   </a>
@@ -1109,10 +1165,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#resumable-http-downloads" class="md-nav__link">
+  <a href="#downstream-compatibility" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Resumable HTTP downloads
+        Downstream compatibility
       
     </span>
   </a>
@@ -1183,32 +1239,40 @@ normal HTTP transfer decoding, not encoded HTTP wire bytes. Hashes and sizes
 refer to that payload. A cache hit still uses the supplied local validation
 checks; changing transformation options does not replace an existing output.
 Use distinct names, trusted expectations, or <code>force=True</code> when switching modes.</p>
-<p>Without <code>raw=True</code>, keeping the source's <code>.gz</code> or <code>.zip</code> suffix at the destination
-and leaving <code>decompress=False</code> retains an archive as before.
-With an inferred filename, archives are retained by default, including URLs
-with query strings or fragments; their existing cache keys are preserved.
-<code>decompress=True</code> uses a distinct key for the decompressed contents, keeping the
-full URL in the key's digest. When a download endpoint's inferred filename
-has no removable archive suffix, <code>.decompressed</code> distinguishes its output.
-With an explicit <code>filename</code> or <code>destination</code>, a
-missing compression suffix still implies decompression for compatibility unless
-<code>raw=True</code> is supplied.
-<code>decompress=True</code> explicitly requests decompression while preserving an explicit
-destination's exact name. Format detection prefers a supported extension on
-the URL path (case-insensitively). For download endpoints without a supported
-path extension, a filename in the final query parameter is also recognized
-for compatibility, such as IEDB's <code>downloader.php?file_name=doc/data.zip</code>.
-Bare format hints such as <code>?format=.gz</code> and fragments do not select a format.
-For ZIP files, the member stored at the output filename is selected; otherwise a
-member with that name in any folder, ignoring letter case (such as
-<code>release/data.csv</code> or <code>Data.CSV</code> for <code>data.csv</code>), preferring the one nearest the
-archive root and then an exact-case match. If no member matches, the largest
-non-directory member is installed, and a warning is logged when the output was
-named explicitly and that was a guess among several. No archive paths are
-extracted.
-HTML-to-CSV conversion requires an explicit <code>filename</code> or <code>destination</code> ending
+<h3 id="archives-and-decompression">Archives and decompression<a class="headerlink" href="#archives-and-decompression" title="Permanent link">&para;</a></h3>
+<p>Without <code>raw=True</code>, keeping the source's <code>.gz</code> or <code>.zip</code> suffix at the
+destination and leaving <code>decompress=False</code> retains an archive as before.
+Decompression also depends on how the output is named:</p>
+<ul>
+<li>With an inferred filename, archives are retained by default, including URLs
+  with query strings or fragments; their existing cache keys are preserved.
+  <code>decompress=True</code> uses a distinct key for the decompressed contents, keeping
+  the full URL in the key's digest. When a download endpoint's inferred filename
+  has no removable archive suffix, <code>.decompressed</code> distinguishes its output.</li>
+<li>With an explicit <code>filename</code> or <code>destination</code>, a missing compression suffix
+  still implies decompression for compatibility unless <code>raw=True</code> is supplied.
+  <code>decompress=True</code> explicitly requests decompression while preserving an
+  explicit destination's exact name.</li>
+</ul>
+<p>Format detection prefers a supported extension on the URL path
+(case-insensitively). For download endpoints without a supported path
+extension, a filename in the final query parameter is also recognized for
+compatibility, such as IEDB's <code>downloader.php?file_name=doc/data.zip</code>. Bare
+format hints such as <code>?format=.gz</code> and fragments do not select a format.</p>
+<p>A ZIP file installs one member; no archive paths are extracted. DataCache
+selects, in order:</p>
+<ol>
+<li>The member stored at the output filename.</li>
+<li>A member with that name in any folder, ignoring letter case (such as
+   <code>release/data.csv</code> or <code>Data.CSV</code> for <code>data.csv</code>), preferring the one nearest
+   the archive root and then an exact-case match.</li>
+<li>The largest non-directory member. A warning is logged when the output was
+   named explicitly and this was a guess among several.</li>
+</ol>
+<p>HTML-to-CSV conversion requires an explicit <code>filename</code> or <code>destination</code> ending
 in <code>.csv</code>. Query strings and fragments in inferred cache keys never request
 conversion; those downloads retain their original HTML bytes.</p>
+<h3 id="validation-errors-and-empty-files">Validation errors and empty files<a class="headerlink" href="#validation-errors-and-empty-files" title="Permanent link">&para;</a></h3>
 <p>A size or SHA-256 mismatch raises <code>FileValidationError</code>, with the path and
 expected/actual values in its message. A corrupt cache hit does not trigger a
 download: call <code>fetch_file(..., force=True)</code> to explicitly attempt replacement.
@@ -1285,9 +1349,7 @@ Requests exception, preserving its response and cause.</p>
 failures), local filesystem errors,
 progress callback exceptions, and transformation/integrity/publication errors
 are not retried. Local file and FTP transfers remain single attempts. Cache
-reuse and read-only inspection make no requests and do not wait. Existing
-pyensembl calls through <code>_download_and_decompress_if_necessary</code> receive the same
-default policy without changes to downstream code.</p>
+reuse and read-only inspection make no requests and do not wait.</p>
 <p>Every HTTP and HTTPS request, including resumed range requests and
 <code>fetch_bytes</code>, sends <code>User-Agent: datacache/&lt;version&gt;
 (+https://github.com/openvax/datacache)</code>. Some hosts, IEDB among them, refuse
@@ -1452,8 +1514,8 @@ Relative roots remain relative to the current working directory. It is
 supported by <code>fetch_file</code>, <code>expected_path</code>, <code>file_exists</code>, <code>resolve_path</code>,
 <code>build_path</code>, and <code>Cache</code>. An exact <code>destination</code> is mutually exclusive with
 <code>cache_root</code>. Default cache locations and filename normalization remain the
-same. <code>build_path</code> still creates parents; use <code>resolve_path</code> for pure lookup.
-Creation and repair remain explicit operations: use <code>fetch_file</code> or
+same. <code>build_path</code> still creates parents; use <code>resolve_path</code> for pure lookup.</p>
+<p>Creation and repair remain explicit operations: use <code>fetch_file</code> or
 <code>Cache.fetch</code>, supplying integrity metadata and <code>force=True</code> for replacement.
 <code>Cache.fetch</code> validates every reuse and respects different filenames for the
 same URL. Its database and deletion methods also use the selected cache root.
@@ -1461,23 +1523,14 @@ Database paths preserve the filesystem meaning of symlinks followed by <code>..<
 <code>Cache.delete_all()</code> clears the root's contents while preserving the directory
 and its permissions, including when the root is <code>.</code> or a symlink. Symlinks
 inside the cache are removed without clearing their external targets.</p>
-<h2 id="downstream-compatibility">Downstream compatibility<a class="headerlink" href="#downstream-compatibility" title="Permanent link">&para;</a></h2>
-<p>The private <code>_download_and_decompress_if_necessary</code> entry point, used by
-pyensembl, retains its pre-1.8 literal-URL format inference when transform flags
-are omitted. In particular, query/fragment-bearing archive URLs retain the
-same bytes under pyensembl's existing cache keys. Explicit transform flags and
-the public <code>fetch_file</code> API retain the parsed-URL behavior documented above.
-The IEDB download endpoints used by pepdata continue to decompress archives
-named at the end of the URL query into the requested CSV filenames.
-New integrations should use the public download and inspection APIs.</p>
 <h2 id="resumable-http-downloads">Resumable HTTP downloads<a class="headerlink" href="#resumable-http-downloads" title="Permanent link">&para;</a></h2>
 <p>The simplest choice is <code>resume="auto"</code>: it resumes interrupted transfers when
-it can, and otherwise downloads normally. That covers Windows, a size that
-isn't known, decompression, a <code>validator</code>, and a server that turns out not to
-support resuming, or a filesystem that can't hold private resume state or
-locks; the partial is then discarded and the file downloaded in full. No
-<code>os.name</code> checks or error-message matching are needed. Learning that a server
-can't resume costs one extra request, whose body isn't read:</p>
+it can, and otherwise downloads normally, so callers need no <code>os.name</code> checks
+or error-message matching. It downloads in full, discarding any partial, on
+Windows, when the size isn't known, with decompression or a <code>validator</code>, when
+the server turns out not to support resuming, and when the filesystem can't hold
+private resume state or locks. Learning that a server can't resume costs one
+extra request, whose body isn't read:</p>
 <div class="highlight"><pre><span></span><code><span class="n">path</span> <span class="o">=</span> <span class="n">fetch_file</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">destination</span><span class="o">=</span><span class="n">dest</span><span class="p">,</span> <span class="n">raw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">expected_size</span><span class="o">=</span><span class="n">size</span><span class="p">,</span> <span class="n">resume</span><span class="o">=</span><span class="s2">"auto"</span><span class="p">)</span>
 </code></pre></div>
 <p>The rest of this section describes <code>resume=True</code>, which instead raises
@@ -1509,11 +1562,13 @@ off by default and requires a POSIX local filesystem.</p>
 one bounded partial file, metadata and a permanent advisory lock. Threads and
 processes serialize on that destination for the same user; other users retain
 separate private state. A valid destination remains intact throughout transfer,
-verification, and publication. With an expected SHA-256, complete partials are
+verification, and publication.</p>
+<p>With an expected SHA-256, complete partials are
 verified and reused without network; oversized or corrupt ones restart. Without
 one, a complete-size partial restarts to obtain a fresh validated response, and
-an incomplete partial without a saved strong ETag is discarded. Interruptions and exhausted transport
-retries keep safely written partial bytes for the next call.</p>
+an incomplete partial without a saved strong ETag is discarded. Interruptions
+and exhausted transport retries keep safely written partial bytes for the next
+call.</p>
 <p>Range requests use <code>Accept-Encoding: identity</code>. DataCache checks the exact
 <code>Content-Range</code> offset and total, carries <code>If-Range</code> for a strong ETag, and only
 appends bytes from a matching representation. A 200 response replaces the
@@ -1537,6 +1592,17 @@ staging keeps persistent partials private even when publication fails after
 setting shared file permissions. No credentials or raw signed URLs are stored in
 the private metadata; a URL hash identifies the source. Changing the URL or
 integrity expectations starts a new transfer.</p>
+<h2 id="downstream-compatibility">Downstream compatibility<a class="headerlink" href="#downstream-compatibility" title="Permanent link">&para;</a></h2>
+<p>The private <code>_download_and_decompress_if_necessary</code> entry point, used by
+pyensembl, retains its pre-1.8 literal-URL format inference when transform flags
+are omitted. In particular, query/fragment-bearing archive URLs retain the
+same bytes under pyensembl's existing cache keys. Explicit transform flags and
+the public <code>fetch_file</code> API retain the parsed-URL behavior documented above.
+Existing pyensembl calls through this entry point receive the same default
+<a href="#transient-http-failures">retry policy</a> without changes to downstream code.</p>
+<p>The IEDB download endpoints used by pepdata continue to decompress archives
+named at the end of the URL query into the requested CSV filenames.
+New integrations should use the public download and inspection APIs.</p>
 
 
 

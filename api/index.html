@@ -2537,7 +2537,7 @@
 
 <h1 id="public-api-reference">Public API reference<a class="headerlink" href="#public-api-reference" title="Permanent link">&para;</a></h1>
 <p>This reference covers every name exported in <code>datacache.__all__</code> and every
-public <code>Cache</code> method in DataCache 1.26.0. Import these names from <code>datacache</code>.
+public <code>Cache</code> method in DataCache 1.26.1. Import these names from <code>datacache</code>.
 Signatures below show all defaults; arguments after <code>*</code> are keyword-only.
 Method signatures omit <code>self</code> and are called on a <code>Cache</code> instance.</p>
 <p>Start with the <a href="../#cache-and-verify-a-file">quickstart</a> for a first download.
@@ -2766,7 +2766,7 @@ root, then an exact-case match, then the largest. If none matches, the largest
 non-directory member is installed, with a logged warning when the output was
 named explicitly and the archive has several. HTML-to-CSV conversion is enabled
 by an explicit <code>.csv</code> output for an HTML source and requires <code>datacache[html]</code>.
-See <a href="../downloads/#verified-downloads">format selection</a> and
+See <a href="../downloads/#archives-and-decompression">format selection</a> and
 <a href="../downloads/#transient-http-failures">HTTP retry behavior</a>.</p>
 <p><strong>Returns:</strong> local path string. It is not necessarily absolute when given a
 relative <code>destination</code> or <code>cache_root</code>.</p>

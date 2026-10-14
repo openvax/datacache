@@ -1141,26 +1141,26 @@ lists every public signature, default, return value, exception, and example.</p>
 FASTA files with <code>fetch_file</code>, then parse them in the consuming library.</p>
 <h2 id="guarantees-and-limits">Guarantees and limits<a class="headerlink" href="#guarantees-and-limits" title="Permanent link">&para;</a></h2>
 <p>Downloads and complete archive trees are staged privately and published
-atomically after validation.
-New files respect the process umask; replacements preserve existing access
-permissions. This includes pyensembl's private download helpers.</p>
+atomically after validation. New files respect the process umask; replacements
+preserve existing access permissions. This includes pyensembl's private
+download helpers.</p>
 <p>Custom single-file transformations publish only successful output. Existing
 SQLite caches rebuild in a transaction: failure rolls back both schema and
-rows. New databases are built privately before publication. Cached data is
-reused by path or database version. DataCache doesn't ask servers whether files
-changed; <code>expire_after</code> refreshes files after a set time and also replaces
-cached files that no longer validate. Otherwise invalid caches are reported,
-not repaired.</p>
+rows. New databases are built privately before publication.</p>
+<p>Cached data is reused by path or database version. DataCache doesn't ask
+servers whether files changed; <code>expire_after</code> refreshes files after a set time
+and also replaces cached files that no longer validate. Otherwise invalid
+caches are reported, not repaired.</p>
 <p>Upgrades keep existing cache names and database metadata compatible. Valid
 cache hits do not rewrite files, change permissions, or apply new schema
 constraints. See <a href="../../data/#upgrading-existing-caches">upgrading existing caches</a>
 and <a href="../../shared-caches/#files-already-downloaded-as-0600">sharing old private files</a>.</p>
 <p>File publication requires local filesystem support for atomic replacement;
 new SQLite database publication also requires hard links. SQLite locking and
-transactions govern database rebuilds. Use <code>install_bundle</code> for atomic multi-file
-publication. Bundle, archive and materialization installs work on local filesystems on
-Linux, macOS and Windows; resumable transfers need POSIX. Distributed
-coordination is outside their scope.</p>
+transactions govern database rebuilds. Use <code>install_bundle</code> for atomic
+multi-file publication. Bundle, archive and materialization installs work on
+local filesystems on Linux, macOS and Windows; resumable transfers need POSIX.
+Distributed coordination is outside their scope.</p>
 
 
 

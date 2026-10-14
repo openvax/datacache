@@ -1089,20 +1089,25 @@ platform's cache directory. <code>get_cache_root</code> does all of that in one 
 <span class="p">)</span>
 <span class="n">path</span> <span class="o">=</span> <span class="n">fetch_file</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">cache_root</span><span class="o">=</span><span class="n">root</span><span class="p">)</span>
 </code></pre></div>
-<p>The first of these that applies is the root: the override, then the first
-environment variable that is set, then the platform cache directory if it
-already holds data, then the first legacy location holding data, and finally
-the platform cache directory. A location holds data when it contains a file
-anywhere inside other than the <code>.DS_Store</code>-style files operating systems leave
-behind, so empty leftover folders never pin a user to an old location, and a
-user who has already downloaded into the platform directory stays there.
-Legacy paths must be absolute. The legacy check reads the disk, so resolve the
-root once, for example at startup, and pass it along.
-Environment values are used exactly as given, never with a package name added,
-so several packages reading one variable agree on one directory. Nothing is
-created until something is downloaded. Pass the root to <code>fetch_file</code>, <code>Cache</code>
-or a registry as <code>cache_root</code>; <code>fetch_file</code>'s <code>subdir</code> alone reads no
-environment variables.</p>
+<p>The root is the first of these that applies:</p>
+<ol>
+<li>The override.</li>
+<li>The first environment variable that is set.</li>
+<li>The platform cache directory, if it already holds data.</li>
+<li>The first legacy location holding data.</li>
+<li>The platform cache directory.</li>
+</ol>
+<p>A location holds data when it contains a file anywhere inside other than the
+<code>.DS_Store</code>-style files operating systems leave behind. Empty leftover folders
+therefore never pin a user to an old location, and a user who has already
+downloaded into the platform directory stays there.</p>
+<p>Legacy paths must be absolute. The legacy check reads the disk, so resolve the
+root once, for example at startup, and pass it along. Environment values are
+used exactly as given, never with a package name added, so several packages
+reading one variable agree on one directory. Nothing is created until something
+is downloaded.</p>
+<p>Pass the root to <code>fetch_file</code>, <code>Cache</code> or a registry as <code>cache_root</code>;
+<code>fetch_file</code>'s <code>subdir</code> alone reads no environment variables.</p>
 <h2 id="sharing-one-root">Sharing one root<a class="headerlink" href="#sharing-one-root" title="Permanent link">&para;</a></h2>
 <p>Select a common root explicitly:</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">datacache</span><span class="w"> </span><span class="kn">import</span> <span class="n">Cache</span>

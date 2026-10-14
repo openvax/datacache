@@ -1031,13 +1031,16 @@
 
 <h1 id="progress-and-logging">Progress and logging<a class="headerlink" href="#progress-and-logging" title="Permanent link">&para;</a></h1>
 <p>See the <a href="../api/">API reference</a> for signatures, defaults, return values, and errors.</p>
-<p>tqdm is a required dependency, installed by <code>python -m pip install datacache</code>.
-The old <code>datacache[progress]</code> extra remains a supported compatibility alias.
-Set <code>show_progress=True</code> on <code>fetch_file</code>, <code>Cache.fetch</code>, or the CSV and database
-helpers. DataCache uses <a href="https://tqdm.github.io/docs/shortcuts/">tqdm.auto</a>, which
+<p>Set <code>show_progress=True</code> on <code>fetch_file</code>, <code>Cache.fetch</code>, or the CSV and database
+helpers to display progress bars. Displays are quiet by default and close on
+success, exceptions, and handled cancellation. The exception is
+<code>materialize</code>, which shows download, copy and hash progress unless you pass
+<code>show_progress=False</code> in its download options.</p>
+<p>DataCache uses <a href="https://tqdm.github.io/docs/shortcuts/">tqdm.auto</a>, which
 selects a terminal or notebook display. Terminal bars use stderr; stdout remains
-available for application output. Displays are quiet by default and close on
-success, exceptions, and handled cancellation.</p>
+available for application output. tqdm is a required dependency, installed by
+<code>python -m pip install datacache</code>; the old <code>datacache[progress]</code> extra remains a
+supported compatibility alias.</p>
 <p>Downloads display bytes and a total when the server provides a usable size.
 Compressed HTTP content encoding can make the wire size differ from the
 decoded data; in that case the total is unknown. gzip decompression also uses

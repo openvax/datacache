@@ -1162,10 +1162,11 @@ APIs work independently; adopting a registry is optional.</p>
 <span class="c1"># Explicit repair or refresh; old returned paths remain usable:</span>
 <span class="n">paths</span> <span class="o">=</span> <span class="n">registry</span><span class="o">.</span><span class="n">download</span><span class="p">(</span><span class="s2">"reference"</span><span class="p">,</span> <span class="n">force</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span>
 </code></pre></div>
-<p><code>get_cache_root</code> returns a string; wrap it in <code>Path</code> when joining paths with <code>/</code>. SHA-256 and size describe the installed bytes,
-after decompression. Use opaque, concrete data-version labels independent of
-Python package versions. A default must name a version in the supplied mapping;
-DataCache never resolves a remote <code>latest</code> alias.</p>
+<p>SHA-256 and size describe the installed bytes, after decompression. Use
+opaque, concrete data-version labels independent of Python package versions. A
+default must name a version in the supplied mapping; DataCache never resolves a
+remote <code>latest</code> alias. <code>get_cache_root</code> returns a string; wrap it in <code>Path</code> when
+joining paths with <code>/</code>.</p>
 <p>For a caller that already resolves versions, the lower-level operations are:</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">datacache</span><span class="w"> </span><span class="kn">import</span> <span class="n">install_bundle</span><span class="p">,</span> <span class="n">inspect_bundle</span>
 
@@ -1175,13 +1176,13 @@ DataCache never resolves a remote <code>latest</code> alias.</p>
 <p><code>assets</code> is the same mapping of relative names to metadata. Names cannot escape
 the bundle, collide as files/directories or by letter case, or occupy DataCache's
 reserved metadata names. A file or directory at another asset's automatic
-provenance sidecar path is also rejected before installation starts. Source
-directories are stores: an existing empty directory is reported as <code>missing</code>
-and becomes the store on the first install, in place, so it keeps its owner,
-group and permissions. Installation never takes over a directory with files in
-it unless it is already a bundle store, even with <code>force=True</code>. Store generated indices and other derived
-outputs under a separate application-owned directory. Reinstalling sources does
-not visit those outputs.</p>
+provenance sidecar path is also rejected before installation starts.</p>
+<p>Source directories are stores: an existing empty directory is reported as
+<code>missing</code> and becomes the store on the first install, in place, so it keeps its
+owner, group and permissions. Installation never takes over a directory with
+files in it unless it is already a bundle store, even with <code>force=True</code>. Store
+generated indices and other derived outputs under a separate application-owned
+directory. Reinstalling sources does not visit those outputs.</p>
 <h2 id="consumer-selected-store-paths">Consumer-selected store paths<a class="headerlink" href="#consumer-selected-store-paths" title="Permanent link">&para;</a></h2>
 <p>Select exactly one of <code>cache_root</code>, a zero-argument <code>cache_dir</code> root callable,
 or an exact <code>store_path(name, version)</code> callback. Root strategies retain
@@ -1218,14 +1219,15 @@ biological naming and migration policy remain the application's responsibility.<
 <code>FileInspection</code> objects from it. The <code>error</code> field retains the cause of a
 failed inspection.</p>
 <p>Explicit inspection hashes every asset by default. With trusted registry
-metadata, <code>verified=True</code> means every file matched the supplied SHA-256 just now. Every bundle
-also has its own manifest recording sizes, observed SHA-256 digests, source URLs,
-and fetch time. <code>inspect_bundle(directory)</code> can check those recorded hashes
-without a registry or network, but returns <code>verified=False</code>, for the bundle and
-for each file: a local receipt is not an independent authority. Display URLs omit credentials, queries and
-fragments; a separate SHA-256 fingerprint identifies the full source URL without
-storing that omitted text. Paths are retained, so do not use secret-bearing URL
-paths.</p>
+metadata, <code>verified=True</code> means every file matched the supplied SHA-256 just
+now.</p>
+<p>Every bundle also has its own manifest recording sizes, observed SHA-256
+digests, source URLs, and fetch time. <code>inspect_bundle(directory)</code> can check
+those recorded hashes without a registry or network, but returns
+<code>verified=False</code>, for the bundle and for each file: a local receipt is not an
+independent authority. Display URLs omit credentials, queries and fragments; a
+separate SHA-256 fingerprint identifies the full source URL without storing that
+omitted text. Paths are retained, so do not use secret-bearing URL paths.</p>
 <p>Use <code>inspect_bundle(directory, assets, verify_files=False)</code> or
 <code>registry.inspect(name, verify_files=False)</code> for metadata-only checks. This
 checks ownership, the bundle's manifest, registry expectations, the
