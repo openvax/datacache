@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.25.1. Import these names from `datacache`.
+public `Cache` method in DataCache 1.26.1. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -1162,7 +1162,7 @@ assert not list(Path(cache.cache_directory_path).iterdir())
 install_archive(
     destination, sources, *, expected_sha256=None, expected_size=None,
     extra_files=None, force=False, verified=True, download_options=None,
-    max_members=None, max_extracted_size=None
+    max_members=None, max_extracted_size=None, validator=None
 )
 ```
 
@@ -1189,6 +1189,15 @@ size. Optional `max_members` and `max_extracted_size` limits are checked before
 files are extracted, as headers arrive; scanning stops when a limit is exceeded.
 Benign leading `./` paths are normalized and root `.` directory entries ignored.
 Local special files such as FIFOs are rejected without blocking.
+
+`validator(tree)` optionally checks application requirements after extraction
+and extra-file creation, before publication, and on cache reuse. It receives a
+`Path` and must leave the tree unchanged. Raising or returning `False` rejects
+the tree with `FileValidationError`; a failed refresh leaves the old bundle
+active. A cached tree rejected by the callback requires an explicit
+`force=True` repair. The callback does not alter source identity or establish
+cryptographic verification. Non-callable validators raise `ValueError` before
+any filesystem writes.
 
 **Returns:** the `Path` of the extracted tree, the store's current bundle; not
 the store path. Existing returned paths remain usable across forced refreshes.

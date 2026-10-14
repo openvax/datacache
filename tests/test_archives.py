@@ -745,3 +745,61 @@ def test_versioned_archive_registry_default_layout_and_unverified_history(
     assert bundle.is_dir()
     assert registry.inspect("data").status == "available"
     assert not registry.inspect("data").verified
+
+
+@pytest.mark.parametrize('warm', [False, True])
+@pytest.mark.parametrize('raises', [False, True])
+def test_validator_rejects_before_publication(tmp_path, archive_file, warm, raises):
+    source, _, _ = archive_file
+    destination = tmp_path / 'download'
+    previous = install_archive(destination, source, verified=False) if warm else None
+
+    def reject(tree):
+        assert (tree / 'models/a/model.json').is_file()
+        assert (tree / 'source.txt').read_text() == 'extra metadata'
+        assert inspect_archive(destination).bundle == (str(previous) if warm else None)
+        if raises:
+            raise ValueError('required model absent')
+        return False
+
+    with pytest.raises(FileValidationError, match='archive tree failed validation') as failure:
+        install_archive(destination, source, verified=False, force=True,
+                        extra_files={'source.txt': 'extra metadata'}, validator=reject)
+    if raises:
+        assert isinstance(failure.value.__cause__, ValueError)
+    state = inspect_archive(destination)
+    assert state.status == ('available' if warm else 'missing')
+    assert state.bundle == (str(previous) if warm else None)
+    assert not list(destination.glob('.staging-*'))
+    repaired = install_archive(destination, source, verified=False, force=True,
+                               validator=lambda tree: (tree / 'models/a/model.json').is_file())
+    assert inspect_archive(destination).bundle == str(repaired)
+
+
+def test_validator_checks_cached_tree_without_writes(tmp_path, archive_file, monkeypatch):
+    source, _, _ = archive_file
+    destination = tmp_path / 'download'
+    previous = install_archive(destination, source, verified=False)
+    before = {p: p.stat().st_mtime_ns for p in destination.rglob('*')}
+
+    def forbidden(*args, **kwargs):
+        pytest.fail('cached validator should not download or acquire a write lock')
+
+    monkeypatch.setattr(archives, '_assemble_archive', forbidden)
+    monkeypatch.setattr(bundle_store.BundleStore, 'lock', forbidden)
+    checked = []
+    assert install_archive(destination, source, verified=False,
+                           validator=lambda tree: checked.append(tree)) == previous
+    assert checked == [previous]
+    with pytest.raises(FileValidationError, match='archive tree failed validation'):
+        install_archive(destination, source, verified=False, validator=lambda tree: False)
+    assert {p: p.stat().st_mtime_ns for p in destination.rglob('*')} == before
+    assert inspect_archive(destination).bundle == str(previous)
+
+
+def test_noncallable_archive_validator_rejected_before_writes(tmp_path, archive_file):
+    source, _, _ = archive_file
+    destination = tmp_path / 'absent' / 'download'
+    with pytest.raises(ValueError, match='validator must be callable'):
+        install_archive(destination, source, verified=False, validator=True)
+    assert not destination.parent.exists()

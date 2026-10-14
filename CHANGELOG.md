@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.26.1
+
+- Shorten the README, clarify download and cache guides, and keep maintainer
+  design notes outside the published user documentation.
+
+## 1.26.0
+
+- `install_archive(..., validator=...)` checks application requirements on the
+  extracted tree before publishing it and on cache reuse. A rejected refresh
+  leaves the previously installed bundle active, even when the archive itself
+  is structurally valid but lacks required data.
+
 ## 1.25.1
 
 - Read a padded `XDG_CACHE_HOME` the same way whichever platformdirs version
