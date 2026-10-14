@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.26.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.26.1. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -120,7 +120,7 @@ root, then an exact-case match, then the largest. If none matches, the largest
 non-directory member is installed, with a logged warning when the output was
 named explicitly and the archive has several. HTML-to-CSV conversion is enabled
 by an explicit `.csv` output for an HTML source and requires `datacache[html]`.
-See [format selection](downloads.md#verified-downloads) and
+See [format selection](downloads.md#archives-and-decompression) and
 [HTTP retry behavior](downloads.md#transient-http-failures).
 
 **Returns:** local path string. It is not necessarily absolute when given a

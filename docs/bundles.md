@@ -48,10 +48,11 @@ records = paths["records.fa"]
 paths = registry.download("reference", force=True, timeout=60)
 ```
 
-`get_cache_root` returns a string; wrap it in `Path` when joining paths with `/`. SHA-256 and size describe the installed bytes,
-after decompression. Use opaque, concrete data-version labels independent of
-Python package versions. A default must name a version in the supplied mapping;
-DataCache never resolves a remote `latest` alias.
+SHA-256 and size describe the installed bytes, after decompression. Use
+opaque, concrete data-version labels independent of Python package versions. A
+default must name a version in the supplied mapping; DataCache never resolves a
+remote `latest` alias. `get_cache_root` returns a string; wrap it in `Path` when
+joining paths with `/`.
 
 For a caller that already resolves versions, the lower-level operations are:
 
@@ -65,13 +66,14 @@ state = inspect_bundle(source_directory, assets)
 `assets` is the same mapping of relative names to metadata. Names cannot escape
 the bundle, collide as files/directories or by letter case, or occupy DataCache's
 reserved metadata names. A file or directory at another asset's automatic
-provenance sidecar path is also rejected before installation starts. Source
-directories are stores: an existing empty directory is reported as `missing`
-and becomes the store on the first install, in place, so it keeps its owner,
-group and permissions. Installation never takes over a directory with files in
-it unless it is already a bundle store, even with `force=True`. Store generated indices and other derived
-outputs under a separate application-owned directory. Reinstalling sources does
-not visit those outputs.
+provenance sidecar path is also rejected before installation starts.
+
+Source directories are stores: an existing empty directory is reported as
+`missing` and becomes the store on the first install, in place, so it keeps its
+owner, group and permissions. Installation never takes over a directory with
+files in it unless it is already a bundle store, even with `force=True`. Store
+generated indices and other derived outputs under a separate application-owned
+directory. Reinstalling sources does not visit those outputs.
 
 ## Consumer-selected store paths
 
@@ -118,14 +120,16 @@ biological naming and migration policy remain the application's responsibility.
 failed inspection.
 
 Explicit inspection hashes every asset by default. With trusted registry
-metadata, `verified=True` means every file matched the supplied SHA-256 just now. Every bundle
-also has its own manifest recording sizes, observed SHA-256 digests, source URLs,
-and fetch time. `inspect_bundle(directory)` can check those recorded hashes
-without a registry or network, but returns `verified=False`, for the bundle and
-for each file: a local receipt is not an independent authority. Display URLs omit credentials, queries and
-fragments; a separate SHA-256 fingerprint identifies the full source URL without
-storing that omitted text. Paths are retained, so do not use secret-bearing URL
-paths.
+metadata, `verified=True` means every file matched the supplied SHA-256 just
+now.
+
+Every bundle also has its own manifest recording sizes, observed SHA-256
+digests, source URLs, and fetch time. `inspect_bundle(directory)` can check
+those recorded hashes without a registry or network, but returns
+`verified=False`, for the bundle and for each file: a local receipt is not an
+independent authority. Display URLs omit credentials, queries and fragments; a
+separate SHA-256 fingerprint identifies the full source URL without storing that
+omitted text. Paths are retained, so do not use secret-bearing URL paths.
 
 Use `inspect_bundle(directory, assets, verify_files=False)` or
 `registry.inspect(name, verify_files=False)` for metadata-only checks. This

@@ -53,32 +53,43 @@ refer to that payload. A cache hit still uses the supplied local validation
 checks; changing transformation options does not replace an existing output.
 Use distinct names, trusted expectations, or `force=True` when switching modes.
 
-Without `raw=True`, keeping the source's `.gz` or `.zip` suffix at the destination
-and leaving `decompress=False` retains an archive as before.
-With an inferred filename, archives are retained by default, including URLs
-with query strings or fragments; their existing cache keys are preserved.
-`decompress=True` uses a distinct key for the decompressed contents, keeping the
-full URL in the key's digest. When a download endpoint's inferred filename
-has no removable archive suffix, `.decompressed` distinguishes its output.
-With an explicit `filename` or `destination`, a
-missing compression suffix still implies decompression for compatibility unless
-`raw=True` is supplied.
-`decompress=True` explicitly requests decompression while preserving an explicit
-destination's exact name. Format detection prefers a supported extension on
-the URL path (case-insensitively). For download endpoints without a supported
-path extension, a filename in the final query parameter is also recognized
-for compatibility, such as IEDB's `downloader.php?file_name=doc/data.zip`.
-Bare format hints such as `?format=.gz` and fragments do not select a format.
-For ZIP files, the member stored at the output filename is selected; otherwise a
-member with that name in any folder, ignoring letter case (such as
-`release/data.csv` or `Data.CSV` for `data.csv`), preferring the one nearest the
-archive root and then an exact-case match. If no member matches, the largest
-non-directory member is installed, and a warning is logged when the output was
-named explicitly and that was a guess among several. No archive paths are
-extracted.
+### Archives and decompression
+
+Without `raw=True`, keeping the source's `.gz` or `.zip` suffix at the
+destination and leaving `decompress=False` retains an archive as before.
+Decompression also depends on how the output is named:
+
+- With an inferred filename, archives are retained by default, including URLs
+  with query strings or fragments; their existing cache keys are preserved.
+  `decompress=True` uses a distinct key for the decompressed contents, keeping
+  the full URL in the key's digest. When a download endpoint's inferred filename
+  has no removable archive suffix, `.decompressed` distinguishes its output.
+- With an explicit `filename` or `destination`, a missing compression suffix
+  still implies decompression for compatibility unless `raw=True` is supplied.
+  `decompress=True` explicitly requests decompression while preserving an
+  explicit destination's exact name.
+
+Format detection prefers a supported extension on the URL path
+(case-insensitively). For download endpoints without a supported path
+extension, a filename in the final query parameter is also recognized for
+compatibility, such as IEDB's `downloader.php?file_name=doc/data.zip`. Bare
+format hints such as `?format=.gz` and fragments do not select a format.
+
+A ZIP file installs one member; no archive paths are extracted. DataCache
+selects, in order:
+
+1. The member stored at the output filename.
+2. A member with that name in any folder, ignoring letter case (such as
+   `release/data.csv` or `Data.CSV` for `data.csv`), preferring the one nearest
+   the archive root and then an exact-case match.
+3. The largest non-directory member. A warning is logged when the output was
+   named explicitly and this was a guess among several.
+
 HTML-to-CSV conversion requires an explicit `filename` or `destination` ending
 in `.csv`. Query strings and fragments in inferred cache keys never request
 conversion; those downloads retain their original HTML bytes.
+
+### Validation errors and empty files
 
 A size or SHA-256 mismatch raises `FileValidationError`, with the path and
 expected/actual values in its message. A corrupt cache hit does not trigger a
@@ -125,6 +136,7 @@ written only by a download, never by a cache hit, and any later replacement of
 the file removes the previous record first, whether or not it records a new
 one. `Cache.delete_url` removes records with their files. Recording is best
 effort: failing to write a record never fails the download.
+
 ## Transient HTTP failures
 
 HTTP and HTTPS downloads retry temporary failures by default, with at most
@@ -167,9 +179,7 @@ Permanent HTTP failures such as 404, TLS errors (including proxy-wrapped TLS
 failures), local filesystem errors,
 progress callback exceptions, and transformation/integrity/publication errors
 are not retried. Local file and FTP transfers remain single attempts. Cache
-reuse and read-only inspection make no requests and do not wait. Existing
-pyensembl calls through `_download_and_decompress_if_necessary` receive the same
-default policy without changes to downstream code.
+reuse and read-only inspection make no requests and do not wait.
 
 Every HTTP and HTTPS request, including resumed range requests and
 `fetch_bytes`, sends `User-Agent: datacache/<version>
@@ -332,6 +342,7 @@ supported by `fetch_file`, `expected_path`, `file_exists`, `resolve_path`,
 `build_path`, and `Cache`. An exact `destination` is mutually exclusive with
 `cache_root`. Default cache locations and filename normalization remain the
 same. `build_path` still creates parents; use `resolve_path` for pure lookup.
+
 Creation and repair remain explicit operations: use `fetch_file` or
 `Cache.fetch`, supplying integrity metadata and `force=True` for replacement.
 `Cache.fetch` validates every reuse and respects different filenames for the
@@ -341,26 +352,15 @@ Database paths preserve the filesystem meaning of symlinks followed by `..`.
 and its permissions, including when the root is `.` or a symlink. Symlinks
 inside the cache are removed without clearing their external targets.
 
-## Downstream compatibility
-
-The private `_download_and_decompress_if_necessary` entry point, used by
-pyensembl, retains its pre-1.8 literal-URL format inference when transform flags
-are omitted. In particular, query/fragment-bearing archive URLs retain the
-same bytes under pyensembl's existing cache keys. Explicit transform flags and
-the public `fetch_file` API retain the parsed-URL behavior documented above.
-The IEDB download endpoints used by pepdata continue to decompress archives
-named at the end of the URL query into the requested CSV filenames.
-New integrations should use the public download and inspection APIs.
-
 ## Resumable HTTP downloads
 
 The simplest choice is `resume="auto"`: it resumes interrupted transfers when
-it can, and otherwise downloads normally. That covers Windows, a size that
-isn't known, decompression, a `validator`, and a server that turns out not to
-support resuming, or a filesystem that can't hold private resume state or
-locks; the partial is then discarded and the file downloaded in full. No
-`os.name` checks or error-message matching are needed. Learning that a server
-can't resume costs one extra request, whose body isn't read:
+it can, and otherwise downloads normally, so callers need no `os.name` checks
+or error-message matching. It downloads in full, discarding any partial, on
+Windows, when the size isn't known, with decompression or a `validator`, when
+the server turns out not to support resuming, and when the filesystem can't hold
+private resume state or locks. Learning that a server can't resume costs one
+extra request, whose body isn't read:
 
 ```python
 path = fetch_file(url, destination=dest, raw=True, expected_size=size, resume="auto")
@@ -401,11 +401,14 @@ Each destination gets a private, owner-only working directory beside it, with
 one bounded partial file, metadata and a permanent advisory lock. Threads and
 processes serialize on that destination for the same user; other users retain
 separate private state. A valid destination remains intact throughout transfer,
-verification, and publication. With an expected SHA-256, complete partials are
+verification, and publication.
+
+With an expected SHA-256, complete partials are
 verified and reused without network; oversized or corrupt ones restart. Without
 one, a complete-size partial restarts to obtain a fresh validated response, and
-an incomplete partial without a saved strong ETag is discarded. Interruptions and exhausted transport
-retries keep safely written partial bytes for the next call.
+an incomplete partial without a saved strong ETag is discarded. Interruptions
+and exhausted transport retries keep safely written partial bytes for the next
+call.
 
 Range requests use `Accept-Encoding: identity`. DataCache checks the exact
 `Content-Range` offset and total, carries `If-Range` for a strong ETag, and only
@@ -433,3 +436,17 @@ staging keeps persistent partials private even when publication fails after
 setting shared file permissions. No credentials or raw signed URLs are stored in
 the private metadata; a URL hash identifies the source. Changing the URL or
 integrity expectations starts a new transfer.
+
+## Downstream compatibility
+
+The private `_download_and_decompress_if_necessary` entry point, used by
+pyensembl, retains its pre-1.8 literal-URL format inference when transform flags
+are omitted. In particular, query/fragment-bearing archive URLs retain the
+same bytes under pyensembl's existing cache keys. Explicit transform flags and
+the public `fetch_file` API retain the parsed-URL behavior documented above.
+Existing pyensembl calls through this entry point receive the same default
+[retry policy](#transient-http-failures) without changes to downstream code.
+
+The IEDB download endpoints used by pepdata continue to decompress archives
+named at the end of the URL query into the requested CSV filenames.
+New integrations should use the public download and inspection APIs.

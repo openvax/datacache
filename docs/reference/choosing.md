@@ -37,17 +37,18 @@ FASTA files with `fetch_file`, then parse them in the consuming library.
 ## Guarantees and limits
 
 Downloads and complete archive trees are staged privately and published
-atomically after validation.
-New files respect the process umask; replacements preserve existing access
-permissions. This includes pyensembl's private download helpers.
+atomically after validation. New files respect the process umask; replacements
+preserve existing access permissions. This includes pyensembl's private
+download helpers.
 
 Custom single-file transformations publish only successful output. Existing
 SQLite caches rebuild in a transaction: failure rolls back both schema and
-rows. New databases are built privately before publication. Cached data is
-reused by path or database version. DataCache doesn't ask servers whether files
-changed; `expire_after` refreshes files after a set time and also replaces
-cached files that no longer validate. Otherwise invalid caches are reported,
-not repaired.
+rows. New databases are built privately before publication.
+
+Cached data is reused by path or database version. DataCache doesn't ask
+servers whether files changed; `expire_after` refreshes files after a set time
+and also replaces cached files that no longer validate. Otherwise invalid
+caches are reported, not repaired.
 
 Upgrades keep existing cache names and database metadata compatible. Valid
 cache hits do not rewrite files, change permissions, or apply new schema
@@ -56,7 +57,7 @@ and [sharing old private files](../shared-caches.md#files-already-downloaded-as-
 
 File publication requires local filesystem support for atomic replacement;
 new SQLite database publication also requires hard links. SQLite locking and
-transactions govern database rebuilds. Use `install_bundle` for atomic multi-file
-publication. Bundle, archive and materialization installs work on local filesystems on
-Linux, macOS and Windows; resumable transfers need POSIX. Distributed
-coordination is outside their scope.
+transactions govern database rebuilds. Use `install_bundle` for atomic
+multi-file publication. Bundle, archive and materialization installs work on
+local filesystems on Linux, macOS and Windows; resumable transfers need POSIX.
+Distributed coordination is outside their scope.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.26.1
+
+- Shorten the README, clarify download and cache guides, and keep maintainer
+  design notes outside the published user documentation.
+
 ## 1.26.0
 
 - `install_archive(..., validator=...)` checks application requirements on the

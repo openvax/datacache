@@ -114,20 +114,21 @@ Completed inputs persist in owner-only source-keyed directories even without
 HTTP resume. `download_options={"resume": True}` also preserves partial raw
 HTTP(S) downloads, using existing hash/size or size/strong-ETag resume rules.
 Remote resumable inputs require `size`; local inputs are simply copied.
+
 The supported transport options are timeout, chunk size, progress callback,
 progress display, retry count/backoff/delay, resume and `max_bytes`, which
-limits each remote download. Download, copy and hash
-progress is enabled by default; set `show_progress=False` in download options
-for noninteractive use. Valid cache hits remain quiet.
+limits each remote download. Download, copy and hash progress is enabled by
+default; set `show_progress=False` in download options for noninteractive use.
+Valid cache hits remain quiet.
 
 Download, gzip, validation and builder failures leave the current bundle
 untouched. Failed builder outputs are discarded; completed
 inputs survive for retry without another download. A killed builder can leave
 private partial outputs, which the next transaction with the same definition
 discards. Changing only the transform can reuse retained matching inputs.
+
 `force=True` always rebuilds outputs, and it doesn't hash the outputs it
-replaces.
-It reuses remote inputs that still match, copies a local source again while
+replaces. It reuses remote inputs that still match, copies a local source again while
 the original exists (so an in-place correction is picked up; once the original
 is gone, a retained copy still serves), and repairs corrupted private inputs or
 input receipts. It never adopts unsafe paths or foreign directories.
@@ -148,18 +149,20 @@ builds. Cache hits never perform cleanup: a crash between publication and
 cleanup may leave inputs for an explicit later refresh. Inputs for other source
 definitions/users and old bundles are never removed implicitly; use
 `prune_bundles` to delete old bundles (see
-[removing old bundles](bundles.md#removing-old-bundles)). Abandoned input/staging variants require deliberate operator
-cleanup; general inventory/pruning is separate work. Retention is installation
-policy, not output identity, so toggling it on a cache hit does not mutate disk.
+[removing old bundles](bundles.md#removing-old-bundles)). Abandoned
+input/staging variants require deliberate operator cleanup; general
+inventory/pruning is separate work. Retention is installation policy, not output
+identity, so toggling it on a cache hit does not mutate disk.
 
 The store marker, `.datacache-store.json`, records that this is a
 materialization store, so DataCache never adopts a populated legacy directory or
-another kind of store, even with force.
-An empty precreated directory becomes the store in place, keeping its owner,
-group and permissions. Installation works on local filesystems with atomic
-sibling renames, on Linux, macOS and Windows; `resume=True` needs POSIX.
-Read-only existing hits require no lock.
-This is atomic visibility, not a guarantee against filesystem/power-loss faults.
+another kind of store, even with force. An empty precreated directory becomes
+the store in place, keeping its owner, group and permissions.
+
+Installation works on local filesystems with atomic sibling renames, on Linux,
+macOS and Windows; `resume=True` needs POSIX. Read-only existing hits require no
+lock. This is atomic visibility, not a guarantee against filesystem/power-loss
+faults.
 
 ## Disk use
 

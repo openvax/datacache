@@ -3,11 +3,10 @@
 [![Tests](https://github.com/openvax/datacache/actions/workflows/tests.yml/badge.svg)](https://github.com/openvax/datacache/actions/workflows/tests.yml)
 [![PyPI](https://img.shields.io/pypi/v/datacache.svg)](https://pypi.org/project/datacache/)
 
-Download, verify, transform, and cache datasets for Python applications,
-including OpenVax libraries such as pyensembl. DataCache provides streaming
-downloads, gzip/ZIP decompression, transactional tar-tree installation,
-reusable local paths, offline inspection, and SQLite caches built from pandas
-DataFrames.
+Download a dataset once, verify it, and reuse the local file on later runs.
+DataCache handles streaming downloads, gzip/ZIP decompression, tar-tree
+installation, offline inspection and SQLite caches built from pandas DataFrames,
+for Python applications including OpenVax libraries such as pyensembl.
 
 ## Install
 
@@ -18,16 +17,6 @@ python -m pip install datacache
 # Optional HTML-table conversion:
 python -m pip install "datacache[html]"
 ```
-
-tqdm is installed by default; existing download APIs enable displays with
-`show_progress=True`, while `materialize` enables them by default. Quiet use
-does not import tqdm or configure your
-application's logging. The old `datacache[progress]` install syntax remains
-supported as a compatibility alias.
-
-The existing pandas dependency range is unchanged; upgrading DataCache does
-not introduce a pandas 1.5 requirement. CI covers pandas 1.4.4, 1.5.3, and
-current releases on supported Python versions.
 
 ## Quickstart
 
@@ -52,8 +41,7 @@ DataCache doesn't ask the server whether a file has changed. Add
 
 ## Guides
 
-Sections that earlier versions of this README contained now live in these
-guides; their old links land on the guide that replaced them.
+The guides are also published at <https://openvax.github.io/datacache/>.
 
 - <a id="offline-example-with-integrity-checking"></a>[Working offline example, verification and interface choices](https://github.com/openvax/datacache/blob/master/docs/index.md)
 - <a id="find-inspect-or-clear-your-cache"></a>[Downloads, inspection, integrity, freshness, retries and resumption](https://github.com/openvax/datacache/blob/master/docs/downloads.md)
@@ -68,6 +56,17 @@ guides; their old links land on the guide that replaced them.
 - [Downstream integration](https://github.com/openvax/datacache/blob/master/docs/integration.md): contracts for consuming libraries.
 - [Release notes](https://github.com/openvax/datacache/blob/master/CHANGELOG.md) and [release procedure](https://github.com/openvax/datacache/blob/master/RELEASING.md).
 
+## Dependencies and progress display
+
+tqdm is installed by default; existing download APIs enable displays with
+`show_progress=True`, while `materialize` enables them by default. Quiet use
+does not import tqdm or configure your application's logging. The old
+`datacache[progress]` install syntax remains supported as a compatibility alias.
+
+The existing pandas dependency range is unchanged; upgrading DataCache does
+not introduce a pandas 1.5 requirement. CI covers pandas 1.4.4, 1.5.3, and
+current releases on supported Python versions.
+
 ## Development
 
 ```sh
@@ -81,3 +80,7 @@ depend on external dataset servers. See CI for the Python, dependency, and
 operating-system combinations exercised.
 
 Build the site with `python -m pip install -r requirements-docs.txt` and `./docs.sh`.
+
+## License
+
+Apache 2.0; see [LICENSE](LICENSE).
