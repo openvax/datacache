@@ -50,7 +50,7 @@ CHUNK_SIZE = 2 ** 20
 # UTC install time. Windows forbids ':', and this sorts oldest to newest.
 BUNDLE_NAME_FORMAT = '%Y-%m-%dT%H-%M-%SZ'
 
-KINDS = ('bundle', 'archive', 'materialization')
+KINDS = ('bundle', 'archive', 'materialization', 'zip-member')
 
 # Exceptions meaning a store or bundle is unusable as found: corrupt,
 # incomplete, foreign or unreadable. PermissionError is one of them, so callers

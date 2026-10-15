@@ -41,8 +41,10 @@ from .archives import (
 from .file_registry import VersionedFileRegistry
 from .materialization import MaterializationInspection, inspect_materialization, materialize
 from .version import __version__
+from .zip_members import install_zip_member
 
 __all__ = [
+    'install_zip_member',
     '__version__',
     'fetch_file',
     'fetch_bytes',

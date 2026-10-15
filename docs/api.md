@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.26.1. Import these names from `datacache`.
+public `Cache` method in DataCache 1.27.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -1447,6 +1447,35 @@ trust boundaries, and the distinction from bundles.
 | `download(name, version=None, *, force=False, **download_options)` | One fixed Path; fetch_file options control acquisition. Ordinary cache hits do not hash or write; explicit size/hash expectations are checked. |
 | `ensure(name, version=None, **download_options)` | Same download/reuse behavior and Path result. |
 | `status()` | Legacy status dicts with name, description, default_version, available_versions, cached, cached_version, URL, bytes, observed SHA-256, downloaded_at and path. |
+
+## Individual HTTP ZIP members
+
+### `install_zip_member`
+
+```text
+install_zip_member(destination, url, member, *, expected_sha256=None, expected_size=None,
+                   compressed_sha256=None, max_compressed_bytes=536870912,
+                   max_bytes=4294967296, max_metadata_bytes=8388608, timeout=60, force=False)
+```
+
+Download one explicitly named, regular, unencrypted stored/deflated ZIP member.
+Returns a mapping with paths `payload`, `compressed` and `receipt.json` in one
+atomic bundle. The receipt records source URL, archive length, HTTP validator,
+member offset, compression method, CRC32, sizes and SHA-256 hashes. ZIP64 is
+supported. Duplicate names, malformed ranges, changed objects, CRC mismatches,
+unsupported members and size-limit violations fail before publication.
+
+The server must support exact HTTP byte ranges, identity encoding and a strong
+ETag or Last-Modified. Last-Modified is weaker than a strong ETag. There is no
+whole-archive fallback. Metadata, compressed input and expanded output have
+separate finite byte limits. Downloads restart the selected member after failure.
+Hashes recorded during discovery describe observed bytes; only caller-supplied
+hashes verify independently expected content. Pin them for subsequent builds.
+
+Cache hits verify all retained bytes offline. Changed dependency identity or
+corruption requires `force=True`, which publishes a new generation and retains
+old paths. `list_bundles` and `prune_bundles` also support these stores. See the
+[member guide](zip-members.md) for a complete example and storage costs.
 
 ## Package version
 
