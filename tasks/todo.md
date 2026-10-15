@@ -1,3 +1,11 @@
+# ZIP expansion boundary (#123)
+
+Specification: [zip-deflate-drain.md](zip-deflate-drain.md).
+
+- [x] Reproduce with actual HTTP acquisition: one failure and three passing boundary controls.
+- [x] Drain bounded output without weakening integrity checks; bump to 1.27.1.
+- [ ] Full lint/tests, final-head CI, review, merge and deployment.
+
 # HTTP ZIP member acquisition (#121)
 
 Specification: [http-zip-members-spec.md](http-zip-members-spec.md).

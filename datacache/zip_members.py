@@ -256,11 +256,16 @@ def _extract(remote, info, offset, paths, max_bytes):
             if decompressor is None:
                 write(chunk)
             else:
-                while chunk:
-                    write(decompressor.decompress(chunk, CHUNK_SIZE))
+                while True:
+                    expanded = decompressor.decompress(chunk, CHUNK_SIZE)
+                    write(expanded)
                     chunk = decompressor.unconsumed_tail
                     if decompressor.unused_data:
                         raise ValueError("trailing bytes after compressed ZIP member")
+                    # zlib can consume all input while output remains buffered.
+                    # Drain with bounded empty-input calls, never an unbounded flush.
+                    if not chunk and len(expanded) < CHUNK_SIZE:
+                        break
         if decompressor is not None and not decompressor.eof:
             raise ValueError("truncated deflate stream")
         if size != info.file_size or crc != info.CRC:

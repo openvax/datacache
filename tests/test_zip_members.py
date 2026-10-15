@@ -103,6 +103,22 @@ def install(tmp_path, url, **kwargs):
     return install_zip_member(tmp_path / "store", url, "txt/peptides.txt", **kwargs)
 
 
+@pytest.mark.parametrize("extra", [-1, 0, 1, 2])
+def test_drain_buffered_output_at_expansion_boundary(tmp_path, server, extra):
+    from datacache.zip_members import CHUNK_SIZE
+
+    payload = b"a" * (CHUNK_SIZE + extra) + b"\n"
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("txt/peptides.txt", payload)
+    url, _ = server(stream.getvalue())
+    paths = install(
+        tmp_path, url, expected_size=len(payload),
+        expected_sha256=hashlib.sha256(payload).hexdigest(),
+    )
+    assert Path(paths["payload"]).read_bytes() == payload
+
+
 @pytest.mark.parametrize("method", [zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED])
 @pytest.mark.parametrize("zip64", [False, True])
 def test_member_integrity_and_offline_reuse(
