@@ -11,7 +11,7 @@ Specification: [http-zip-members-spec.md](http-zip-members-spec.md).
 
 ## Review
 
-Local lint and all 1,143 tests pass on Python 3.12, including 39 new HTTP/ZIP
+Local lint and all 1,154 tests pass on Python 3.12, including 50 new HTTP/ZIP
 tests. They exercise ZIP64 directory records, bounded expansion, cache integrity,
 concurrent installers and preservation of old generations. An eager requests
 import caught by the existing import-cost regression was moved into acquisition.
@@ -20,6 +20,13 @@ with a strong ETag. Its complete parameters and summary members were acquired
 and CRC/hash checked using this API. The parameters member is 3,557 bytes with
 SHA256 4b00211bcabda41c079f4a901aeea4e3e88496e494df31b7bb69b0f5d65a8779.
 CI, merge and public deployment remain required.
+
+Review added explicit malformed-manifest and complete-deflate-stream regression
+tests after the coverage check reported a decrease. The new module now has 96%
+statement coverage locally. Complete acquisition of the real 417,911,174-byte
+compressed peptide member also succeeded (3,105,083,523 expanded bytes), with
+CRC32 c25e63aa and expanded SHA256
+4b19b9248aa2fa3a498fa3a16320afbfcc1d8a9a81b33cadbe15357f65435a20.
 
 # Fixed-path registry adoption (#83)
 

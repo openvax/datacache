@@ -9,6 +9,7 @@ import struct
 import threading
 import warnings
 import zipfile
+import zlib
 
 import pytest
 from urllib3.exceptions import ProtocolError
@@ -295,4 +296,84 @@ def test_changed_identity_and_smaller_cache_limit_fail_offline(tmp_path, server)
     ):
         with pytest.raises(FileValidationError):
             install(tmp_path, url, **options)
+    assert len(state["requests"]) == count
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        dict(max_bytes=0),
+        dict(max_compressed_bytes=True),
+        dict(max_metadata_bytes=-1),
+        dict(force=1),
+        dict(expected_size=2, max_bytes=1),
+    ],
+)
+def test_invalid_contract_fails_before_acquisition(tmp_path, options):
+    with pytest.raises(ValueError):
+        install(tmp_path, "https://example.org/archive.zip", **options)
+    assert not (tmp_path / "store").exists()
+
+
+def test_non_http_source_rejected(tmp_path):
+    with pytest.raises(ValueError, match="HTTP"):
+        install(tmp_path, "ftp://example.org/archive.zip")
+
+
+@pytest.mark.parametrize("kind", ["expanded", "truncated", "trailing"])
+def test_complete_deflate_stream_is_required(tmp_path, kind):
+    from datacache.zip_members import _extract
+
+    compressor = zlib.compressobj(wbits=-15)
+    compressed = compressor.compress(PAYLOAD) + compressor.flush()
+    if kind == "truncated":
+        compressed = compressed[:-1]
+    if kind == "trailing":
+        compressed += b"x"
+    info = zipfile.ZipInfo("table")
+    info.compress_type = zipfile.ZIP_DEFLATED
+    info.file_size = len(PAYLOAD) - (1 if kind == "expanded" else 0)
+    info.compress_size = len(compressed)
+    info.CRC = zlib.crc32(PAYLOAD)
+
+    class Source:
+        def chunks(self, offset, size):
+            yield compressed
+
+    with pytest.raises(
+        ValueError,
+        match={"expanded": "exceeds", "truncated": "truncated", "trailing": "trailing"}[
+            kind
+        ],
+    ):
+        _extract(
+            Source(),
+            info,
+            0,
+            {name: tmp_path / name for name in ("payload", "compressed")},
+            len(PAYLOAD),
+        )
+
+
+@pytest.mark.parametrize("kind", ["inventory", "receipt"])
+def test_inconsistent_manifest_rejected_offline(tmp_path, server, kind):
+    url, state = server()
+    paths = install(tmp_path, url)
+    manifest_path = Path(paths["payload"]).parent / ".datacache-manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    if kind == "inventory":
+        manifest["files"].pop("compressed")
+    else:
+        receipt_path = Path(paths["receipt.json"])
+        receipt = json.loads(receipt_path.read_text())
+        receipt["payload"]["size"] += 1
+        payload = json.dumps(receipt).encode()
+        receipt_path.write_bytes(payload)
+        manifest["files"]["receipt.json"] = dict(
+            sha256=hashlib.sha256(payload).hexdigest(), size=len(payload)
+        )
+    manifest_path.write_text(json.dumps(manifest))
+    count = len(state["requests"])
+    with pytest.raises(FileValidationError):
+        install(tmp_path, url)
     assert len(state["requests"]) == count
