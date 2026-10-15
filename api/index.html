@@ -445,6 +445,8 @@
       
         
       
+        
+      
     
     
     
@@ -530,6 +532,34 @@
     
   
     Install archive trees
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../zip-members/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fetch individual ZIP members
   
 
     
@@ -1533,6 +1563,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#individual-http-zip-members" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Individual HTTP ZIP members
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Individual HTTP ZIP members">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#install_zip_member" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        install_zip_member
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#package-version" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2477,6 +2535,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#individual-http-zip-members" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Individual HTTP ZIP members
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Individual HTTP ZIP members">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#install_zip_member" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        install_zip_member
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#package-version" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2537,7 +2623,7 @@
 
 <h1 id="public-api-reference">Public API reference<a class="headerlink" href="#public-api-reference" title="Permanent link">&para;</a></h1>
 <p>This reference covers every name exported in <code>datacache.__all__</code> and every
-public <code>Cache</code> method in DataCache 1.26.1. Import these names from <code>datacache</code>.
+public <code>Cache</code> method in DataCache 1.27.0. Import these names from <code>datacache</code>.
 Signatures below show all defaults; arguments after <code>*</code> are keyword-only.
 Method signatures omit <code>self</code> and are called on a <code>Cache</code> instance.</p>
 <p>Start with the <a href="../#cache-and-verify-a-file">quickstart</a> for a first download.
@@ -3943,6 +4029,28 @@ trust boundaries, and the distinction from bundles.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="individual-http-zip-members">Individual HTTP ZIP members<a class="headerlink" href="#individual-http-zip-members" title="Permanent link">&para;</a></h2>
+<h3 id="install_zip_member"><code>install_zip_member</code><a class="headerlink" href="#install_zip_member" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>install_zip_member(destination, url, member, *, expected_sha256=None, expected_size=None,
+                   compressed_sha256=None, max_compressed_bytes=536870912,
+                   max_bytes=4294967296, max_metadata_bytes=8388608, timeout=60, force=False)
+</code></pre></div>
+<p>Download one explicitly named, regular, unencrypted stored/deflated ZIP member.
+Returns a mapping with paths <code>payload</code>, <code>compressed</code> and <code>receipt.json</code> in one
+atomic bundle. The receipt records source URL, archive length, HTTP validator,
+member offset, compression method, CRC32, sizes and SHA-256 hashes. ZIP64 is
+supported. Duplicate names, malformed ranges, changed objects, CRC mismatches,
+unsupported members and size-limit violations fail before publication.</p>
+<p>The server must support exact HTTP byte ranges, identity encoding and a strong
+ETag or Last-Modified. Last-Modified is weaker than a strong ETag. There is no
+whole-archive fallback. Metadata, compressed input and expanded output have
+separate finite byte limits. Downloads restart the selected member after failure.
+Hashes recorded during discovery describe observed bytes; only caller-supplied
+hashes verify independently expected content. Pin them for subsequent builds.</p>
+<p>Cache hits verify all retained bytes offline. Changed dependency identity or
+corruption requires <code>force=True</code>, which publishes a new generation and retains
+old paths. <code>list_bundles</code> and <code>prune_bundles</code> also support these stores. See the
+<a href="../zip-members/">member guide</a> for a complete example and storage costs.</p>
 <h2 id="package-version">Package version<a class="headerlink" href="#package-version" title="Permanent link">&para;</a></h2>
 <h3 id="__version__"><code>__version__</code><a class="headerlink" href="#__version__" title="Permanent link">&para;</a></h3>
 <p>String containing the installed DataCache package version. This is a constant,
