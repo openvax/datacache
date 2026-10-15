@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.27.0
+
+- Add `install_zip_member` for bounded HTTP range retrieval of individual ZIP
+  members, including ZIP64. Publish expanded and compressed bytes with a source
+  receipt as one atomic bundle; verify transport consistency, CRC32, hashes and
+  size limits. Reuse verified cached bytes offline and retain previous bundles.
+
 ## 1.26.1
 
 - Shorten the README, clarify download and cache guides, and keep maintainer

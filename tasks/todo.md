@@ -1,3 +1,26 @@
+# HTTP ZIP member acquisition (#121)
+
+Specification: [http-zip-members-spec.md](http-zip-members-spec.md).
+
+- [x] Inspect public APIs and confirm PRIDE supports exact byte ranges with an ETag.
+- [x] File #121 and record the bounded transport/publication contract.
+- [x] Implement member acquisition using the shared bundle store primitives.
+- [x] Test range validation, ZIP integrity, resource limits and offline reuse.
+- [ ] Review, bump version, run lint/full tests, open and merge the PR.
+- [ ] Deploy and verify the public package; recover pinned Hitlist source members.
+
+## Review
+
+Local lint and all 1,143 tests pass on Python 3.12, including 39 new HTTP/ZIP
+tests. They exercise ZIP64 directory records, bounded expansion, cache integrity,
+concurrent installers and preservation of old generations. An eager requests
+import caught by the existing import-cost regression was moved into acquisition.
+The public PRIDE archive is 35,402,923,317 bytes and supplied exact 206 ranges
+with a strong ETag. Its complete parameters and summary members were acquired
+and CRC/hash checked using this API. The parameters member is 3,557 bytes with
+SHA256 4b00211bcabda41c079f4a901aeea4e3e88496e494df31b7bb69b0f5d65a8779.
+CI, merge and public deployment remain required.
+
 # Fixed-path registry adoption (#83)
 
 See [fixed_path_registry.md](fixed_path_registry.md) for the specification and checklist.

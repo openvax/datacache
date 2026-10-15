@@ -39,6 +39,7 @@ nav:
 - Versioned datasets:
   - Install bundles: bundles.md
   - Install archive trees: archives.md
+  - Fetch individual ZIP members: zip-members.md
   - Build derived files: materialization.md
   - Keep files at fixed paths: file_registry.md
   - Integrate a consuming library: integration.md

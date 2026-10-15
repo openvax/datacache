@@ -53,6 +53,7 @@ The guides are also published at <https://openvax.github.io/datacache/>.
 - [Derived-artifact materialization](https://github.com/openvax/datacache/blob/master/docs/materialization.md): caller-owned
   builders, outputs published together as one bundle, dependency receipts and resumable inputs.
 - [Complete API reference](https://github.com/openvax/datacache/blob/master/docs/api.md)
+- [Individual HTTP ZIP members](https://github.com/openvax/datacache/blob/master/docs/zip-members.md): bounded range downloads with compressed and expanded checksums.
 - [Downstream integration](https://github.com/openvax/datacache/blob/master/docs/integration.md): contracts for consuming libraries.
 - [Release notes](https://github.com/openvax/datacache/blob/master/CHANGELOG.md) and [release procedure](https://github.com/openvax/datacache/blob/master/RELEASING.md).
 
