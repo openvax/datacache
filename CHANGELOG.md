@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.27.1
+
+- Drain bounded zlib output when compressed input ends at an expansion boundary,
+  avoiding false truncation errors for valid highly compressible ZIP members.
+  Size, CRC, hash, EOF and trailing-byte checks remain enforced.
+
 ## 1.27.0
 
 - Add `install_zip_member` for bounded HTTP range retrieval of individual ZIP
