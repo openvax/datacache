@@ -58,7 +58,11 @@ def publish_noclobber(source, destination):
         os.link(source, destination)
         return
     except OSError as error:
-        if error.errno not in unsupported:
+        # Windows ERROR_INVALID_FUNCTION (1), ERROR_NOT_SUPPORTED (50), and
+        # ERROR_CALL_NOT_IMPLEMENTED (120) map to EINVAL in CPython. Inspect
+        # winerror so unrelated EINVAL failures still propagate unchanged.
+        if (error.errno not in unsupported and
+                getattr(error, 'winerror', None) not in (1, 50, 120)):
             raise
     try:
         _rename_noreplace(source, destination)

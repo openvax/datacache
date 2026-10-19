@@ -121,7 +121,80 @@ def test_unsupported_hardlink_errors_use_native_rename(tmp_path, monkeypatch, co
     assert len(list(tmp_path.iterdir())) == 1
 
 
-@pytest.mark.parametrize('code', [errno.EACCES, errno.EIO, errno.ENOSPC, errno.EXDEV])
+def windows_error(winerror, expected_errno):
+    if os.name == 'nt':
+        import ctypes
+        error = ctypes.WinError(winerror)
+    else:
+        # Exercise the same mapping on POSIX; Windows CI checks CPython's
+        # actual WinError conversion instead of supplying errno itself.
+        error = OSError(expected_errno, 'Windows hard-link failure')
+        error.winerror = winerror
+    assert error.errno == expected_errno
+    return error
+
+
+@pytest.mark.parametrize('winerror', [1, 50, 120])
+@pytest.mark.parametrize('overwrite', [False, True])
+def test_windows_unsupported_links_use_native_rename(tmp_path, monkeypatch, winerror, overwrite):
+    # ERROR_INVALID_FUNCTION, ERROR_NOT_SUPPORTED, ERROR_CALL_NOT_IMPLEMENTED
+    # all map to EINVAL, not ENOTSUP, in CPython's PC/errmap.h.
+    failure = windows_error(winerror, errno.EINVAL)
+
+    def reject(*args):
+        raise failure
+
+    monkeypatch.setattr(os, 'link', reject)
+    path = tmp_path / 'data.db'
+    with closing(db_from_dataframe(path, 'records', pd.DataFrame({'id': [42]}),
+                                   overwrite=overwrite)) as connection:
+        assert connection.execute('SELECT id FROM records').fetchall() == [(42,)]
+        assert connection.execute('PRAGMA integrity_check').fetchone() == ('ok',)
+    assert list(tmp_path.iterdir()) == [path]
+
+
+@pytest.mark.parametrize('winerror', [1, 50, 120])
+def test_windows_unsupported_links_cannot_overwrite_a_winner(tmp_path, monkeypatch, winerror):
+    failure = windows_error(winerror, errno.EINVAL)
+
+    def reject(*args):
+        raise failure
+
+    monkeypatch.setattr(os, 'link', reject)
+    source = tmp_path / 'staged'
+    source.write_bytes(b'candidate')
+    dest = tmp_path / 'winner'
+    dest.write_bytes(b'winner')
+    with pytest.raises(FileExistsError):
+        _filesystem.publish_noclobber(source, dest)
+    assert source.read_bytes() == b'candidate'
+    assert dest.read_bytes() == b'winner'
+
+
+@pytest.mark.parametrize('winerror,code', [
+    (5, errno.EACCES),       # ERROR_ACCESS_DENIED
+    (17, errno.EXDEV),      # ERROR_NOT_SAME_DEVICE
+    (87, errno.EINVAL),     # ERROR_INVALID_PARAMETER: not an unsupported operation
+    (112, errno.ENOSPC),    # ERROR_DISK_FULL
+])
+def test_other_windows_link_errors_do_not_trigger_fallback(tmp_path, monkeypatch, winerror, code):
+    failure = windows_error(winerror, code)
+
+    def reject(*args):
+        raise failure
+
+    def forbidden(*args):
+        raise AssertionError('must not try rename')
+
+    monkeypatch.setattr(os, 'link', reject)
+    monkeypatch.setattr(_filesystem, '_rename_noreplace', forbidden)
+    with pytest.raises(OSError) as error:
+        db_from_dataframe(tmp_path / 'data.db', 'records', pd.DataFrame({'id': [1]}))
+    assert error.value is failure
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize('code', [errno.EACCES, errno.EIO, errno.ENOSPC, errno.EXDEV, errno.EINVAL])
 def test_other_link_errors_propagate_without_fallback(tmp_path, monkeypatch, code):
     def reject(*args):
         raise OSError(code, 'failure')
