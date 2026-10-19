@@ -1,51 +1,36 @@
 # Caller-declared source identity (#92)
 
-Status: design only, not implemented.
+Status: implemented for bundle assets and materialization sources. The public
+contract is in [bundles](../../docs/bundles.md#reuse-across-urls-with-a-declared-identity)
+and [materialization](../../docs/materialization.md#identity-receipts-and-trust).
 
-## Problem
+`source_identity` is optional bounded JSON supplied by the caller. It identifies
+an exact upstream file revision independently of its URL, without asserting
+trusted integrity. Object key order does not matter; value types and list order
+do. The implementation rejects non-JSON values, non-finite numbers, oversized
+or excessively nested declarations, and duplicate receipt keys. It detaches
+declarations from mutable caller objects before acquisition.
 
-Without a trusted SHA-256, a bundle is reused only when each asset's full URL
-matches the URL it was installed from. PyEnsembl serves the same reference DNA
-under a different URL for every Ensembl release, so an unchanged file still
-looks like a new one and is downloaded again. PyEnsembl can tell the files
-are the same from Ensembl's own metadata (provider, species, versioned
-assembly, coverage, masking, Ensembl's Unix checksum, compressed size), but
-datacache has nowhere to record that.
+An explicitly requested identity must be present and equal in the receipt.
+This remains required with trusted hashes, resolving the earlier design's open
+question conservatively: a trusted digest does not override an explicit
+caller assertion or silently migrate an older receipt. Bundle decompression
+settings and materialization transform/output settings must also match.
+Callers that do not opt in retain their existing URL/hash rules.
 
-## Proposal
+Actual acquisition URL fingerprints and redacted origins remain in receipts;
+reuse never rewrites them to the current mirror. Materialization source records
+must agree with their dependency definitions. The JSON declaration itself is
+stored verbatim, so callers must not include credentials in it.
 
-Let an asset (and a `materialize` source) carry an optional `identity`: any
-JSON value the caller builds from its own metadata. For example:
+Source identity does not change download/resume validation or trusted-hash
+reporting. Bundle expectations still describe installed bytes; materialization
+source expectations describe raw bytes and output expectations describe built
+bytes. Checksums or sizes inside an opaque identity are never interpreted as
+integrity expectations. Full inspection continues to detect same-size payload
+corruption. Private inputs and partial transfers retain their existing full
+source-definition keys; only completed publications gain cross-URL reuse.
 
-```python
-assets = {"dna.fa.gz": {
-    "url": release_url,
-    "size": compressed_size,
-    "identity": {"provider": "ensembl", "species": "homo_sapiens",
-                 "assembly": "GRCh38.p14", "coverage": "primary_assembly",
-                 "masking": "soft", "unix_sum": "12345 67890"},
-}}
-```
-
-- **Recording.** The manifest stores the identity exactly as given (canonical
-  JSON), next to the redacted URL and URL fingerprint it records today.
-- **Reuse.** When an asset declares an identity and has no trusted SHA-256, the
-  bundle is reused if the declared identities and the decompression setting are
-  equal, whatever the URL. A different identity means a new download, even if
-  labels such as the assembly name match. Assets without an identity keep
-  today's URL rule.
-- **Trust.** An identity is the caller's claim, not verification: it never sets
-  `verified=True`. Trusted SHA-256 expectations still decide verification, and
-  full inspection still checks every recorded hash, so same-size corruption is
-  still caught. Ensembl's checksum stays caller data; datacache never treats it
-  as a SHA-256.
-- **Old manifests.** A manifest without a recorded identity never satisfies a
-  request that declares one; that install needs `force=True` once.
-
-## Open questions
-
-- Should a declared identity also be required to match on every reuse when a
-  trusted SHA-256 is present, or is the hash enough? (Proposed: the hash is
-  enough; the identity is still recorded.)
-- Size limits and secrets: identities are stored in plain manifests, so
-  callers must not put credentials in them. Document this, and cap their size.
+PyEnsembl remains responsible for deriving its complete biological identity and
+choosing its meaningful storage layout. This feature supplies no catalogue
+lookups, shared-object discovery, external references or cross-store pruning.

@@ -152,8 +152,8 @@ they were added, and take `verify_files=True` for full checks.
 acquiring assets without trusted hashes/sizes. Their observed hashes are still
 recorded and checked on full verification, but cannot authenticate the original download.
 Use this mode only for upstream data without immutable integrity metadata.
-Without a trusted hash, reuse requires the same full URL fingerprint and
-decompression setting. Changing either reports an invalid installation; use
+Without a trusted hash or an explicit `source_identity`, reuse requires the same
+full URL fingerprint and decompression setting. Changing either reports an invalid installation; use
 `force=True` to acquire the newly requested data. Older receipts without source
 fingerprints still support offline consistency checks and trusted-hash reuse,
 but need an explicit refresh before reuse without trusted hashes.
@@ -163,6 +163,72 @@ same root, dataset name, version and asset names can therefore share a verified
 bundle even when they use different mirrors, signed URLs or compression
 settings. DataCache checks the supplied hashes and sizes without downloading or
 rewriting a matching bundle.
+
+### Reuse across URLs with a declared identity
+
+An asset can include `source_identity`, a JSON value assembled from the caller's
+upstream metadata. Equal declarations permit offline reuse in the same store
+across different URLs or local source paths. This is useful when releases expose
+the same file at different addresses and no trusted SHA-256 is available.
+
+This complete example installs from a local file, then reuses the bundle for a
+different URL without contacting it:
+
+```python
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from datacache import install_bundle, inspect_bundle
+
+with TemporaryDirectory() as temporary:
+    root = Path(temporary)
+    source = root / "source.txt"
+    source.write_bytes(b"dataset\n")
+    identity = {"provider": "example", "file_revision": "2026-10", "size": 8}
+    assets = {"data.txt": {"path": source, "source_identity": identity}}
+    installed = install_bundle(root / "store", assets, verified=False)
+    mirror = {"data.txt": {
+        "url": "https://example.invalid/another-release/data.txt",
+        "source_identity": identity,
+    }}
+    reused = install_bundle(root / "store", mirror, verified=False)
+    print(reused == installed)
+    print(inspect_bundle(root / "store", mirror).verified)
+```
+
+```text
+True
+False
+```
+
+Include every upstream property needed to identify the exact file revision;
+a dataset name or assembly label alone is generally insufficient. DataCache
+compares the complete declaration and does not interpret its fields. For example,
+an upstream Unix checksum remains caller metadata, never a trusted SHA-256.
+
+- Declared identities must match even when a trusted SHA-256 is also supplied.
+  The decompression setting must match too. A change requires `force=True`.
+  Callers without a declaration keep the URL/hash rules above.
+- Identities accept JSON values, including explicit `null` (`None`), with string
+  object keys and finite numbers. Object key order is ignored; list order and
+  JSON value types matter (`true`, `1` and `1.0` differ). The limit is 64 KiB of
+  compact, sorted, ASCII-escaped JSON and 64 levels of nesting.
+- Identity metadata is stored verbatim in the manifest: **do not include
+  credentials or secrets**. The actual acquisition URL still has its full
+  fingerprint and redacted display URL. Reuse does not rewrite this provenance.
+- SHA-256 and `size` expectations still describe installed bytes, after
+  decompression. An identity field describing compressed input size remains
+  separate caller metadata and is not an integrity expectation.
+- Identity equality alone never sets `verified=True`. Full inspection still
+  hashes the installed bytes and detects same-size corruption.
+- Existing receipts without a declaration cannot satisfy an identity-based
+  request, even with a matching trusted hash. Refresh once with `force=True`;
+  old receipts remain readable with their original URL/hash rules.
+
+This applies to `VersionedDatasetRegistry` assets as well. It authorizes reuse
+only in a store the caller selected; it does not search other stores, deduplicate
+objects, or relax the registry's rule that each version has its own store.
+HTTP resume continues to require its existing sizes, hashes or transport
+validators; a declared identity cannot authorize resuming bytes from another URL.
 
 Cache reuse and inspection are read-only. A corrupt bundle requires
 `force=True`, which installs a new one.

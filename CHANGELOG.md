@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.29.0
+
+- Add optional caller-declared `source_identity` to bundle assets and
+  materialization sources. Equal identities permit offline reuse across URLs
+  while preserving acquisition provenance, transformation checks and the
+  distinction between identity assertions and trusted SHA-256 verification.
+  Legacy receipts require an explicit refresh before identity-based reuse.
+
 ## 1.28.0
 
 - Add `fetch_file` and `Cache.fetch`'s `http_representation="encoded"` option
