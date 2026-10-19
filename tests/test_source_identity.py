@@ -194,7 +194,8 @@ def test_identity_comparison_preserves_json_types(artifact, original, changed):
 
 @pytest.mark.parametrize('identity', [float('nan'), float('inf'), (1, 2), {1: 'integer key'},
                                     {'nested': {None: 'key'}}, {'nested': (1, 2)}, b'bytes',
-                                    'x' * (64 * 1024), {'nested': float('-inf')}])
+                                    pytest.param('x' * (64 * 1024), id='oversized'),
+                                    {'nested': float('-inf')}])
 def test_invalid_identity_rejected_before_creating_store(artifact, identity):
     artifact.spec['source_identity'] = identity
     with pytest.raises(ValueError):
