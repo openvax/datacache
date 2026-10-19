@@ -17,3 +17,14 @@ def test_tqdm_is_an_unconditional_runtime_dependency():
 
 def test_progress_extra_remains_a_compatible_alias():
     assert "progress" in metadata("datacache").get_all("Provides-Extra", [])
+
+
+def test_python_support_metadata_has_no_future_upper_bound():
+    from packaging.specifiers import SpecifierSet
+    info = metadata('datacache')
+    supported = SpecifierSet(info['Requires-Python'])
+    assert '3.9' not in supported
+    for version in ('3.10', '3.11', '3.12', '3.13', '3.14'):
+        assert version in supported
+        assert 'Programming Language :: Python :: ' + version in info.get_all('Classifier')
+    assert '4.0' in supported

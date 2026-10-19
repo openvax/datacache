@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.28.0
+
+- Add `fetch_file` and `Cache.fetch`'s `http_representation="encoded"` option
+  with `raw=True` to preserve HTTP content-encoded source bytes. Integrity,
+  byte limits, progress, provenance, retries and resume offsets use the selected
+  representation; decoded HTTP behavior remains the default.
+- Fall back from unsupported hard links to native atomic no-replace renames
+  when publishing new SQLite databases. Preserve concurrent creators and
+  document local scratch builds with portable materialized bundles for volumes
+  supporting neither primitive.
+- Require Python 3.10 or newer, with CI covering Python 3.10–3.14, including
+  package installation, import and dependency consistency checks.
+
 ## 1.27.1
 
 - Drain bounded zlib output when compressed input ends at an expansion boundary,

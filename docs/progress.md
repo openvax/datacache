@@ -16,7 +16,10 @@ supported compatibility alias.
 
 Downloads display bytes and a total when the server provides a usable size.
 Compressed HTTP content encoding can make the wire size differ from the
-decoded data; in that case the total is unknown. gzip decompression also uses
+decoded data; in that case the total is unknown. With
+`http_representation="encoded", raw=True`, counts use the encoded body and
+`Content-Length` supplies the total unless chunked transfer overrides it.
+gzip decompression also uses
 an unknown total rather than guessing from its compressed size. ZIP entries
 use their declared uncompressed size. SHA-256 verification displays bytes read;
 database insertion displays rows completed in batches of up to 1,000.

@@ -48,10 +48,45 @@ path = fetch_file(
 
 `Cache.fetch` accepts the same `raw=True` option with `filename`. Raw mode is
 incompatible with `decompress=True`. It preserves the downloaded payload after
-normal HTTP transfer decoding, not encoded HTTP wire bytes. Hashes and sizes
-refer to that payload. A cache hit still uses the supplied local validation
+HTTP `Content-Encoding` decoding by default. Hashes and sizes refer to that
+payload. A cache hit still uses the supplied local validation
 checks; changing transformation options does not replace an existing output.
 Use distinct names, trusted expectations, or `force=True` when switching modes.
+
+### Encoded HTTP source bytes
+
+Some servers label deposited compressed files with `Content-Encoding: gzip` or
+`x-gzip`, even when the path ends in `.rds` or another non-archive suffix.
+Use `raw=True, http_representation="encoded"` to keep those compressed bytes:
+
+```python
+path = fetch_file(
+    source_url,
+    destination="source.rds",
+    raw=True,
+    http_representation="encoded",
+    expected_sha256=release_metadata["source_sha256"],
+    expected_size=release_metadata["source_size"],
+    max_bytes=80_000_000,
+    record_provenance=True,
+)
+```
+
+`http_representation="decoded"` is the default and retains existing behavior.
+Encoded mode requires `raw=True`. It requests `Accept-Encoding: identity` to
+avoid negotiated compression, but preserves any content encoding the source
+still supplies. HTTP chunk framing is always removed. Hashes, sizes, byte
+limits and progress counts describe the selected body bytes. Retries retain
+the selection; resumable downloads use encoded byte offsets and reject mixed
+content encodings across ranges. Provenance records include `http_representation`.
+
+For a local `file://` or FTP mirror, supply a file already containing the
+selected bytes: DataCache copies it unchanged. The choice does not change a
+cache key. Use distinct destinations or trusted hashes when selecting another
+representation; when provenance records a different representation, reuse and
+stale fallback reject it. `force=True` explicitly refreshes that destination.
+Without a usable provenance record or trusted expectations, a cache hit cannot
+identify which representation an existing file contains.
 
 ### Archives and decompression
 
@@ -211,9 +246,10 @@ path = fetch_file(
 The limit is checked before every write, so no file this fetch writes ever
 holds more than `max_bytes` bytes:
 
-- The download is the body after HTTP transfer decoding, such as gzip
-  `Content-Encoding`, counted as it arrives, so it holds whether or not the
-  server sends `Content-Length`. A `Content-Length` over the limit is refused
+- The download is the selected HTTP body representation: decoded by default,
+  or content-encoded bytes with `http_representation="encoded"`. It is counted
+  as it arrives, whether or not the server sends `Content-Length`.
+  A usable `Content-Length` over the limit is refused
   before the body is read, unless chunked transfer makes it meaningless.
 - With `decompress=True`, the installed file is limited too, so a download and
   its decompressed file together never need more than twice `max_bytes`. The
@@ -368,6 +404,12 @@ path = fetch_file(url, destination=dest, raw=True, expected_size=size, resume="a
 
 The rest of this section describes `resume=True`, which instead raises
 whenever resuming isn't possible.
+
+With `http_representation="encoded", raw=True`, partials, sizes and range offsets
+refer to encoded bytes. Resuming checks that `Content-Encoding` stays the same
+across ranges, and changing `http_representation` discards any old partial.
+Default decoded mode only resumes identity-encoded responses; `resume="auto"`
+downloads a compressed HTTP response in full and decodes it instead.
 
 Use `fetch_file(..., resume=True, expected_sha256=sha256, expected_size=size)`
 (or the same options on `Cache.fetch`) for large immutable raw HTTP/HTTPS files.

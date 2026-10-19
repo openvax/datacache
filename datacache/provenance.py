@@ -60,7 +60,7 @@ def redact_url(url):
     return urlunsplit((parts.scheme, host, parts.path, "", ""))
 
 
-def describe(download_url, info, sha256=None, *, transport=None):
+def describe(download_url, info, sha256=None, *, transport=None, http_representation="decoded"):
     """Provenance, as JSON text, for the bytes that stat info describes.
 
     info must come from the exact bytes being published (the staged file), not
@@ -69,6 +69,8 @@ def describe(download_url, info, sha256=None, *, transport=None):
     against a trusted expectation: a digest of what a server sent proves nothing.
     transport optionally records the validator accepted by resumable transport;
     it is evidence of representation consistency, not a trusted content hash.
+    http_representation records which HTTP body bytes the caller selected;
+    file/FTP mirrors already contain those bytes and are copied unchanged.
     """
     record = {
         "format": FORMAT,
@@ -77,6 +79,7 @@ def describe(download_url, info, sha256=None, *, transport=None):
         "size": info.st_size,
         "mtime_ns": info.st_mtime_ns,
         "sha256": sha256.lower() if sha256 else None,
+        "http_representation": http_representation,
     }
     if transport is not None:
         record['transport'] = transport
@@ -102,6 +105,7 @@ def _valid(record):
     def integer(value):
         return isinstance(value, int) and not isinstance(value, bool) and value >= 0
     return (isinstance(record, dict) and record.get("format") == FORMAT and
+            record.get("http_representation", "decoded") in ("decoded", "encoded") and
             isinstance(record.get("url"), str) and isinstance(record.get("fetched_at"), str) and
             integer(record.get("size")) and integer(record.get("mtime_ns")) and
             (record.get("sha256") is None or (isinstance(record.get("sha256"), str) and

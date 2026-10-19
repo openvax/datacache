@@ -83,11 +83,14 @@ Rebuilds also handle virtual tables, such as SQLite FTS tables, whose internal
 shadow tables disappear automatically when the parent table is dropped.
 
 New databases are built in private sibling files, closed, and published using
-an atomic hard link that cannot overwrite a concurrent creator. A losing
-creator checks the winner's tables/version and reuses or transactionally
-rebuilds it. Failed builds remove their staging files. This requires a local
-filesystem supporting hard links and SQLite locking; unsupported publication
-fails without installing a partial database.
+an atomic operation that cannot overwrite a concurrent creator. DataCache
+tries a hard link first. If hard links are unsupported, it tries an atomic
+no-replace rename: Linux `renameat2(RENAME_NOREPLACE)`, macOS
+`renamex_np(RENAME_EXCL)`, or Windows `os.rename`. A losing creator checks the
+winner's tables/version and reuses or transactionally rebuilds it. Failed
+builds remove their staging files. SQLite locking is still required for
+rebuilds. If neither publication operation is supported, creation fails with
+local-build guidance and leaves no partial database.
 
 A database path may be a symlink, including one whose target does not yet
 exist. Creation stages and publishes the database beside that target without
@@ -99,6 +102,54 @@ leaves the symlink intact and does not install a partial target database.
 or mismatched metadata, without creating an empty database. It closes rejected
 connections. `read_only=True` explicitly opens a matching database read-only.
 Version matching is a metadata check, not a checksum or proof of data validity.
+
+### Filesystems without hard links
+
+A mounted volume may reject both hard links and exclusive renames. In that
+case, build the database on local scratch, close it, and copy it into a
+[materialized bundle](materialization.md). Bundle publication uses generation
+directories and a pointer, so it does not need hard links or exclusive file
+renames. The volume must still support the bundle store's locking and atomic
+rename requirements; these operations do not guarantee cross-host coherence
+or replace a volume provider's commit/reload protocol.
+
+```python
+from contextlib import closing
+from pathlib import Path
+from tempfile import TemporaryDirectory
+import shutil
+import pandas as pd
+from datacache import db_from_dataframe, materialize
+
+def build_index(inputs, outputs):
+    # Choose local scratch, not the mounted artifact volume.
+    with TemporaryDirectory(dir=local_scratch_root) as scratch:
+        database = Path(scratch) / "annotation.db"
+        with closing(db_from_dataframe(
+            database, "records", pd.read_csv(inputs["records.csv"]),
+        )):
+            pass
+        shutil.copyfile(database, outputs["annotation.db"])
+
+paths = materialize(
+    artifact_store,
+    {"records.csv": {"path": source_csv, "sha256": source_sha256}},
+    transform={"version": "annotation-index-1"},
+    outputs={"annotation.db": {}},
+    builder=build_index,
+)
+```
+
+The builder must close/checkpoint the database before copying it, so all data
+is in the main file with no pending WAL or journal. The database helpers above
+already close their staged build before publication. Bundle receipts verify
+stored bytes on reuse; an observed output hash records consistency, not a
+trusted reference checksum. Supply an expected output hash when available.
+Treat the published database as immutable: open it with
+`connect_if_correct_version(paths["annotation.db"], 1, read_only=True)`, or copy
+the verified bundle output to local scratch for consumers that need writes.
+Refresh with a new transform version and `force=True`; do not rebuild inside a
+published bundle.
 
 ### Upgrading existing caches
 

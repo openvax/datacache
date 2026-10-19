@@ -128,6 +128,7 @@ class Cache:
             allow_empty=False,
             resume=False,
             raw=False,
+            http_representation="decoded",
             expire_after=None,
             return_stale_on_error=False,
             validator=None):
@@ -146,7 +147,9 @@ class Cache:
         max_bytes bounds every file the fetch writes, as described for
         fetch_file.
         raw=True disables decompression and HTML conversion even for an explicit
-        filename. It cannot be combined with decompress=True. Resume options
+        filename. It cannot be combined with decompress=True.
+        http_representation selects decoded (default) or encoded HTTP body
+        bytes; encoded requires raw=True, as described for fetch_file. Resume options
         have the same size, hash, and strong-ETag requirements as fetch_file.
         expire_after, return_stale_on_error and validator refresh expired copies,
         fall back to a cached copy when a refresh fails, and reject wrong
@@ -178,6 +181,7 @@ class Cache:
             allow_empty=allow_empty,
             resume=resume,
             raw=raw,
+            http_representation=http_representation,
             expire_after=expire_after,
             return_stale_on_error=return_stale_on_error,
             validator=validator)
