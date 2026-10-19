@@ -1073,7 +1073,10 @@ available for application output. tqdm is a required dependency, installed by
 supported compatibility alias.</p>
 <p>Downloads display bytes and a total when the server provides a usable size.
 Compressed HTTP content encoding can make the wire size differ from the
-decoded data; in that case the total is unknown. gzip decompression also uses
+decoded data; in that case the total is unknown. With
+<code>http_representation="encoded", raw=True</code>, counts use the encoded body and
+<code>Content-Length</code> supplies the total unless chunked transfer overrides it.
+gzip decompression also uses
 an unknown total rather than guessing from its compressed size. ZIP entries
 use their declared uncompressed size. SHA-256 verification displays bytes read;
 database insertion displays rows completed in batches of up to 1,000.</p>

@@ -2623,7 +2623,7 @@
 
 <h1 id="public-api-reference">Public API reference<a class="headerlink" href="#public-api-reference" title="Permanent link">&para;</a></h1>
 <p>This reference covers every name exported in <code>datacache.__all__</code> and every
-public <code>Cache</code> method in DataCache 1.27.1. Import these names from <code>datacache</code>.
+public <code>Cache</code> method in DataCache 1.28.0. Import these names from <code>datacache</code>.
 Signatures below show all defaults; arguments after <code>*</code> are keyword-only.
 Method signatures omit <code>self</code> and are called on a <code>Cache</code> instance.</p>
 <p>Start with the <a href="../#cache-and-verify-a-file">quickstart</a> for a first download.
@@ -2728,7 +2728,7 @@ temporary directory. Cleanup is shown at the end of the page.</p>
     progress_callback=None, *, destination=None, cache_root=None, expected_sha256=None,
     expected_size=None, max_bytes=None, max_retries=2, retry_backoff=1.0,
     retry_max_delay=30.0, show_progress=False, record_provenance=False, allow_empty=False,
-    resume=False, raw=False, expire_after=None, return_stale_on_error=False, validator=None
+    resume=False, raw=False, http_representation='decoded', expire_after=None, return_stale_on_error=False, validator=None
 )
 </code></pre></div>
 <p>Download a missing file or reuse a readable regular file at its cache path.
@@ -2758,7 +2758,11 @@ replacement leaves the previous file intact.</p>
 </tr>
 <tr>
 <td><code>raw</code></td>
-<td>Boolean disabling archive decompression and HTML conversion regardless of the output name. Default <code>False</code> preserves legacy inference; cannot be combined with <code>decompress=True</code>. Expectations describe the unchanged payload after HTTP transfer decoding.</td>
+<td>Boolean disabling archive decompression and HTML conversion regardless of the output name. Default <code>False</code> preserves legacy inference; cannot be combined with <code>decompress=True</code>. Expectations describe the unchanged payload in the selected HTTP representation.</td>
+</tr>
+<tr>
+<td><code>http_representation</code></td>
+<td><code>"decoded"</code> (default) applies HTTP <code>Content-Encoding</code> decoding. <code>"encoded"</code> requires <code>raw=True</code> and preserves encoded body bytes, excluding HTTP chunk framing. Integrity, limits, progress, provenance and resume offsets use those bytes. File/FTP mirrors are copied unchanged. Cache keys stay the same; recorded representation mismatches reject reuse and stale fallback. See <a href="../downloads/#encoded-http-source-bytes">encoded source bytes</a>.</td>
 </tr>
 <tr>
 <td><code>subdir</code></td>
@@ -2802,7 +2806,7 @@ replacement leaves the previous file intact.</p>
 </tr>
 <tr>
 <td><code>max_bytes</code></td>
-<td>Optional non-negative integer: the most bytes any file this fetch writes may hold, checked before every write. It bounds the download (the body after HTTP transfer decoding, such as gzip <code>Content-Encoding</code>, whatever <code>Content-Length</code> says) and the installed file after <code>decompress=True</code>. A larger transfer raises <code>FileValidationError</code> without retrying, keeps any existing file and removes temporary files. Cache hits write nothing and are unaffected. <code>expected_size</code> must not exceed it; HTML-to-CSV conversion can't be bounded. See <a href="../downloads/#byte-limits">byte limits</a>.</td>
+<td>Optional non-negative integer: the most bytes any file this fetch writes may hold, checked before every write. It bounds the download (the selected HTTP body representation, whatever <code>Content-Length</code> says) and the installed file after <code>decompress=True</code>. A larger transfer raises <code>FileValidationError</code> without retrying, keeps any existing file and removes temporary files. Cache hits write nothing and are unaffected. <code>expected_size</code> must not exceed it; HTML-to-CSV conversion can't be bounded. See <a href="../downloads/#byte-limits">byte limits</a>.</td>
 </tr>
 <tr>
 <td><code>max_retries</code></td>
@@ -2822,7 +2826,7 @@ replacement leaves the previous file intact.</p>
 </tr>
 <tr>
 <td><code>resume</code></td>
-<td><code>True</code>, <code>False</code> or <code>"auto"</code>, retaining private partials for raw HTTP transfers. <code>"auto"</code> resumes whenever it can and otherwise downloads normally, including when the server turns out not to support resuming (no strong ETag, encoded responses); <code>True</code> raises in those cases. Requires size and a POSIX local filesystem. Without an expected SHA-256, every accepted response must supply a strong ETag. Size-only cache hits check only byte count. See <a href="../downloads/#resumable-http-downloads">resumable downloads</a>.</td>
+<td><code>True</code>, <code>False</code> or <code>"auto"</code>, retaining private partials for raw HTTP transfers. <code>"auto"</code> resumes whenever it can and otherwise downloads normally, including when the server turns out not to support resuming (no strong ETag, encoded responses in decoded mode); <code>True</code> raises in those cases. Requires size and a POSIX local filesystem. Without an expected SHA-256, every accepted response must supply a strong ETag. Size-only cache hits check only byte count. See <a href="../downloads/#resumable-http-downloads">resumable downloads</a>.</td>
 </tr>
 <tr>
 <td><code>record_provenance</code></td>
@@ -3583,7 +3587,7 @@ errors, or platform directory lookup errors from <code>get_data_dir</code>.</p>
     use_wget_if_available=None, *, chunk_size=1048576, progress_callback=None,
     expected_sha256=None, expected_size=None, max_bytes=None, max_retries=2,
     retry_backoff=1.0, retry_max_delay=30.0, show_progress=False, record_provenance=False,
-    allow_empty=False, resume=False, raw=False, expire_after=None, return_stale_on_error=False,
+    allow_empty=False, resume=False, raw=False, http_representation='decoded', expire_after=None, return_stale_on_error=False,
     validator=None
 )
 </code></pre></div>

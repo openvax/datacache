@@ -386,6 +386,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#encoded-http-source-bytes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Encoded HTTP source bytes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#archives-and-decompression" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1102,6 +1113,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#encoded-http-source-bytes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Encoded HTTP source bytes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#archives-and-decompression" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1265,10 +1287,39 @@ at any output name, pass <code>raw=True</code>. This also disables HTML-to-CSV c
 </code></pre></div>
 <p><code>Cache.fetch</code> accepts the same <code>raw=True</code> option with <code>filename</code>. Raw mode is
 incompatible with <code>decompress=True</code>. It preserves the downloaded payload after
-normal HTTP transfer decoding, not encoded HTTP wire bytes. Hashes and sizes
-refer to that payload. A cache hit still uses the supplied local validation
+HTTP <code>Content-Encoding</code> decoding by default. Hashes and sizes refer to that
+payload. A cache hit still uses the supplied local validation
 checks; changing transformation options does not replace an existing output.
 Use distinct names, trusted expectations, or <code>force=True</code> when switching modes.</p>
+<h3 id="encoded-http-source-bytes">Encoded HTTP source bytes<a class="headerlink" href="#encoded-http-source-bytes" title="Permanent link">&para;</a></h3>
+<p>Some servers label deposited compressed files with <code>Content-Encoding: gzip</code> or
+<code>x-gzip</code>, even when the path ends in <code>.rds</code> or another non-archive suffix.
+Use <code>raw=True, http_representation="encoded"</code> to keep those compressed bytes:</p>
+<div class="highlight"><pre><span></span><code><span class="n">path</span> <span class="o">=</span> <span class="n">fetch_file</span><span class="p">(</span>
+    <span class="n">source_url</span><span class="p">,</span>
+    <span class="n">destination</span><span class="o">=</span><span class="s2">"source.rds"</span><span class="p">,</span>
+    <span class="n">raw</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">http_representation</span><span class="o">=</span><span class="s2">"encoded"</span><span class="p">,</span>
+    <span class="n">expected_sha256</span><span class="o">=</span><span class="n">release_metadata</span><span class="p">[</span><span class="s2">"source_sha256"</span><span class="p">],</span>
+    <span class="n">expected_size</span><span class="o">=</span><span class="n">release_metadata</span><span class="p">[</span><span class="s2">"source_size"</span><span class="p">],</span>
+    <span class="n">max_bytes</span><span class="o">=</span><span class="mi">80_000_000</span><span class="p">,</span>
+    <span class="n">record_provenance</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<p><code>http_representation="decoded"</code> is the default and retains existing behavior.
+Encoded mode requires <code>raw=True</code>. It requests <code>Accept-Encoding: identity</code> to
+avoid negotiated compression, but preserves any content encoding the source
+still supplies. HTTP chunk framing is always removed. Hashes, sizes, byte
+limits and progress counts describe the selected body bytes. Retries retain
+the selection; resumable downloads use encoded byte offsets and reject mixed
+content encodings across ranges. Provenance records include <code>http_representation</code>.</p>
+<p>For a local <code>file://</code> or FTP mirror, supply a file already containing the
+selected bytes: DataCache copies it unchanged. The choice does not change a
+cache key. Use distinct destinations or trusted hashes when selecting another
+representation; when provenance records a different representation, reuse and
+stale fallback reject it. <code>force=True</code> explicitly refreshes that destination.
+Without a usable provenance record or trusted expectations, a cache hit cannot
+identify which representation an existing file contains.</p>
 <h3 id="archives-and-decompression">Archives and decompression<a class="headerlink" href="#archives-and-decompression" title="Permanent link">&para;</a></h3>
 <p>Without <code>raw=True</code>, keeping the source's <code>.gz</code> or <code>.zip</code> suffix at the
 destination and leaving <code>decompress=False</code> retains an archive as before.
@@ -1404,9 +1455,10 @@ within a disk budget:</p>
 <p>The limit is checked before every write, so no file this fetch writes ever
 holds more than <code>max_bytes</code> bytes:</p>
 <ul>
-<li>The download is the body after HTTP transfer decoding, such as gzip
-  <code>Content-Encoding</code>, counted as it arrives, so it holds whether or not the
-  server sends <code>Content-Length</code>. A <code>Content-Length</code> over the limit is refused
+<li>The download is the selected HTTP body representation: decoded by default,
+  or content-encoded bytes with <code>http_representation="encoded"</code>. It is counted
+  as it arrives, whether or not the server sends <code>Content-Length</code>.
+  A usable <code>Content-Length</code> over the limit is refused
   before the body is read, unless chunked transfer makes it meaningless.</li>
 <li>With <code>decompress=True</code>, the installed file is limited too, so a download and
   its decompressed file together never need more than twice <code>max_bytes</code>. The
@@ -1565,6 +1617,11 @@ extra request, whose body isn't read:</p>
 </code></pre></div>
 <p>The rest of this section describes <code>resume=True</code>, which instead raises
 whenever resuming isn't possible.</p>
+<p>With <code>http_representation="encoded", raw=True</code>, partials, sizes and range offsets
+refer to encoded bytes. Resuming checks that <code>Content-Encoding</code> stays the same
+across ranges, and changing <code>http_representation</code> discards any old partial.
+Default decoded mode only resumes identity-encoded responses; <code>resume="auto"</code>
+downloads a compressed HTTP response in full and decodes it instead.</p>
 <p>Use <code>fetch_file(..., resume=True, expected_sha256=sha256, expected_size=size)</code>
 (or the same options on <code>Cache.fetch</code>) for large immutable raw HTTP/HTTPS files.
 <code>expected_size</code> is required. Prefer a trusted <code>expected_sha256</code> when available.
