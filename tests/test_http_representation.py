@@ -45,7 +45,7 @@ def server():
                     # Intentionally conflicting: transfer framing takes precedence.
                     self.send_header('Content-Length', '999999')
                 else:
-                    self.send_header('Content-Length', str(len(body)))
+                    self.send_header('Content-Length', str(action.get('length', len(body))))
                 self.end_headers()
                 try:
                     if action.get('chunked'):
@@ -185,6 +185,65 @@ def test_interrupted_encoded_transfer_retries_from_start(server, tmp_path):
     encoded_fetch(url, tmp_path / 'source.rds')
     assert len(requests) == 2
     assert all('Range' not in request for request in requests)
+
+
+def test_encoded_body_with_unusable_length_is_bounded_and_reports_unknown_total(server, tmp_path):
+    url, requests = server({'length': 'unknown'})
+    events = []
+    encoded_fetch(url, tmp_path / 'source.rds', progress_callback=lambda *args: events.append(args))
+    assert events[-1] == (len(ENCODED), None)
+    assert len(requests) == 1
+
+
+@pytest.mark.parametrize('failure', ['timeout', 'tls'])
+def test_encoded_transport_errors_keep_retry_policy(server, tmp_path, monkeypatch, failure):
+    import requests as http
+    from urllib3.exceptions import ReadTimeoutError, SSLError
+
+    url, requests = server()
+    real_get = http.get
+    attempts = []
+
+    def get(*args, **kwargs):
+        response = real_get(*args, **kwargs)
+        attempts.append(response)
+        if len(attempts) == 1:
+            def broken_stream(*args, **kwargs):
+                if failure == 'timeout':
+                    raise ReadTimeoutError(None, url, 'interrupted read')
+                raise SSLError('TLS verification failed')
+            monkeypatch.setattr(response.raw, 'stream', broken_stream)
+        return response
+
+    monkeypatch.setattr(http, 'get', get)
+    dest = tmp_path / 'source.rds'
+    dest.write_bytes(b'old')
+    if failure == 'tls':
+        with pytest.raises(http.exceptions.SSLError):
+            encoded_fetch(url, dest, force=True)
+        assert dest.read_bytes() == b'old'
+        assert len(requests) == 1
+    else:
+        encoded_fetch(url, dest, force=True)
+        assert dest.read_bytes() == ENCODED
+        assert len(requests) == 2
+
+
+def test_failed_encoded_provenance_is_optional_and_cannot_leave_old_receipt(server, tmp_path, monkeypatch):
+    url, requests = server()
+    dest = tmp_path / 'source.rds'
+    encoded_fetch(url, dest)
+    receipt = Path(provenance.sidecar_path(dest))
+    assert receipt.exists()
+
+    def unavailable(*args, **kwargs):
+        raise OSError('staging metadata unavailable')
+
+    monkeypatch.setattr(provenance, 'describe', unavailable)
+    encoded_fetch(url, dest, force=True)
+    assert dest.read_bytes() == ENCODED
+    assert not receipt.exists()
+    assert len(requests) == 2
 
 
 @pytest.mark.skipif(os.name != 'posix', reason='POSIX resume locks')

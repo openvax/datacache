@@ -89,6 +89,28 @@ def test_native_rename_never_clobbers_existing_entry(tmp_path, kind):
     assert source.read_bytes() == b'candidate'
 
 
+def test_native_rename_rejects_nul_without_truncating_destination(tmp_path):
+    source = tmp_path / 'staged'
+    source.write_bytes(b'candidate')
+    dest = tmp_path / 'winner'
+    with pytest.raises(ValueError, match='null'):
+        _filesystem._rename_noreplace(source, str(dest) + '\0ignored')
+    assert not dest.exists()
+    assert source.read_bytes() == b'candidate'
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='POSIX libc capability detection')
+def test_libc_without_exclusive_rename_support_fails_cleanly(tmp_path, without_links, monkeypatch):
+    import ctypes
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(ctypes, 'CDLL', lambda *args, **kwargs: SimpleNamespace())
+    with pytest.raises(OSError, match='local scratch.*materialize') as error:
+        db_from_dataframe(tmp_path / 'data.db', 'records', pd.DataFrame({'id': [1]}))
+    assert error.value.errno == errno.ENOTSUP
+    assert list(tmp_path.iterdir()) == []
+
+
 @pytest.mark.parametrize('code', [errno.EPERM, errno.ENOTSUP, errno.ENOSYS, errno.EOPNOTSUPP])
 def test_unsupported_hardlink_errors_use_native_rename(tmp_path, monkeypatch, code):
     def reject(*args):
