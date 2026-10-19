@@ -12,7 +12,7 @@ import threading
 import pytest
 
 from datacache import Cache, FileValidationError, fetch_file
-from datacache import provenance
+from datacache import download, provenance
 from datacache.resume import CannotResume, _state_directory
 
 DECODED = b'compressed source data\n' * 200
@@ -33,7 +33,9 @@ def server():
                 action = actions.pop(0) if actions else {}
                 payload = action.get('body', ENCODED)
                 offset = int(self.headers.get('Range', 'bytes=0-')[6:-1])
-                self.send_response(206 if offset else 200)
+                self.send_response(action.get('status', 206 if offset else 200))
+                if 'retry_after' in action:
+                    self.send_header('Retry-After', str(action['retry_after']))
                 self.send_header('ETag', '"source-v1"')
                 self.send_header('Content-Type', 'application/octet-stream')
                 self.send_header('Content-Encoding', action.get('encoding', 'x-gzip'))
@@ -246,6 +248,31 @@ def test_failed_encoded_provenance_is_optional_and_cannot_leave_old_receipt(serv
     assert len(requests) == 2
 
 
+def test_unwritable_old_receipt_cannot_misdescribe_new_encoded_bytes(server, tmp_path, monkeypatch):
+    url, requests = server()
+    dest = tmp_path / 'source.rds'
+    fetch_file(url, destination=dest, raw=True, record_provenance=True)
+    receipt = Path(provenance.sidecar_path(dest))
+    original = download._publish_staged_file
+
+    def denied(*args, **kwargs):
+        raise PermissionError('receipt is not writable')
+
+    def publish(source, target, *args, **kwargs):
+        if Path(target) == receipt:
+            denied()
+        return original(source, target, *args, **kwargs)
+
+    monkeypatch.setattr(provenance, 'remove', denied)
+    monkeypatch.setattr(download, '_publish_staged_file', publish)
+    encoded_fetch(url, dest, force=True)
+    assert dest.read_bytes() == ENCODED
+    assert receipt.exists()
+    assert provenance.read(dest, dest.stat()) is None
+    encoded_fetch(url, dest)
+    assert len(requests) == 2
+
+
 @pytest.mark.skipif(os.name != 'posix', reason='POSIX resume locks')
 @pytest.mark.parametrize('digest', [None, sha256(ENCODED).hexdigest()])
 def test_encoded_resume_counts_encoded_offsets(server, tmp_path, digest):
@@ -257,6 +284,43 @@ def test_encoded_resume_counts_encoded_offsets(server, tmp_path, digest):
     assert dest.read_bytes() == ENCODED
     assert not (_state_directory(dest) / 'partial').exists()
     assert json.loads(Path(provenance.sidecar_path(dest)).read_text())['http_representation'] == 'encoded'
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='POSIX resume locks')
+def test_short_complete_response_resumes_remaining_encoded_bytes(server, tmp_path):
+    url, requests = server({'body': ENCODED[:24]})
+    dest = tmp_path / 'source.rds'
+    encoded_fetch(url, dest, resume=True)
+    assert requests[1]['Range'] == 'bytes=24-'
+    assert dest.read_bytes() == ENCODED
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='POSIX resume locks')
+def test_encoded_resume_honors_retry_after_bound(server, tmp_path):
+    import requests as http
+
+    url, requests = server({'status': 429, 'retry_after': 60})
+    dest = tmp_path / 'source.rds'
+    with pytest.raises(http.HTTPError):
+        encoded_fetch(url, dest, resume=True, retry_max_delay=1)
+    assert len(requests) == 1
+    assert not dest.exists()
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='POSIX resume locks')
+def test_oversized_resume_metadata_discards_untrusted_partial(server, tmp_path):
+    url, requests = server()
+    dest = tmp_path / 'source.rds'
+
+    def interrupt(*args):
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        encoded_fetch(url, dest, resume=True, progress_callback=interrupt)
+    (_state_directory(dest) / 'metadata.json').write_bytes(b' ' * (1024 * 1024 + 1))
+    encoded_fetch(url, dest, resume=True)
+    assert 'Range' not in requests[1]
+    assert dest.read_bytes() == ENCODED
 
 
 @pytest.mark.skipif(os.name != 'posix', reason='POSIX resume locks')
