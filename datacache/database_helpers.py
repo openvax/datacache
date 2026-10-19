@@ -30,6 +30,7 @@ from .database import (
 from .database_table import DatabaseTable, validate_column_names
 from .database_types import db_type
 from .inspection import path_exists
+from ._filesystem import publish_noclobber
 
 
 logger = logging.getLogger(__name__)
@@ -177,8 +178,8 @@ def _create_cached_db(
 
     db_path = _database_target_path(db_path)
     if not lexists(db_path):
-        # Readers never see an empty/partial new database. Hard-link publication
-        # is atomic and does not clobber a concurrent creator's database.
+        # Readers never see an empty/partial new database. Publication is atomic
+        # and does not clobber a concurrent creator's database.
         directory = os.path.dirname(db_path) or "."
         staged_path = None
         db = None
@@ -191,7 +192,7 @@ def _create_cached_db(
             db = None
             os.chmod(staged_path, normal_creation_mode(directory))
             try:
-                os.link(staged_path, db_path)
+                publish_noclobber(staged_path, db_path)
             except FileExistsError:
                 pass  # Another creator won; use the existing-file path below.
             else:

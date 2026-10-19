@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.27.1. Import these names from `datacache`.
+public `Cache` method in DataCache 1.28.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -76,7 +76,7 @@ fetch_file(
     progress_callback=None, *, destination=None, cache_root=None, expected_sha256=None,
     expected_size=None, max_bytes=None, max_retries=2, retry_backoff=1.0,
     retry_max_delay=30.0, show_progress=False, record_provenance=False, allow_empty=False,
-    resume=False, raw=False, expire_after=None, return_stale_on_error=False, validator=None
+    resume=False, raw=False, http_representation='decoded', expire_after=None, return_stale_on_error=False, validator=None
 )
 ```
 
@@ -91,7 +91,8 @@ replacement leaves the previous file intact.
 | `download_url` | Source URL string: HTTP, HTTPS, FTP, or `file://`. |
 | `filename` | Optional string cache key. Omitted names are inferred from the full URL. Names are normalized by [build_local_filename](#build_local_filename), not treated as exact paths. |
 | `decompress` | Request gzip/ZIP contents. With inferred filenames, `False` retains the archive and `True` selects a separate decompressed key. An explicit output lacking the source's compression suffix also implies decompression. |
-| `raw` | Boolean disabling archive decompression and HTML conversion regardless of the output name. Default `False` preserves legacy inference; cannot be combined with `decompress=True`. Expectations describe the unchanged payload after HTTP transfer decoding. |
+| `raw` | Boolean disabling archive decompression and HTML conversion regardless of the output name. Default `False` preserves legacy inference; cannot be combined with `decompress=True`. Expectations describe the unchanged payload in the selected HTTP representation. |
+| `http_representation` | `"decoded"` (default) applies HTTP `Content-Encoding` decoding. `"encoded"` requires `raw=True` and preserves encoded body bytes, excluding HTTP chunk framing. Integrity, limits, progress, provenance and resume offsets use those bytes. File/FTP mirrors are copied unchanged. Cache keys stay the same; recorded representation mismatches reject reuse and stale fallback. See [encoded source bytes](downloads.md#encoded-http-source-bytes). |
 | `subdir` | Application name selecting a platform cache directory; `None` selects `datacache`. See [get_data_dir](#get_data_dir). |
 | `force` | Download even when a cached file exists. Does not automatically broaden its permissions. |
 | `timeout` | Per-attempt timeout in seconds; `None` supplies no timeout. HTTP also accepts a Requests `(connect, read)` tuple. Timeouts limit connection/read inactivity, not overall elapsed time. |
@@ -102,12 +103,12 @@ replacement leaves the previous file intact.
 | `cache_root` | Exact directory containing cached files, as a string or `Path`. Overrides `subdir`; relative roots stay relative to the working directory. |
 | `expected_sha256` | Optional trusted 64-character hexadecimal SHA-256 digest of the **installed bytes**, after decompression or conversion. Case-insensitive. |
 | `expected_size` | Optional non-negative integer size of those installed bytes; booleans are rejected. |
-| `max_bytes` | Optional non-negative integer: the most bytes any file this fetch writes may hold, checked before every write. It bounds the download (the body after HTTP transfer decoding, such as gzip `Content-Encoding`, whatever `Content-Length` says) and the installed file after `decompress=True`. A larger transfer raises `FileValidationError` without retrying, keeps any existing file and removes temporary files. Cache hits write nothing and are unaffected. `expected_size` must not exceed it; HTML-to-CSV conversion can't be bounded. See [byte limits](downloads.md#byte-limits). |
+| `max_bytes` | Optional non-negative integer: the most bytes any file this fetch writes may hold, checked before every write. It bounds the download (the selected HTTP body representation, whatever `Content-Length` says) and the installed file after `decompress=True`. A larger transfer raises `FileValidationError` without retrying, keeps any existing file and removes temporary files. Cache hits write nothing and are unaffected. `expected_size` must not exceed it; HTML-to-CSV conversion can't be bounded. See [byte limits](downloads.md#byte-limits). |
 | `max_retries` | Non-negative integer number of additional attempts after transient HTTP failures. Default `2` allows three total attempts; `0` disables retries. File and FTP downloads are not retried. |
 | `retry_backoff` | Initial retry delay in seconds, doubled for subsequent retries. Must be finite and non-negative. |
 | `retry_max_delay` | Maximum retry delay in seconds, finite and non-negative. A server `Retry-After` exceeding this limit stops retries. |
 | `show_progress` | Boolean enabling tqdm download, decompression, and hash bars. tqdm is installed with datacache; no extra is needed. Displays are opt-in and cache hits are quiet. |
-| `resume` | `True`, `False` or `"auto"`, retaining private partials for raw HTTP transfers. `"auto"` resumes whenever it can and otherwise downloads normally, including when the server turns out not to support resuming (no strong ETag, encoded responses); `True` raises in those cases. Requires size and a POSIX local filesystem. Without an expected SHA-256, every accepted response must supply a strong ETag. Size-only cache hits check only byte count. See [resumable downloads](downloads.md#resumable-http-downloads). |
+| `resume` | `True`, `False` or `"auto"`, retaining private partials for raw HTTP transfers. `"auto"` resumes whenever it can and otherwise downloads normally, including when the server turns out not to support resuming (no strong ETag, encoded responses in decoded mode); `True` raises in those cases. Requires size and a POSIX local filesystem. Without an expected SHA-256, every accepted response must supply a strong ETag. Size-only cache hits check only byte count. See [resumable downloads](downloads.md#resumable-http-downloads). |
 | `record_provenance` | Boolean; after publishing a download, also write a hidden `.<name>.datacache.json` record of the source URL (without user name, password, query string, or fragment; the path is kept as is, so avoid recording URLs with secrets in their path), the fetch time, the size, and the SHA-256 when `expected_sha256` verified it. [inspect_file](#inspect_file) reports these offline. The record has the file's permissions. Default `False`: a caller that downloads to a temporary name and then moves the file would leave the record behind. Cache hits never write one, any new download removes a previous record first, and a failure to write one never fails the download. |
 | `allow_empty` | Boolean accepting an empty installed file; default `False`. A complete but empty response, such as a withdrawn upstream record, is otherwise never published: HTTP retries it as transient, then raises `FileValidationError`. An empty cached file is likewise an invalid hit. `expected_size=0` also allows an empty file. |
 | `expire_after` | How long a cached file stays fresh: non-negative seconds or a `datetime.timedelta`, as in requests-cache. An older cached file is downloaded again, as is one that no longer validates; `0` refreshes every time. Age comes from the provenance record's fetch time when one describes the file, otherwise from its modification time; a future time counts as new. Default `None` reuses a valid file however old and raises for an invalid one. |
@@ -971,7 +972,7 @@ Cache.fetch(
     use_wget_if_available=None, *, chunk_size=1048576, progress_callback=None,
     expected_sha256=None, expected_size=None, max_bytes=None, max_retries=2,
     retry_backoff=1.0, retry_max_delay=30.0, show_progress=False, record_provenance=False,
-    allow_empty=False, resume=False, raw=False, expire_after=None, return_stale_on_error=False,
+    allow_empty=False, resume=False, raw=False, http_representation='decoded', expire_after=None, return_stale_on_error=False,
     validator=None
 )
 ```

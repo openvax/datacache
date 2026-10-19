@@ -1,13 +1,77 @@
 """Small local-filesystem primitives shared by resumable and bundle installs."""
 
 from contextlib import contextmanager
+import errno
 import json
 import os
 from pathlib import Path
 import stat
+import sys
 import tempfile
 
 from .integrity import FileValidationError
+
+
+def _rename_noreplace(source, destination):
+    """Atomically rename a file without replacing any destination entry.
+
+    No check-then-rename emulation: writers outside DataCache must be protected
+    too. The source and destination must be on the same filesystem.
+    """
+    if os.name == 'nt':
+        # Unlike POSIX rename(), Windows rename() refuses existing destinations.
+        os.rename(source, destination)
+        return
+    import ctypes
+    libc = ctypes.CDLL(None, use_errno=True)
+    source_bytes, destination_bytes = os.fsencode(source), os.fsencode(destination)
+    if b'\0' in source_bytes or b'\0' in destination_bytes:
+        raise ValueError('embedded null byte')
+    if sys.platform.startswith('linux') and hasattr(libc, 'renameat2'):
+        rename = libc.renameat2
+        rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int,
+                           ctypes.c_char_p, ctypes.c_uint]
+        rename.restype = ctypes.c_int
+        # Linux AT_FDCWD and RENAME_NOREPLACE (renameat2(2)).
+        result = rename(-100, source_bytes, -100, destination_bytes, 1)
+    elif sys.platform == 'darwin' and hasattr(libc, 'renamex_np'):
+        rename = libc.renamex_np
+        rename.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
+        rename.restype = ctypes.c_int
+        # Darwin RENAME_EXCL, from <sys/stdio.h>.
+        result = rename(source_bytes, destination_bytes, 4)
+    else:
+        raise OSError(errno.ENOTSUP, 'atomic no-replace rename is unavailable', destination)
+    if result != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), destination)
+
+
+def publish_noclobber(source, destination):
+    """Publish a closed staged file atomically, never clobbering a creator.
+
+    Prefer hard links, falling back only for unsupported-operation errors.
+    The caller must remove the staging name if it still exists afterwards.
+    """
+    unsupported = {errno.EPERM, errno.ENOSYS, errno.ENOTSUP, errno.EOPNOTSUPP}
+    try:
+        os.link(source, destination)
+        return
+    except OSError as error:
+        if error.errno not in unsupported:
+            raise
+    try:
+        _rename_noreplace(source, destination)
+    except OSError as error:
+        if error.errno not in unsupported | {errno.EINVAL}:
+            raise
+        raise OSError(
+            errno.ENOTSUP,
+            'Cannot atomically publish a new database: hard links and atomic '
+            'no-replace renames are unavailable. Build the database on local '
+            'scratch and copy the closed database into a materialize() bundle; '
+            'see https://openvax.github.io/datacache/data/#filesystems-without-hard-links',
+            destination) from error
 
 
 def path_present(path):

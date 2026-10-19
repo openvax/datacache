@@ -23,7 +23,7 @@ class CannotResume(FileValidationError):
     """A resumable transfer isn't possible here, though a normal one may be.
 
     The server may send no strong ETag when no trusted SHA-256 was given,
-    encode the response, or answer ranges inconsistently; or the destination's
+    encode a response in decoded mode, or answer ranges inconsistently; or the destination's
     filesystem can't keep private resume state or locks. fetch_file(resume=
     "auto") then downloads the file in full instead.
     """
@@ -124,7 +124,7 @@ def _validator(headers):
 def download_resumable(download_url, destination, *, expected_sha256, expected_size,
                        timeout, chunk_size, progress_callback, show_progress,
                        max_retries, retry_backoff, retry_max_delay, record_provenance,
-                       force):
+                       force, http_representation="decoded"):
     from . import download, provenance
     import requests
 
@@ -133,12 +133,14 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
     metadata_path = directory / 'metadata.json'
     identity = {'sha256': expected_sha256.lower() if expected_sha256 is not None else None,
                 'size': expected_size,
+                'http_representation': http_representation,
                 'url_hash': hashlib.sha256(download_url.encode()).hexdigest()}
     with _state_lock(directory):
         # Another installer may have completed while we waited for its lock.
         if not force:
             try:
-                validate_file(destination, expected_sha256, expected_size)
+                download._check_cached_file(destination, expected_sha256, expected_size,
+                                            expected_size != 0, None, http_representation)
             except FileNotFoundError:
                 pass
             else:
@@ -210,7 +212,8 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
                                     metadata['validator'] = None
                                     continue
                                 response.raise_for_status()
-                                if response.headers.get('Content-Encoding', 'identity').lower() != 'identity':
+                                encoding = response.headers.get('Content-Encoding', 'identity').strip().lower()
+                                if http_representation == 'decoded' and encoding != 'identity':
                                     raise CannotResume(destination, 'resume requires identity Content-Encoding')
                                 current_validator = _validator(response.headers)
                                 if response.status_code == 206:
@@ -219,7 +222,9 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
                                     valid_range = (match is not None and
                                                    tuple(map(int, match.groups())) ==
                                                    (offset, expected_size - 1, expected_size))
-                                    same_identity = not offset or not validator or validator == current_validator
+                                    same_identity = not offset or (
+                                        (not validator or validator == current_validator)
+                                        and metadata.get('content_encoding', 'identity') == encoding)
                                     if not valid_range or not same_identity:
                                         output.seek(0)
                                         output.truncate()
@@ -239,8 +244,9 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
                                     raise CannotResume(
                                         destination, 'resume without expected_sha256 requires a strong ETag')
                                 metadata['validator'] = current_validator
+                                metadata['content_encoding'] = encoding
                                 write_json(metadata_path, metadata)
-                                for chunk in response.iter_content(chunk_size=chunk_size):
+                                for chunk in download._http_chunks(response, chunk_size, http_representation):
                                     if not chunk:
                                         continue
                                     if output.tell() + len(chunk) > expected_size:
@@ -289,7 +295,8 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
                 with partial.open('rb') as source:
                     download.copyfileobj(source, handle)
             record = (provenance.describe(download_url, os.stat(staged), expected_sha256,
-                                          transport=metadata.get('validator'))
+                                          transport=metadata.get('validator'),
+                                          http_representation=http_representation)
                       if record_provenance else None)
             download._publish_file(staged, destination, record)
         finally:

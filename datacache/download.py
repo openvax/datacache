@@ -122,13 +122,32 @@ def _content_length(header_value):
         return None
 
 
+def _http_chunks(response, chunk_size, http_representation):
+    """Stream one representation, preserving Requests' transport exceptions."""
+    if http_representation == "decoded":
+        yield from response.iter_content(chunk_size=chunk_size)
+        return
+    import requests
+    from urllib3.exceptions import ProtocolError, ReadTimeoutError, SSLError
+    try:
+        # urllib3 still removes HTTP chunk framing; Content-Encoding stays intact.
+        yield from response.raw.stream(chunk_size, decode_content=False)
+    except ProtocolError as error:
+        raise requests.exceptions.ChunkedEncodingError(error) from error
+    except ReadTimeoutError as error:
+        raise requests.ConnectionError(error) from error
+    except SSLError as error:
+        raise requests.exceptions.SSLError(error) from error
+
+
 def _stream_to_file(
         download_url,
         file_handle,
         timeout=None,
         chunk_size=DEFAULT_CHUNK_SIZE,
         progress_callback=None,
-        max_bytes=None):
+        max_bytes=None,
+        http_representation="decoded"):
     """
     Stream the contents of `download_url` into an already-open binary file
     handle, one chunk at a time, so the entire payload never has to be held in
@@ -161,18 +180,24 @@ def _stream_to_file(
 
     if urllib.parse.urlsplit(download_url).scheme.lower() in ("http", "https"):
         import requests
-        with closing(requests.get(download_url, headers={"User-Agent": common.USER_AGENT},
+        headers = {"User-Agent": common.USER_AGENT}
+        if http_representation == "encoded":
+            # Avoid negotiated compression, but preserve any encoding the source
+            # supplies anyway (for example a deposited gzip file named .rds).
+            headers["Accept-Encoding"] = "identity"
+        with closing(requests.get(download_url, headers=headers,
                                   timeout=timeout, stream=True)) as response:
             response.raise_for_status()
             # Requests decodes content encoding before yielding chunks; a wire
             # length is not a valid total for the bytes we write in that case.
-            encoding = response.headers.get("Content-Encoding", "identity").lower()
+            encoding = response.headers.get("Content-Encoding", "identity").strip().lower()
             total_bytes = (_content_length(response.headers.get("Content-Length"))
-                           if encoding == "identity" else None)
+                           if encoding == "identity" or http_representation == "encoded" else None)
             # Chunked transfer makes Content-Length meaningless (RFC 9112).
-            if "Transfer-Encoding" not in response.headers:
-                refuse_if_over(total_bytes or 0, max_bytes)
-            for chunk in response.iter_content(chunk_size=chunk_size):
+            if "Transfer-Encoding" in response.headers:
+                total_bytes = None
+            refuse_if_over(total_bytes or 0, max_bytes)
+            for chunk in _http_chunks(response, chunk_size, http_representation):
                 if not chunk:
                     # skip keep-alive chunks that carry no data
                     continue
@@ -248,7 +273,8 @@ def _download_to_temp_file(
         retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
         show_progress=False,
         allow_empty=True,
-        max_bytes=None):
+        max_bytes=None,
+        http_representation="decoded"):
 
     retry_backoff, retry_max_delay = validate_retry_options(max_retries, retry_backoff, retry_max_delay)
     if not download_url:
@@ -281,7 +307,8 @@ def _download_to_temp_file(
                     timeout=timeout,
                     chunk_size=chunk_size,
                     progress_callback=report if progress_callback is not None or show_progress else None,
-                    max_bytes=max_bytes)
+                    max_bytes=max_bytes,
+                    http_representation=http_representation)
                 if count == 0:
                     progress(0, 0)
                     if not allow_empty:
@@ -525,7 +552,8 @@ def _download_and_decompress_if_necessary(
         record_provenance=False,
         allow_empty=False,
         validator=None,
-        max_bytes=None):
+        max_bytes=None,
+        http_representation="decoded"):
     """
     Download, transform and validate in sibling staging files, then publish
     with one atomic replace. Expectations always describe installed bytes.
@@ -573,7 +601,8 @@ def _download_and_decompress_if_necessary(
             retry_max_delay=retry_max_delay,
             show_progress=show_progress,
             allow_empty=not reject_empty,
-            max_bytes=max_bytes)
+            max_bytes=max_bytes,
+            http_representation=http_representation)
     except EmptyResponse as error:
         raise FileValidationError(full_path, "downloaded file is empty; pass allow_empty=True if an empty file is expected") from error
     except MaxBytesExceeded as error:
@@ -618,7 +647,9 @@ def _download_and_decompress_if_necessary(
             # after publication, which a concurrent writer may have replaced.
             # os.replace keeps their size and modification time.
             try:
-                record = provenance.describe(download_url, os.stat(staged_path), expected_sha256)
+                record = provenance.describe(
+                    download_url, os.stat(staged_path), expected_sha256,
+                    http_representation=http_representation)
             except OSError as error:
                 logger.debug("Could not describe provenance for %s: %s", full_path, error)
         _publish_file(staged_path, full_path, record)
@@ -657,9 +688,13 @@ def _expiry_seconds(expire_after):
     return expire_after
 
 
-def _check_cached_file(full_path, expected_sha256, expected_size, reject_empty, validator):
+def _check_cached_file(full_path, expected_sha256, expected_size, reject_empty, validator,
+                       http_representation="decoded"):
     """Raise unless full_path is a usable cache hit; FileNotFoundError if absent."""
     validate_file(full_path, expected_sha256, expected_size)
+    record = provenance.read(full_path, os.stat(full_path))
+    if record is not None and record.get("http_representation", "decoded") != http_representation:
+        raise FileValidationError(full_path, "cached HTTP representation differs from http_representation")
     if reject_empty and os.stat(full_path).st_size == 0:
         raise FileValidationError(full_path, "cached file is empty (pass allow_empty=True if an empty file is expected)")
     _run_validator(validator, full_path, full_path, "cached file")
@@ -798,6 +833,7 @@ def fetch_file(
         allow_empty=False,
         resume=False,
         raw=False,
+        http_representation="decoded",
         expire_after=None,
         return_stale_on_error=False,
         validator=None):
@@ -825,7 +861,18 @@ def fetch_file(
         Disable archive decompression and HTML-to-CSV conversion regardless of
         the output name. Incompatible with decompress=True. Defaults to False,
         preserving legacy output-name inference. Integrity expectations then
-        describe the unchanged payload, after HTTP transfer decoding.
+        describe the payload selected by http_representation.
+
+    http_representation : "decoded" or "encoded", optional
+        "decoded" (default) keeps Requests' HTTP Content-Encoding decoding.
+        "encoded" requires raw=True and preserves those encoded body bytes,
+        while still removing HTTP chunk framing. It requests identity encoding
+        to avoid negotiated compression; sources that supply Content-Encoding
+        anyway are preserved. Hashes, sizes, byte limits, progress, provenance
+        and resume offsets all refer to the selected bytes. File/FTP sources
+        are copied unchanged and must already contain the desired representation.
+        Cache keys do not change: use distinct paths or trusted expectations.
+        A recorded representation mismatch rejects reuse, including stale fallback.
 
     subdir : str, optional
         Application name selecting a platform cache directory, "datacache" by
@@ -871,8 +918,9 @@ def fetch_file(
         subdir. Cannot be combined with destination.
 
     expected_sha256 : str, optional
-        Trusted SHA-256 hex digest of the installed bytes, after decompression
-        or HTML conversion (not of the compressed archive or HTTP wire bytes).
+        Trusted SHA-256 hex digest of the installed bytes, after any requested
+        decompression or HTML conversion. In raw mode these are the selected
+        HTTP representation, or the unchanged bytes of a file/FTP source.
         Checked both on cache reuse and before publishing a replacement.
 
     expected_size : int, optional
@@ -880,9 +928,8 @@ def fetch_file(
 
     max_bytes : int, optional
         The most bytes any file this fetch writes may hold, checked before
-        every write. It bounds the download itself, which is the body after
-        HTTP transfer decoding such as gzip Content-Encoding (whether or not
-        Content-Length is sent), and the installed file after decompress=True,
+        every write. It bounds the selected HTTP body representation (whether
+        or not Content-Length is sent), and the installed file after decompress=True,
         so allow for the compressed download too; together they never need
         more than twice max_bytes. A larger transfer raises FileValidationError
         without retrying: an existing file stays and temporary files are
@@ -919,11 +966,14 @@ def fetch_file(
         report cumulative bytes, resetting only when the server requires a
         fresh transfer. discard_partial(destination) explicitly drops partials.
         Interrupted downloads retain at most expected_size partial bytes.
+        Encoded mode resumes encoded bytes and checks Content-Encoding across
+        ranges. Decoded mode requires identity Content-Encoding for resume;
+        "auto" falls back to a full decoded transfer otherwise.
 
     record_provenance : bool, optional
         After publishing a download, also write a hidden ".<name>.datacache.json"
-        record of the source URL (without user name, password, query, or
-        fragment; the path is kept as is), fetch time, size, and the SHA-256
+        record of http_representation and the source URL (without user name,
+        password, query, or fragment; the path is kept as is), fetch time, size, and the SHA-256
         when expected_sha256 verified it, which inspect_file reports offline.
         The record has the file's permissions. Off by default: a caller that
         downloads to a temporary name and then moves the file would leave the
@@ -985,6 +1035,10 @@ def fetch_file(
         raise ValueError("raw must be a boolean")
     if raw and decompress:
         raise ValueError("raw=True cannot be combined with decompress=True")
+    if http_representation not in ("decoded", "encoded"):
+        raise ValueError('http_representation must be "decoded" or "encoded"')
+    if http_representation == "encoded" and not raw:
+        raise ValueError('http_representation="encoded" requires raw=True')
     if resume:
         from .resume import validate_resume
         validate_resume(download_url, expected_sha256, expected_size)
@@ -1036,7 +1090,8 @@ def fetch_file(
     refresh = force
     if not force:
         try:
-            _check_cached_file(full_path, expected_sha256, expected_size, reject_empty, validator)
+            _check_cached_file(full_path, expected_sha256, expected_size, reject_empty, validator,
+                               http_representation)
         except FileNotFoundError:
             pass
         except FileValidationError as error:
@@ -1094,7 +1149,8 @@ def fetch_file(
                 record_provenance=record_provenance,
                 allow_empty=allow_empty,
                 validator=validator,
-                max_bytes=max_bytes)
+                max_bytes=max_bytes,
+                http_representation=http_representation)
 
         if resume:
             from .resume import CannotResume, discard_partial, download_resumable
@@ -1105,7 +1161,7 @@ def fetch_file(
                     progress_callback=progress_callback, show_progress=show_progress,
                     max_retries=max_retries, retry_backoff=retry_backoff,
                     retry_max_delay=retry_max_delay, record_provenance=record_provenance,
-                    force=refresh)
+                    force=refresh, http_representation=http_representation)
             except CannotResume as error:
                 if not resume_if_possible:
                     raise
@@ -1123,7 +1179,8 @@ def fetch_file(
         if not cached:
             try:
                 # A failed download leaves the destination untouched.
-                _check_cached_file(full_path, expected_sha256, expected_size, reject_empty, validator)
+                _check_cached_file(full_path, expected_sha256, expected_size, reject_empty, validator,
+                                   http_representation)
                 cached = True
             except (OSError, ValueError):
                 pass
