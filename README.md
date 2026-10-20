@@ -10,7 +10,7 @@ for Python applications including OpenVax libraries such as pyensembl.
 
 ## Install
 
-Python 3.10 or newer is required; CI tests Python 3.10–3.14.
+Python 3.11 or newer is required; CI tests Python 3.11–3.14.
 
 ```sh
 python -m pip install datacache

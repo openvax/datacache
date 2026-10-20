@@ -11,15 +11,12 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
         dependencies: [current]
         include:
           - os: ubuntu-latest
-            python-version: "3.10"
+            python-version: "3.11"
             dependencies: minimum
-          - os: ubuntu-latest
-            python-version: "3.10"
-            dependencies: legacy
           - os: macos-latest
             python-version: "3.12"
             dependencies: current
@@ -38,9 +35,6 @@ jobs:
       - name: Install older supported pandas, tqdm and platformdirs
         if: matrix.dependencies == 'minimum'
         run: python -m pip install "pandas==1.5.3" "numpy<2" "tqdm==4.64.0" "platformdirs==3.0.0"
-      - name: Check pre-1.5 pandas compatibility
-        if: matrix.dependencies == 'legacy'
-        run: python -m pip install "pandas==1.4.4" "numpy<2" "tqdm==4.64.0"
       - name: Lint with ruff
         run: |
           ./lint.sh

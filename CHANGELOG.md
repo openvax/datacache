@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.29.2
+
+- Require Python 3.11 or newer, with package metadata and CI covering
+  Python 3.11–3.14. Keep the pandas 1.5 minimum-dependency check on 3.11;
+  remove the pre-1.5 CI job, whose pandas version predates Python 3.11 support.
+
 ## 1.29.1
 
 - Check effective gzip/ZIP extraction and HTML conversion policies before
