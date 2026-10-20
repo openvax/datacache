@@ -10,7 +10,7 @@ for applications such as PyEnsembl.
 python -m pip install datacache
 ```
 
-Python 3.10 or later is required; CI tests Python 3.10–3.14. Add `datacache[html]` if you need HTML-table
+Python 3.11 or later is required; CI tests Python 3.11–3.14. Add `datacache[html]` if you need HTML-table
 conversion. Progress bars are available with `show_progress=True`.
 
 ## Cache and verify a file
