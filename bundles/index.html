@@ -1356,12 +1356,18 @@ compares the complete declaration and does not interpret its fields. For example
 an upstream Unix checksum remains caller metadata, never a trusted SHA-256.</p>
 <ul>
 <li>Declared identities must match even when a trusted SHA-256 is also supplied.
-  The decompression setting must match too. A change requires <code>force=True</code>.
+  The decompression setting and effective download transformation must match
+  too. This includes gzip/ZIP extraction and HTML-to-CSV conversion inferred
+  from a URL path or query-string filename. For example, a <code>.gz</code> URL and an
+  extensionless URL can select different transformations despite identical
+  <code>decompress</code> flags. A change requires <code>force=True</code>.
   Callers without a declaration keep the URL/hash rules above.</li>
 <li>Identities accept JSON values, including explicit <code>null</code> (<code>None</code>), with string
   object keys and finite numbers. Object key order is ignored; list order and
   JSON value types matter (<code>true</code>, <code>1</code> and <code>1.0</code> differ). The limit is 64 KiB of
-  compact, sorted, ASCII-escaped JSON and 64 levels of nesting.</li>
+  compact, sorted, ASCII-escaped JSON and 64 levels of nesting.
+  Keys that collide after JSON decoding are rejected, including a Unicode
+  character and its explicit surrogate-pair spelling used as separate keys.</li>
 <li>Identity metadata is stored verbatim in the manifest: <strong>do not include
   credentials or secrets</strong>. The actual acquisition URL still has its full
   fingerprint and redacted display URL. Reuse does not rewrite this provenance.</li>
@@ -1373,6 +1379,9 @@ an upstream Unix checksum remains caller metadata, never a trusted SHA-256.</p>
 <li>Existing receipts without a declaration cannot satisfy an identity-based
   request, even with a matching trusted hash. Refresh once with <code>force=True</code>;
   old receipts remain readable with their original URL/hash rules.</li>
+<li>Identity-bearing receipts from 1.29.0 can still reuse their original full URL.
+  Refresh once with <code>force=True</code> to record the download transformation before
+  reusing them across URLs.</li>
 </ul>
 <p>This applies to <code>VersionedDatasetRegistry</code> assets as well. It authorizes reuse
 only in a store the caller selected; it does not search other stores, deduplicate

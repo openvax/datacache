@@ -2623,7 +2623,7 @@
 
 <h1 id="public-api-reference">Public API reference<a class="headerlink" href="#public-api-reference" title="Permanent link">&para;</a></h1>
 <p>This reference covers every name exported in <code>datacache.__all__</code> and every
-public <code>Cache</code> method in DataCache 1.29.0. Import these names from <code>datacache</code>.
+public <code>Cache</code> method in DataCache 1.29.1. Import these names from <code>datacache</code>.
 Signatures below show all defaults; arguments after <code>*</code> are keyword-only.
 Method signatures omit <code>self</code> and are called on a <code>Cache</code> instance.</p>
 <p>Start with the <a href="../#cache-and-verify-a-file">quickstart</a> for a first download.
@@ -3866,7 +3866,8 @@ checks readability, file types and recorded sizes but cannot detect same-size
 corruption. New bundles are always hashed before publication, regardless of
 this cache-hit setting.
 Optional <code>source_identity</code> is a caller-declared JSON value enabling reuse across
-URLs when identity and decompression settings match. It is stored verbatim,
+URLs when identity, decompression settings and effective download transformations
+match. It is stored verbatim,
 must contain no secrets, and never establishes trusted verification. See the
 <a href="../bundles/#reuse-across-urls-with-a-declared-identity">identity contract</a> for
 validation, limits and legacy-receipt refresh requirements.
