@@ -3,9 +3,12 @@
 from copy import deepcopy
 import gzip
 from hashlib import sha256
+import io
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
+import zipfile
 
 import pytest
 
@@ -140,6 +143,136 @@ def test_same_identity_never_ignores_output_affecting_settings(artifact):
         assert artifact.inspect(requested, outputs={'another': {}}).status == 'invalid'
 
 
+@pytest.mark.parametrize('extension', ['gz', 'zip', 'html'])
+@pytest.mark.parametrize('decompress', [False, True])
+@pytest.mark.parametrize('reverse', [False, True])
+def test_bundle_identity_rejects_changed_effective_transform(tmp_path, extension, decompress, reverse):
+    decoded = DATA
+    if extension == 'gz':
+        encoded = COMPRESSED
+    elif extension == 'zip':
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w') as archive:
+            archive.writestr('data.csv', DATA)
+        encoded = buffer.getvalue()
+    else:
+        encoded = b'<table><tr><th>value</th></tr><tr><td>example</td></tr></table>'
+        decoded = ('value' + os.linesep + 'example' + os.linesep).encode()
+    source, mirror_path = tmp_path / ('source.' + extension), tmp_path / 'download'
+    source.write_bytes(encoded)
+    mirror_path.write_bytes(encoded)
+    original, changed = [
+        {'data.csv': {'path': path, 'source_identity': IDENTITY, 'decompress': decompress}}
+        for path in ((mirror_path, source) if reverse else (source, mirror_path))]
+    store = tmp_path / 'store'
+    paths = install_bundle(store, original, verified=False)
+    assert Path(paths['data.csv']).read_bytes() == (encoded if reverse else decoded)
+    for verify_files in (False, True):
+        assert inspect_bundle(store, changed, verify_files=verify_files).status == 'invalid'
+    with pytest.raises(FileValidationError, match='force=True'):
+        install_bundle(store, changed, verified=False)
+    refreshed = install_bundle(store, changed, verified=False, force=True)
+    fresh = install_bundle(tmp_path / 'fresh', changed, verified=False)
+    assert Path(refreshed['data.csv']).read_bytes() == Path(fresh['data.csv']).read_bytes()
+    assert Path(refreshed['data.csv']).read_bytes() == (decoded if reverse else encoded)
+    assert Path(paths['data.csv']).read_bytes() == (encoded if reverse else decoded)
+
+
+@pytest.mark.parametrize('url', ['https://example.test/source.gz?token=secret',
+                                 'https://example.test/download?filename=source.gz'])
+def test_bundle_identity_tracks_query_selected_transform_without_recording_query(tmp_path, monkeypatch, url):
+    monkeypatch.setattr(download, '_stream_to_file', lambda url, handle, **kwargs: handle.write(COMPRESSED))
+    store = tmp_path / 'store'
+    assets = {'data': {'url': url, 'source_identity': IDENTITY}}
+    paths = install_bundle(store, assets, verified=False)
+    assert Path(paths['data']).read_bytes() == DATA
+    manifest = (Path(paths['data']).parent / bundle_store.MANIFEST).read_text()
+    assert '?' not in manifest and 'secret' not in manifest
+    assert json.loads(manifest)['source_transforms'] == {'data': 'gunzip'}
+    monkeypatch.setattr(download, 'fetch_file', forbidden)
+    mirrored = {'data': dict(assets['data'], url='https://mirror.test/get?filename=data.gz')}
+    assert install_bundle(store, mirrored, verified=False) == paths
+    for filename in ('data', 'data.zip', 'data.gz&token=secret'):
+        changed = {'data': dict(assets['data'], url='https://mirror.test/get?filename=' + filename)}
+        assert inspect_bundle(store, changed).status == 'invalid'
+
+
+@pytest.mark.parametrize(('original', 'changed', 'name', 'content'), [
+    ('data.txt', 'data.bin', 'data', DATA),
+    ('data.html', 'data.htm', 'data.csv', b'<table><tr><th>x</th></tr><tr><td>1</td></tr></table>'),
+    ('data.gz', 'download', 'data.gz', COMPRESSED),
+])
+def test_bundle_identity_allows_different_suffixes_with_same_transform(tmp_path, monkeypatch, original, changed, name, content):
+    source = tmp_path / original
+    source.write_bytes(content)
+    assets = {name: {'path': source, 'source_identity': IDENTITY}}
+    paths = install_bundle(tmp_path / 'store', assets, verified=False)
+    source.unlink()
+    monkeypatch.setattr(download, 'fetch_file', forbidden)
+    requested = {name: {'url': 'https://mirror.test/' + changed, 'source_identity': IDENTITY}}
+    assert install_bundle(tmp_path / 'store', requested, verified=False) == paths
+
+
+@pytest.mark.parametrize('transforms', [None, {}, {'data': None}, {'data': 'unknown'}, {'data': ['gunzip']}])
+def test_bundle_identity_requires_valid_transform_receipt(tmp_path, transforms):
+    source = tmp_path / 'source.gz'
+    source.write_bytes(COMPRESSED)
+    store = tmp_path / 'store'
+    assets = {'data': {'path': source, 'source_identity': IDENTITY}}
+    paths = install_bundle(store, assets, verified=False)
+    manifest = Path(paths['data']).parent / bundle_store.MANIFEST
+    receipt = json.loads(manifest.read_text())
+    receipt['source_transforms'] = transforms
+    manifest.write_text(json.dumps(receipt))
+    assert inspect_bundle(store).status == 'invalid'
+    assert inspect_bundle(store, assets, verify_files=False).status == 'invalid'
+    with pytest.raises(FileValidationError, match='force=True'):
+        install_bundle(store, assets, verified=False)
+    install_bundle(store, assets, verified=False, force=True)
+    assert inspect_bundle(store, assets).status == 'available'
+
+
+@pytest.mark.parametrize('pinned', [False, True])
+def test_bundle_identity_without_transform_receipt_only_reuses_original_url(tmp_path, monkeypatch, pinned):
+    url = 'https://example.test/download?filename=data.gz'
+    monkeypatch.setattr(download, '_stream_to_file', lambda url, handle, **kwargs: handle.write(COMPRESSED))
+    store = tmp_path / 'store'
+    spec = {'url': url, 'source_identity': IDENTITY}
+    if pinned:
+        spec.update(sha256=sha256(DATA).hexdigest(), size=len(DATA))
+    assets = {'data': spec}
+    paths = install_bundle(store, assets, verified=pinned)
+    manifest = Path(paths['data']).parent / bundle_store.MANIFEST
+    receipt = json.loads(manifest.read_text())
+    del receipt['source_transforms']
+    manifest.write_text(json.dumps(receipt))
+    unchanged = manifest.read_bytes()
+    with monkeypatch.context() as guard:
+        guard.setattr(download, 'fetch_file', forbidden)
+        assert inspect_bundle(store).status == 'available'
+        assert install_bundle(store, assets, verified=pinned) == paths
+        assert inspect_bundle(store, mirror(spec)).status == 'invalid'
+        with pytest.raises(FileValidationError, match='force=True'):
+            install_bundle(store, mirror(spec), verified=pinned)
+    assert manifest.read_bytes() == unchanged
+    refreshed = install_bundle(store, assets, verified=pinned, force=True)
+    assert refreshed != paths
+    monkeypatch.setattr(download, 'fetch_file', forbidden)
+    assert install_bundle(store, mirror(spec), verified=pinned) == refreshed
+
+
+def test_bundle_identity_with_predownloaded_output_keeps_declared_transform(tmp_path, monkeypatch):
+    source = tmp_path / 'data'
+    source.write_bytes(DATA)
+    store = tmp_path / 'store'
+    assets = {'data': {'url': 'https://example.test/download?filename=data.gz', 'source_identity': IDENTITY}}
+    paths = install_bundle(store, assets, verified=False, source_paths={'data': source})
+    assert Path(paths['data']).read_bytes() == DATA
+    source.unlink()
+    monkeypatch.setattr(download, 'fetch_file', forbidden)
+    assert install_bundle(store, mirror(assets['data']), verified=False) == paths
+
+
 @pytest.mark.parametrize('pinned', [False, True])
 def test_legacy_receipt_needs_explicit_refresh_to_add_identity(artifact, pinned):
     legacy = dict(artifact.spec)
@@ -177,7 +310,8 @@ def test_full_inspection_detects_same_size_corruption_after_identity_reuse(artif
         artifact.install(requested)
 
 
-@pytest.mark.parametrize('identity', [None, False, 1, 1.0, '', ['revision', 7], {'z': [], 'a': {'b': None}}])
+@pytest.mark.parametrize('identity', [None, False, 1, 1.0, '', ['revision', 7], {'z': [], 'a': {'b': None}},
+                                    {'\U0001f600': 'unicode key', 'revision': '\U0001f600'}])
 def test_json_values_roundtrip_without_confusing_absence_with_null(artifact, identity):
     artifact.spec['source_identity'] = identity
     artifact.install()
@@ -195,11 +329,15 @@ def test_identity_comparison_preserves_json_types(artifact, original, changed):
 @pytest.mark.parametrize('identity', [float('nan'), float('inf'), (1, 2), {1: 'integer key'},
                                     {'nested': {None: 'key'}}, {'nested': (1, 2)}, b'bytes',
                                     pytest.param('x' * (64 * 1024), id='oversized'),
+                                    pytest.param({'\U0001f600': 'kept', '\ud83d\ude00': 'lost'}, id='colliding-keys'),
+                                    pytest.param({'nested': [{'\U0001f600': 'kept', '\ud83d\ude00': 'lost'}]}, id='nested-colliding-keys'),
                                     {'nested': float('-inf')}])
 def test_invalid_identity_rejected_before_creating_store(artifact, identity):
     artifact.spec['source_identity'] = identity
     with pytest.raises(ValueError):
         artifact.install()
+    with pytest.raises(ValueError):
+        artifact.inspect()
     assert not artifact.store.exists()
 
 
@@ -267,7 +405,8 @@ def test_registry_detaches_caller_identity_and_reuses_across_registries(tmp_path
     mapping = {'example': {'default_version': 'v1', 'versions': {'v1': assets}}}
     registry = VersionedDatasetRegistry(mapping, store_path=lambda name, version: tmp_path / 'shared', verified=False)
     other = VersionedDatasetRegistry(
-        {'example': {'default_version': 'v2', 'versions': {'v2': mirror(assets['data'])}}},
+        {'example': {'default_version': 'v2', 'versions': {'v2': {
+            'data': {'url': 'https://mirror.example.test/source', 'source_identity': identity}}}}},
         store_path=lambda name, version: tmp_path / 'shared', verified=False)
     identity['unix_sum'] = 'caller changed its dictionary'
     paths = registry.download('example')

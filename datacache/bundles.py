@@ -17,7 +17,7 @@ from .bundle_store import (
     private_directory, prune_bundles, require_directory, source_fingerprint, user_key, validate_distinct_paths, validate_no_sidecar_collisions,
     validate_path_component, validate_relative_name,
 )
-from .download import normal_creation_mode, validate_download_options, validate_size_within_limit
+from .download import _download_transform, normal_creation_mode, validate_download_options, validate_size_within_limit
 from .integrity import FileValidationError, _validate_expectations
 from .provenance import redact_url
 
@@ -73,6 +73,10 @@ def _receipt_assets(receipt):
             if not isinstance(fingerprints, dict) or not fingerprints.get(name):
                 raise ValueError('declared source_identity requires a source URL fingerprint')
             _validate_expectations(fingerprints[name], None)
+            transforms = receipt.get('source_transforms')
+            if ('source_transforms' in receipt and (not isinstance(transforms, dict) or
+                    transforms.get(name) not in ('none', 'gunzip', 'unzip', 'html-to-csv'))):
+                raise ValueError('declared source_identity requires a source download transform')
     return recorded
 
 
@@ -105,6 +109,15 @@ def _check_bundle(store, directory, assets, *, verify_files=True):
             if declared:
                 if not source_identity_matches(recorded[name], spec):
                     raise FileValidationError(directory, 'manifest source_identity is missing or disagrees with registry')
+                transform = _download_transform(spec['url'], name, decompress=spec['decompress'])
+                recorded_transform = receipt.get('source_transforms', {}).get(name)
+                if recorded_transform is None:
+                    # Older receipts lack query-derived transform information.
+                    # The original full URL still selects the original policy.
+                    if receipt['source_fingerprints'][name] != source_fingerprint(spec['url']):
+                        raise FileValidationError(directory, 'manifest source download transform is missing for cross-URL reuse')
+                elif recorded_transform != transform:
+                    raise FileValidationError(directory, 'manifest source download transform disagrees with registry')
             elif spec['sha256'] is None:
                 fingerprints = receipt.get('source_fingerprints')
                 if (not isinstance(fingerprints, dict) or
@@ -190,7 +203,8 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
     valid cache hit this is read-only, including on a read-only filesystem.
     An invalid current bundle requires force=True, which installs a new one.
     Optional source_identity is a bounded JSON assertion permitting reuse
-    across URLs when the declared identity and decompression setting match.
+    across URLs when the declared identity, decompression setting and effective
+    download transformation match.
     It is stored verbatim, must contain no secrets, and never establishes trust.
 
     Returns a dict of asset names to paths in the current bundle. Old bundles
@@ -275,6 +289,12 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
             receipt = dict(format=FORMAT, fetched_at=datetime.now(timezone.utc).isoformat(), assets=recorded,
                            source_fingerprints={name: source_fingerprint(spec['url'])
                                                 for name, spec in expected.items()})
+            # Query-string filenames can select a transform, but are redacted
+            # from display URLs. Record the declared download policy separately;
+            # source_paths continues to supply local replacements for that URL.
+            receipt['source_transforms'] = {
+                name: _download_transform(spec['url'], name, decompress=spec['decompress'])
+                for name, spec in expected.items() if 'source_identity' in spec}
             # Remove DataCache's own temporary files: resume state and anything
             # an interrupted earlier attempt left. No asset is named .datacache-*.
             for leftover in sorted(staged.rglob('.datacache-*'), reverse=True):

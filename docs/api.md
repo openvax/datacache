@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.29.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.29.1. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -1306,7 +1306,8 @@ checks readability, file types and recorded sizes but cannot detect same-size
 corruption. New bundles are always hashed before publication, regardless of
 this cache-hit setting.
 Optional `source_identity` is a caller-declared JSON value enabling reuse across
-URLs when identity and decompression settings match. It is stored verbatim,
+URLs when identity, decompression settings and effective download transformations
+match. It is stored verbatim,
 must contain no secrets, and never establishes trusted verification. See the
 [identity contract](bundles.md#reuse-across-urls-with-a-declared-identity) for
 validation, limits and legacy-receipt refresh requirements.

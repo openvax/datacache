@@ -8,14 +8,20 @@ and [materialization](../../docs/materialization.md#identity-receipts-and-trust)
 an exact upstream file revision independently of its URL, without asserting
 trusted integrity. Object key order does not matter; value types and list order
 do. The implementation rejects non-JSON values, non-finite numbers, oversized
-or excessively nested declarations, and duplicate receipt keys. It detaches
+or excessively nested declarations, duplicate receipt keys, and declaration
+keys that collide during JSON normalization. It detaches
 declarations from mutable caller objects before acquisition.
 
 An explicitly requested identity must be present and equal in the receipt.
 This remains required with trusted hashes, resolving the earlier design's open
 question conservatively: a trusted digest does not override an explicit
 caller assertion or silently migrate an older receipt. Bundle decompression
-settings and materialization transform/output settings must also match.
+settings and effective download transformations, and materialization
+transform/output settings, must also match. Bundle receipts record the declared
+URL's download transformation separately because query-string filenames can
+select gzip/ZIP extraction or HTML conversion and are absent from redacted URLs.
+Identity-bearing bundle receipts without this policy can reuse the original
+full URL, but require an explicit refresh before reuse across URLs.
 Callers that do not opt in retain their existing URL/hash rules.
 
 Actual acquisition URL fingerprints and redacted origins remain in receipts;
