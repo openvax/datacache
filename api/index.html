@@ -2623,7 +2623,7 @@
 
 <h1 id="public-api-reference">Public API reference<a class="headerlink" href="#public-api-reference" title="Permanent link">&para;</a></h1>
 <p>This reference covers every name exported in <code>datacache.__all__</code> and every
-public <code>Cache</code> method in DataCache 1.28.0. Import these names from <code>datacache</code>.
+public <code>Cache</code> method in DataCache 1.29.0. Import these names from <code>datacache</code>.
 Signatures below show all defaults; arguments after <code>*</code> are keyword-only.
 Method signatures omit <code>self</code> and are called on a <code>Cache</code> instance.</p>
 <p>Start with the <a href="../#cache-and-verify-a-file">quickstart</a> for a first download.
@@ -3853,7 +3853,7 @@ DataCache. <code>verified=False</code> explicitly enables historical unpinned ca
                source_paths=None)
 </code></pre></div>
 <p>Download a mapping of relative asset names to <code>{url, sha256, size,
-decompress?}</code> metadata and publish the files together as a new bundle. <code>path</code>
+decompress?, source_identity?}</code> metadata and publish the files together as a new bundle. <code>path</code>
 in place of <code>url</code> names a local file, identified by its <code>file://</code> URL.
 <code>source_paths</code> maps asset names to local files to read instead of downloading,
 such as files downloaded by hand; each asset keeps its declared URL as its
@@ -3865,6 +3865,11 @@ unpinned sources; their observed hashes are recorded without authenticating them
 checks readability, file types and recorded sizes but cannot detect same-size
 corruption. New bundles are always hashed before publication, regardless of
 this cache-hit setting.
+Optional <code>source_identity</code> is a caller-declared JSON value enabling reuse across
+URLs when identity and decompression settings match. It is stored verbatim,
+must contain no secrets, and never establishes trusted verification. See the
+<a href="../bundles/#reuse-across-urls-with-a-declared-identity">identity contract</a> for
+validation, limits and legacy-receipt refresh requirements.
 <code>download_options</code> accepts timeout, chunk size, progress, retry, resume and <code>max_bytes</code> settings.
 Works on Linux, macOS and Windows local filesystems. <a href="../bundles/">Complete guide</a>.</p>
 <h3 id="inspect_bundle"><code>inspect_bundle</code><a class="headerlink" href="#inspect_bundle" title="Permanent link">&para;</a></h3>
@@ -3962,11 +3967,16 @@ The <a href="../bundles/">bundle guide</a> includes an example; notes for specif
 </code></pre></div>
 <p>Build outputs with a caller's builder and publish them, with their dependency
 receipt, as a new bundle. Sources map relative names to <code>{url: ...}</code> or <code>{path: ...}</code>, plus
-optional raw-byte <code>sha256</code>/<code>size</code>; outputs map names to optional output-byte
+optional raw-byte <code>sha256</code>/<code>size</code> and <code>source_identity</code>; outputs map names to optional output-byte
 <code>sha256</code>/<code>size</code>. Transform is <code>{version: nonempty_string, options: JSON_value}</code>.
 The builder receives private <code>(source_paths, output_paths)</code> mappings, must leave
 inputs unchanged and create/close exactly the declared regular output files.
-Returns name-to-string paths in the new bundle; builder return values are ignored.</p>
+Returns name-to-string paths in the new bundle; builder return values are ignored.
+Equal declared source identities allow reuse across URLs while preserving the
+actual acquisition provenance. Integrity expectations, transformation settings
+and output inventory must still match. Identity assertions never establish
+trusted verification; <a href="../bundles/#reuse-across-urls-with-a-declared-identity">the bundle identity contract</a>
+also applies here.</p>
 <p>Dependency mismatch/corruption requires explicit <code>force=True</code>. Completed inputs
 survive failures; successful publication removes owned inputs unless retention
 is requested. Caller-owned local inputs and old bundles are never deleted.
@@ -3989,7 +3999,8 @@ and never claims trusted verification.</p>
 <code>sources</code>, <code>transform</code> and <code>error</code>. Status is available, missing, invalid or
 inaccessible. <code>bundle</code> is the current bundle's directory. <code>verified</code> means all output files matched
 caller-trusted hashes now. Source records separately report raw observed hashes,
-sizes, redacted origins, identity, acquisition time, acquisition-time trusted
+sizes, redacted origins, URL identity fingerprints, optional caller-declared
+<code>source_identity</code>, acquisition time, acquisition-time trusted
 verification and available validated transport metadata.</p>
 <h2 id="fixed-path-file-registry">Fixed-path file registry<a class="headerlink" href="#fixed-path-file-registry" title="Permanent link">&para;</a></h2>
 <h3 id="versionedfileregistry"><code>VersionedFileRegistry</code><a class="headerlink" href="#versionedfileregistry" title="Permanent link">&para;</a></h3>

@@ -1155,12 +1155,34 @@ establish transport consistency, not scientific correctness or authenticity.
 Ordinary transfers without validated transport metadata do not invent it.</p>
 <p>Full source references are represented by SHA-256 identity fingerprints.
 Display origins omit URL credentials, query text and fragments, but retain the
-path; avoid secret-bearing paths. Changing the full URL/path (including signed
+path; avoid secret-bearing paths. By default, changing the full URL/path (including signed
 query text), integrity expectations, transform identity or output inventory
 makes the current bundle <code>invalid</code> for that request. Refresh is explicit:
-<code>materialize(..., force=True)</code> builds a replacement. This API does not claim
-different mirror URLs are the same dependency; caller-declared source identity
-policy is separate. No remote <code>latest</code> lookup occurs.</p>
+<code>materialize(..., force=True)</code> builds a replacement. No remote <code>latest</code> lookup occurs.</p>
+<p>Each source can optionally declare <code>source_identity</code>, using the same
+<a href="../bundles/#reuse-across-urls-with-a-declared-identity">bounded JSON contract as bundle assets</a>.
+If the complete declared identities match, a completed materialization can be
+reused across different URLs or local source paths. Input integrity expectations,
+transform version/options, and output inventory/expectations must still match.
+Changed or missing declarations require an explicit refresh, even when hashes
+match. A caller without a declaration retains the original URL/path checks.</p>
+<p>The dependency definition and source receipt both store the declaration
+verbatim; it must contain no secrets. The source's existing <code>identity</code> field
+remains the full URL/path fingerprint, and <code>origin</code> remains the redacted actual
+acquisition URL. Offline reuse does not replace these with the newly requested
+mirror's URL. Conflicting source receipts are invalid.</p>
+<p>A declaration asserts upstream identity, not authenticity. Source <code>sha256</code> and
+<code>size</code> expectations describe raw input bytes, including compression, while
+output expectations and observed output hashes describe builder-produced bytes.
+Fields inside <code>source_identity</code>, including upstream checksums and compressed
+sizes, never become trusted integrity expectations. Identity-only reuse does
+not mark sources or outputs verified. Older receipts remain readable but need
+<code>force=True</code> before they can satisfy a new declared-identity request.</p>
+<p>Private retained inputs and partial downloads stay keyed by the original full
+source definition. A forced build using another URL acquires inputs for that
+URL; an equal declared identity does not bypass HTTP resume validators or adopt
+old partial bytes. Completed outputs can still be reused offline without
+touching any source.</p>
 <p><code>inspect_materialization</code> reports <code>available</code>, <code>missing</code>, <code>invalid</code> or
 <code>inaccessible</code>, with the current bundle's path, output inspections,
 source receipts, transform identity and an error cause. Supply all three of
