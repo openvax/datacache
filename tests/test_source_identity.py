@@ -5,6 +5,7 @@ import gzip
 from hashlib import sha256
 import io
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 import zipfile
@@ -156,7 +157,7 @@ def test_bundle_identity_rejects_changed_effective_transform(tmp_path, extension
         encoded = buffer.getvalue()
     else:
         encoded = b'<table><tr><th>value</th></tr><tr><td>example</td></tr></table>'
-        decoded = b'value\nexample\n'
+        decoded = ('value' + os.linesep + 'example' + os.linesep).encode()
     source, mirror_path = tmp_path / ('source.' + extension), tmp_path / 'download'
     source.write_bytes(encoded)
     mirror_path.write_bytes(encoded)
