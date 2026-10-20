@@ -809,6 +809,22 @@ def validate_transfer_settings(
     return validate_retry_options(max_retries, retry_backoff, retry_max_delay)
 
 
+def _download_transform(download_url, full_path, *, decompress=False, raw=False, explicit_output=True):
+    """The installed-byte transformation selected by fetch_file's URL rules."""
+    if raw:
+        return "none"
+    source_suffix = _source_suffix(download_url)
+    output_suffix = os.path.splitext(full_path)[1].lower()
+    if decompress or (explicit_output and output_suffix != source_suffix):
+        if source_suffix == ".gz":
+            return "gunzip"
+        if source_suffix == ".zip":
+            return "unzip"
+    if explicit_output and source_suffix in (".htm", ".html") and output_suffix == ".csv":
+        return "html-to-csv"
+    return "none"
+
+
 def fetch_file(
         download_url,
         filename=None,
@@ -1069,16 +1085,13 @@ def fetch_file(
     full_path = expected_path(
         download_url, filename, decompress, subdir,
         destination=destination, cache_root=cache_root)
-    source_suffix = _source_suffix(download_url)
-    output_suffix = os.path.splitext(full_path)[1].lower()
-    archive_decompression = not raw and bool(
-        decompress or (explicit_output and output_suffix != source_suffix))
-    html_conversion = (not raw and explicit_output and source_suffix in (".htm", ".html")
-                       and output_suffix == ".csv")
+    transform = _download_transform(download_url, full_path, decompress=decompress,
+                                    raw=raw, explicit_output=explicit_output)
+    archive_decompression = transform in ("gunzip", "unzip")
+    html_conversion = transform == "html-to-csv"
     if html_conversion and max_bytes is not None:
         raise ValueError("max_bytes can't bound HTML-to-CSV conversion; use raw=True for the HTML itself")
-    transformed = bool(decompress or (source_suffix in (".gz", ".zip") and archive_decompression)
-                       or html_conversion)
+    transformed = bool(decompress or transform != "none")
     if resume and transformed:
         raise ValueError("resume=True supports raw downloads only; use raw=True or retain the archive suffix")
     if resume_if_possible:

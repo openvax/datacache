@@ -206,12 +206,18 @@ compares the complete declaration and does not interpret its fields. For example
 an upstream Unix checksum remains caller metadata, never a trusted SHA-256.
 
 - Declared identities must match even when a trusted SHA-256 is also supplied.
-  The decompression setting must match too. A change requires `force=True`.
+  The decompression setting and effective download transformation must match
+  too. This includes gzip/ZIP extraction and HTML-to-CSV conversion inferred
+  from a URL path or query-string filename. For example, a `.gz` URL and an
+  extensionless URL can select different transformations despite identical
+  `decompress` flags. A change requires `force=True`.
   Callers without a declaration keep the URL/hash rules above.
 - Identities accept JSON values, including explicit `null` (`None`), with string
   object keys and finite numbers. Object key order is ignored; list order and
   JSON value types matter (`true`, `1` and `1.0` differ). The limit is 64 KiB of
   compact, sorted, ASCII-escaped JSON and 64 levels of nesting.
+  Keys that collide after JSON decoding are rejected, including a Unicode
+  character and its explicit surrogate-pair spelling used as separate keys.
 - Identity metadata is stored verbatim in the manifest: **do not include
   credentials or secrets**. The actual acquisition URL still has its full
   fingerprint and redacted display URL. Reuse does not rewrite this provenance.
@@ -223,6 +229,9 @@ an upstream Unix checksum remains caller metadata, never a trusted SHA-256.
 - Existing receipts without a declaration cannot satisfy an identity-based
   request, even with a matching trusted hash. Refresh once with `force=True`;
   old receipts remain readable with their original URL/hash rules.
+- Identity-bearing receipts from 1.29.0 can still reuse their original full URL.
+  Refresh once with `force=True` to record the download transformation before
+  reusing them across URLs.
 
 This applies to `VersionedDatasetRegistry` assets as well. It authorizes reuse
 only in a store the caller selected; it does not search other stores, deduplicate

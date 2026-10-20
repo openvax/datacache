@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.29.1
+
+- Check effective gzip/ZIP extraction and HTML conversion policies before
+  reusing a bundle across URLs with a declared identity. Keep original-URL
+  reuse for older receipts; refresh to authorize cross-URL reuse.
+- Reject identity object keys that collide during JSON normalization instead
+  of silently discarding fields in bundles and materializations.
+
 ## 1.29.0
 
 - Add optional caller-declared `source_identity` to bundle assets and

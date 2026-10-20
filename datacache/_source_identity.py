@@ -2,6 +2,8 @@
 
 import json
 
+from ._filesystem import _unique_json_keys
+
 MAX_IDENTITY_BYTES = 64 * 1024
 MAX_IDENTITY_DEPTH = 64
 
@@ -32,7 +34,9 @@ def _canonical(value):
 
 def normalize_source_identity(value):
     """Validate and detach a bounded JSON value from the caller's objects."""
-    return json.loads(_canonical(value))
+    # Distinct Python keys (an astral character and its surrogate pair) can
+    # encode to the same JSON key. Reject collisions instead of losing fields.
+    return json.loads(_canonical(value), object_pairs_hook=_unique_json_keys)
 
 
 def source_identity_matches(recorded, requested):
