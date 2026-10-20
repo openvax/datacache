@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.28.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.29.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -1293,7 +1293,7 @@ install_bundle(destination, assets, *, force=False, verified=True, verify_files=
 ```
 
 Download a mapping of relative asset names to `{url, sha256, size,
-decompress?}` metadata and publish the files together as a new bundle. `path`
+decompress?, source_identity?}` metadata and publish the files together as a new bundle. `path`
 in place of `url` names a local file, identified by its `file://` URL.
 `source_paths` maps asset names to local files to read instead of downloading,
 such as files downloaded by hand; each asset keeps its declared URL as its
@@ -1305,6 +1305,11 @@ unpinned sources; their observed hashes are recorded without authenticating them
 checks readability, file types and recorded sizes but cannot detect same-size
 corruption. New bundles are always hashed before publication, regardless of
 this cache-hit setting.
+Optional `source_identity` is a caller-declared JSON value enabling reuse across
+URLs when identity and decompression settings match. It is stored verbatim,
+must contain no secrets, and never establishes trusted verification. See the
+[identity contract](bundles.md#reuse-across-urls-with-a-declared-identity) for
+validation, limits and legacy-receipt refresh requirements.
 `download_options` accepts timeout, chunk size, progress, retry, resume and `max_bytes` settings.
 Works on Linux, macOS and Windows local filesystems. [Complete guide](bundles.md).
 
@@ -1391,11 +1396,16 @@ materialize(destination, sources, *, transform, outputs, builder, force=False,
 
 Build outputs with a caller's builder and publish them, with their dependency
 receipt, as a new bundle. Sources map relative names to `{url: ...}` or `{path: ...}`, plus
-optional raw-byte `sha256`/`size`; outputs map names to optional output-byte
+optional raw-byte `sha256`/`size` and `source_identity`; outputs map names to optional output-byte
 `sha256`/`size`. Transform is `{version: nonempty_string, options: JSON_value}`.
 The builder receives private `(source_paths, output_paths)` mappings, must leave
 inputs unchanged and create/close exactly the declared regular output files.
 Returns name-to-string paths in the new bundle; builder return values are ignored.
+Equal declared source identities allow reuse across URLs while preserving the
+actual acquisition provenance. Integrity expectations, transformation settings
+and output inventory must still match. Identity assertions never establish
+trusted verification; [the bundle identity contract](bundles.md#reuse-across-urls-with-a-declared-identity)
+also applies here.
 
 Dependency mismatch/corruption requires explicit `force=True`. Completed inputs
 survive failures; successful publication removes owned inputs unless retention
@@ -1425,7 +1435,8 @@ A read-only record with `path`, `status`, `verified`, `bundle`, `files`,
 `sources`, `transform` and `error`. Status is available, missing, invalid or
 inaccessible. `bundle` is the current bundle's directory. `verified` means all output files matched
 caller-trusted hashes now. Source records separately report raw observed hashes,
-sizes, redacted origins, identity, acquisition time, acquisition-time trusted
+sizes, redacted origins, URL identity fingerprints, optional caller-declared
+`source_identity`, acquisition time, acquisition-time trusted
 verification and available validated transport metadata.
 
 ## Fixed-path file registry

@@ -11,6 +11,7 @@ from urllib.request import url2pathname
 from uuid import uuid4
 
 from ._filesystem import open_regular, path_present, read_json, write_json
+from ._source_identity import normalize_source_identity, source_identity_matches
 from .bundle_store import (
     CHUNK_SIZE, INVALID_STORE_ERRORS, MANIFEST, BundleStore, check_expected, check_tree,
     discard_private_directory, hash_file, local_file_identity, private_directory, user_key,
@@ -62,8 +63,8 @@ def _transform(value):
 def _definition(sources, transform, outputs):
     normalized, acquisition = {}, {}
     for name, spec in _inventory(sources).items():
-        if not isinstance(spec, dict) or set(spec) - {'url', 'path', 'sha256', 'size'}:
-            raise ValueError('source metadata supports url or path, sha256 and size')
+        if not isinstance(spec, dict) or set(spec) - {'url', 'path', 'sha256', 'size', 'source_identity'}:
+            raise ValueError('source metadata supports url or path, sha256, size and source_identity')
         if ('url' in spec) == ('path' in spec):
             raise ValueError('each source requires exactly one of url or path')
         expected = _expectations({key: spec[key] for key in ('sha256', 'size') if key in spec})
@@ -84,6 +85,8 @@ def _definition(sources, transform, outputs):
             else:
                 acquisition[name] = ('url', origin)
         normalized[name] = dict(expected, identity=_fingerprint(origin), origin=provenance.redact_url(origin))
+        if 'source_identity' in spec:
+            normalized[name]['source_identity'] = normalize_source_identity(spec['source_identity'])
     validate_no_sidecar_collisions(normalized)
     output_specs = {name: _expectations(spec) for name, spec in _inventory(outputs).items()}
     return dict(sources=normalized, transform=_transform(transform), outputs=output_specs), acquisition
@@ -93,17 +96,31 @@ def _recorded_definition(value):
     if not isinstance(value, dict) or set(value) != {'sources', 'transform', 'outputs'}:
         raise ValueError('invalid materialization dependency definition')
     for spec in _inventory(value['sources']).values():
-        if not isinstance(spec, dict) or set(spec) != {'origin', 'identity', 'sha256', 'size'}:
+        if not isinstance(spec, dict) or set(spec) - {'source_identity'} != {'origin', 'identity', 'sha256', 'size'}:
             raise ValueError('invalid source dependency definition')
         _expectations({key: spec[key] for key in ('sha256', 'size')})
         _validate_expectations(spec['identity'], None)
         if spec['identity'] is None or not isinstance(spec['origin'], str):
             raise ValueError('source identity and origin are required')
+        if 'source_identity' in spec:
+            normalize_source_identity(spec['source_identity'])
     for spec in _inventory(value['outputs']).values():
         _expectations(spec)
     if _transform(value['transform']) != value['transform']:
         raise ValueError('invalid transform definition')
     return value
+
+
+def _reuse_definition(definition, requested):
+    # Keep actual acquisition origins in receipts. Only completed bundles may
+    # substitute a caller assertion for the URL; private inputs and partial
+    # downloads remain keyed by the full original source definition.
+    sources = {}
+    for name, spec in definition['sources'].items():
+        ignored = (('identity', 'origin') if 'source_identity' in requested['sources'].get(name, {})
+                   else ('source_identity',))
+        sources[name] = {key: value for key, value in spec.items() if key not in ignored}
+    return dict(definition, sources=sources)
 
 
 def _source_records(value, definition):
@@ -117,6 +134,7 @@ def _source_records(value, definition):
         trusted = definition[name]['sha256'] is not None
         if (record.get('identity') != definition[name]['identity'] or
                 record.get('origin') != definition[name]['origin'] or
+                not source_identity_matches(record, definition[name]) or
                 record.get('verified') is not trusted or
                 not isinstance(record.get('fetched_at'), str)):
             raise ValueError('source receipt identity or trust disagrees with definition')
@@ -147,11 +165,13 @@ class MaterializationInspection:
 
 
 def _check_bundle(store, directory, expected=None, *, verify_files=True):
-    receipt = read_json(directory / MANIFEST, limit=None)
+    receipt = read_json(directory / MANIFEST, limit=None, unique_keys=True)
     if not isinstance(receipt, dict) or receipt.get('format') != FORMAT:
         raise ValueError('unrecognized materialization receipt')
     definition = _recorded_definition(receipt.get('definition'))
-    if expected is not None and definition != expected:
+    if (expected is not None and
+            _fingerprint(_reuse_definition(definition, expected)) !=
+            _fingerprint(_reuse_definition(expected, expected))):
         raise FileValidationError(directory, 'dependency identity changed; use force=True to refresh')
     sources = _source_records(receipt.get('sources'), definition['sources'])
     outputs = receipt.get('outputs')
@@ -214,7 +234,7 @@ def _acquire_inputs(directory, definition, acquisition, options, *, force=False)
     private_directory(directory)
     receipt_path = directory / INPUTS
     try:
-        records = read_json(receipt_path, limit=None) if path_present(receipt_path) else {}
+        records = read_json(receipt_path, limit=None, unique_keys=True) if path_present(receipt_path) else {}
         if not isinstance(records, dict) or set(records) - set(definition):
             raise FileValidationError(receipt_path, 'invalid private input receipt')
     except (ValueError, RecursionError) as error:
@@ -312,6 +332,8 @@ def _acquire_inputs(directory, definition, acquisition, options, *, force=False)
         record = dict(observed, origin=spec['origin'], identity=spec['identity'],
                       verified=spec['sha256'] is not None,
                       fetched_at=origin_record.get('fetched_at', datetime.now(timezone.utc).isoformat()))
+        if 'source_identity' in spec:
+            record['source_identity'] = spec['source_identity']
         if origin_record.get('transport') is not None:
             record['transport'] = origin_record['transport']
         records[name] = record
@@ -326,7 +348,9 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
 
     builder(source_paths, output_paths) must create/close exactly the declared
     outputs and leave inputs unchanged. Source definitions contain url or path
-    plus optional raw sha256/size; outputs map names to optional sha256/size.
+    plus optional raw sha256/size and source_identity; outputs map names to
+    optional sha256/size. source_identity is a bounded JSON assertion enabling
+    cross-URL reuse, stored verbatim without establishing trusted verification.
     transform is {version: nonempty string, options: opaque JSON value}.
     Changed dependencies and a corrupt bundle require explicit force=True.
     Force rebuilds outputs while reusing any complete matching private inputs.

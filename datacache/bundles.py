@@ -11,6 +11,7 @@ import unicodedata
 from uuid import uuid4
 
 from ._filesystem import path_present, read_json, write_json
+from ._source_identity import normalize_source_identity, source_identity_matches
 from .bundle_store import (
     INVALID_STORE_ERRORS, MANIFEST, BundleStore, discard_private_directory, hash_file, local_file_identity,
     private_directory, prune_bundles, require_directory, source_fingerprint, user_key, validate_distinct_paths, validate_no_sidecar_collisions,
@@ -33,7 +34,7 @@ def _assets(assets, verified=True):
             spec = {'url': spec}
         if not isinstance(spec, dict):
             raise ValueError('asset metadata must be a mapping')
-        unknown = set(spec) - {'url', 'path', 'sha256', 'size', 'decompress'}
+        unknown = set(spec) - {'url', 'path', 'sha256', 'size', 'decompress', 'source_identity'}
         if unknown:
             raise ValueError('unknown asset options: %s' % sorted(unknown))
         if ('url' in spec) == ('path' in spec):
@@ -53,6 +54,8 @@ def _assets(assets, verified=True):
             raise ValueError('decompress must be a boolean')
         result[name] = dict(url=url, sha256=digest.lower() if digest else None,
                             size=size, decompress=decompress)
+        if 'source_identity' in spec:
+            result[name]['source_identity'] = normalize_source_identity(spec['source_identity'])
     validate_distinct_paths(result)
     validate_no_sidecar_collisions(result)
     return result
@@ -63,7 +66,14 @@ def _receipt_assets(receipt):
         raise ValueError('unrecognized bundle manifest')
     assets = receipt.get('assets')
     # Every local receipt pins the bytes, even in unverified acquisition mode.
-    return _assets(assets, verified=True)
+    recorded = _assets(assets, verified=True)
+    for name, spec in recorded.items():
+        if 'source_identity' in spec:
+            fingerprints = receipt.get('source_fingerprints')
+            if not isinstance(fingerprints, dict) or not fingerprints.get(name):
+                raise ValueError('declared source_identity requires a source URL fingerprint')
+            _validate_expectations(fingerprints[name], None)
+    return recorded
 
 
 @dataclass(frozen=True)
@@ -85,17 +95,22 @@ class BundleInspection:
 
 def _check_bundle(store, directory, assets, *, verify_files=True):
     # Manifests grow with the number of assets; the writer has no size cap.
-    receipt = read_json(directory / MANIFEST, limit=None)
+    receipt = read_json(directory / MANIFEST, limit=None, unique_keys=True)
     recorded = _receipt_assets(receipt)
     if assets is not None:
         if set(recorded) != set(assets):
             raise FileValidationError(directory, 'manifest asset names disagree with registry')
         for name, spec in assets.items():
-            if spec['sha256'] is None:
+            declared = 'source_identity' in spec
+            if declared:
+                if not source_identity_matches(recorded[name], spec):
+                    raise FileValidationError(directory, 'manifest source_identity is missing or disagrees with registry')
+            elif spec['sha256'] is None:
                 fingerprints = receipt.get('source_fingerprints')
                 if (not isinstance(fingerprints, dict) or
                         fingerprints.get(name) != source_fingerprint(spec['url'])):
                     raise FileValidationError(directory, 'manifest source identity is missing or disagrees with registry')
+            if declared or spec['sha256'] is None:
                 if spec['decompress'] != recorded[name]['decompress']:
                     raise FileValidationError(directory, 'manifest decompression setting disagrees with registry')
             for key in ('sha256', 'size'):
@@ -166,7 +181,7 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
                    source_paths=None):
     """Download every asset, then publish them together as a new bundle.
 
-    assets maps relative names to {url, sha256, size, decompress?}; path in
+    assets maps relative names to {url, sha256, size, decompress?, source_identity?}; path in
     place of url names a local file. Trusted sha256 and size are mandatory
     unless verified=False is explicit. source_paths maps asset names to local
     files to read instead of downloading, such as files already downloaded by
@@ -174,6 +189,9 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
     installs treat the bundle exactly as if it had been downloaded. On a
     valid cache hit this is read-only, including on a read-only filesystem.
     An invalid current bundle requires force=True, which installs a new one.
+    Optional source_identity is a bounded JSON assertion permitting reuse
+    across URLs when the declared identity and decompression setting match.
+    It is stored verbatim, must contain no secrets, and never establishes trust.
 
     Returns a dict of asset names to paths in the current bundle. Old bundles
     are kept, so these paths survive later force installs. Generated outputs
@@ -252,6 +270,8 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
                 hashed = hash_file(target, hash_contents=spec['sha256'] is None)
                 recorded[name] = dict(url=redact_url(spec['url']), sha256=hashed.sha256 or spec['sha256'],
                                       size=hashed.size, decompress=spec['decompress'])
+                if 'source_identity' in spec:
+                    recorded[name]['source_identity'] = spec['source_identity']
             receipt = dict(format=FORMAT, fetched_at=datetime.now(timezone.utc).isoformat(), assets=recorded,
                            source_fingerprints={name: source_fingerprint(spec['url'])
                                                 for name, spec in expected.items()})
