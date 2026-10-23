@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.29.2. Import these names from `datacache`.
+public `Cache` method in DataCache 1.29.3. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -758,6 +758,11 @@ beside the database; where the filesystem has no room for that name, rebuilding
 raises a `ValueError` that says so, while creating and reusing the database
 still work. See [reuse and replacement](data.md#reuse-and-replacement) for
 locking, symlink, and filesystem requirements.
+
+Explicit `overwrite=True` can also rebuild a corrupt or non-SQLite cache. It
+builds and validates a private replacement before restoring the existing file
+under SQLite's locks, preserving its inode, links, permissions, and ACLs.
+Reads and version changes alone never trigger corruption recovery.
 
 Table names must be nonempty strings, distinct ignoring the case of ASCII
 letters (as SQLite compares names), and must not be the reserved metadata name

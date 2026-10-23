@@ -82,6 +82,26 @@ the tables. Ordinary cache hits and version rebuilds retain existing views.
 Rebuilds also handle virtual tables, such as SQLite FTS tables, whose internal
 shadow tables disappear automatically when the parent table is dropped.
 
+Before rebuilding an existing database, DataCache runs SQLite's `quick_check`
+so damaged pages cannot silently survive a rebuild. Matching cache hits do not
+run this scan. Explicit `overwrite=True` also recovers corrupt or non-SQLite
+cache files. DataCache builds a private replacement and runs `quick_check`,
+then copies its tables, rows, indexes, and version in one SQLite transaction.
+The original inode, links, permissions, and ACLs remain in place. Existing
+connections discard their cached schema when they next read the committed
+replacement. A failed build leaves the corrupt file untouched; handled
+publication failures restore its original bytes while holding SQLite's lock.
+Ordinary reads and version changes never repair corruption. Lock, permission,
+and I/O errors are propagated rather than treated as corruption.
+
+Recovery needs space beside the database for the staged replacement, a
+temporary snapshot of the original file, and SQLite's journal. Publication
+runs in a short-lived process using the current Python executable, so the
+runtime must allow child processes. On Python 3.11, it also needs an available
+SQLite library exposing the database-reset APIs; if these are unavailable,
+recovery fails without replacing the cache. Healthy database rebuilds continue
+to use the normal SQLite transaction in the calling process.
+
 New databases are built in private sibling files, closed, and published using
 an atomic operation that cannot overwrite a concurrent creator. DataCache
 tries a hard link first. If hard links are unsupported, it tries an atomic

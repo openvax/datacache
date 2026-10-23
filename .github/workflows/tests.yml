@@ -59,16 +59,20 @@ jobs:
 
   archive-windows:
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Set up Python 3.12
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
       - name: Install package and test dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[test]"
       - name: Test cross-platform stores and download byte limits
-        run: python -m pytest -q tests/test_archives.py tests/test_byte_limits.py tests/test_cross_platform_stores.py tests/test_bundle_lifecycle.py tests/test_zip_members.py tests/test_http_representation.py tests/test_database_publication.py tests/test_source_identity.py
+        run: python -m pytest -q tests/test_archives.py tests/test_byte_limits.py tests/test_cross_platform_stores.py tests/test_bundle_lifecycle.py tests/test_zip_members.py tests/test_http_representation.py tests/test_database_publication.py tests/test_database_recovery.py tests/test_source_identity.py
