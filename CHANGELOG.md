@@ -8,6 +8,10 @@
   ACLs, and existing readers. Failed builds preserve the original bytes;
   ordinary reads, version changes, and unrelated SQLite errors never trigger
   corruption recovery (#132).
+- Expose documented `recover_cached_database`, `restore_database`, and
+  `datacache.sqlite_recovery` APIs. Recovery chooses a fresh schema cookie
+  independently of damaged headers and uses mapped snapshots/rollback across
+  Windows lock bytes, including caches larger than 1 GiB.
 
 ## 1.29.2
 

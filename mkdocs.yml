@@ -46,6 +46,7 @@ nav:
 - Reference:
   - Choose an interface: reference/choosing.md
   - API reference: api.md
+  - SQLite recovery APIs: sqlite-recovery.md
   - Release notes: https://github.com/openvax/datacache/blob/master/CHANGELOG.md
 - Contributing:
   - Documentation style: dev/documentation-style.md

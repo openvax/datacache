@@ -102,6 +102,14 @@ SQLite library exposing the database-reset APIs; if these are unavailable,
 recovery fails without replacing the cache. Healthy database rebuilds continue
 to use the normal SQLite transaction in the calling process.
 
+Applications can also call the public
+[`recover_cached_database`](api.md#recover_cached_database) and
+[`restore_database`](api.md#restore_database) APIs directly. The
+[`datacache.sqlite_recovery` reference](sqlite-recovery.md) documents worker
+and file-copy APIs for integrations. File snapshots and rollback use bounded
+memory mappings so Windows databases larger than 1 GiB can cross SQLite's
+mandatory lock-byte range while the exclusive lock remains held.
+
 New databases are built in private sibling files, closed, and published using
 an atomic operation that cannot overwrite a concurrent creator. DataCache
 tries a hard link first. If hard links are unsupported, it tries an atomic

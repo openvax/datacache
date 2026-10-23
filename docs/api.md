@@ -945,6 +945,47 @@ with closing(connection):
 assert dc.connect_if_correct_version(root / "absent.db", 1) is None
 ```
 
+### `recover_cached_database`
+
+```text
+recover_cached_database(db_path, tables, version=1, *, page_size=None, show_progress=False)
+```
+
+Explicitly replace an existing cache from an iterable of
+`datacache.database_table.DatabaseTable` objects. The target and its parent
+must already exist. The target may be healthy or corrupt; **all existing
+tables are replaced**. Input rows are consumed once into a temporary sibling
+database, which is validated before publication. `version` is an integer;
+optional `page_size` is a power of two from 512 through 65536. `None` uses
+SQLite's default. `show_progress=True` reports row counts.
+
+**Returns:** an open caller-owned `sqlite3.Connection` after successful
+publication. **Raises:** validation errors for invalid inputs, `sqlite3.Error`
+or `OSError` for build/publication failures, and `RuntimeError` when the recovery
+runtime is unavailable. Failed builds leave the previous cache untouched.
+See [SQLite recovery APIs](sqlite-recovery.md) for locking and rollback details.
+
+### `restore_database`
+
+```text
+restore_database(source, destination, *, timeout=5.0)
+```
+
+Replace an existing cache from a completed DataCache database at `source`.
+Both arguments are existing file paths and must refer to different files.
+Keep the source closed to writers throughout the call. The source's integrity
+and version record are checked before changing the destination. Ordinary
+tables, rows, constraints, indexes, and cache version are copied; unsupported
+source views, triggers, and virtual tables raise `ValueError` instead of being
+silently omitted. The destination may be healthy or corrupt.
+
+**Returns:** `None` after committing. **Raises:** `sqlite3.Error`, `OSError`,
+`ValueError`, or `RuntimeError` for an unavailable recovery runtime. `timeout`
+is SQLite's lock-wait time in seconds, not a limit on total copy time.
+Publication preserves the destination inode, permissions, and ACLs. It runs
+in an isolated process; cancellation waits for publication or rollback.
+See [SQLite recovery APIs](sqlite-recovery.md) for the public worker interfaces.
+
 ## Cache object
 
 ### `Cache`

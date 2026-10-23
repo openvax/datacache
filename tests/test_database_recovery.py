@@ -3,6 +3,8 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 import os
+import hashlib
+import errno
 from pathlib import Path
 import sqlite3
 import stat
@@ -14,8 +16,8 @@ import pandas as pd
 import pytest
 
 from datacache import (connect_if_correct_version, db_from_dataframe, db_from_dataframes,
-                       db_from_dataframes_with_absolute_path)
-from datacache import _sqlite_recovery, database_helpers
+                       db_from_dataframes_with_absolute_path, recover_cached_database, restore_database)
+from datacache import sqlite_recovery, database_helpers
 from datacache.database import Database
 from datacache.database_helpers import _create_cached_db
 from datacache.database_table import DatabaseTable
@@ -134,7 +136,7 @@ def test_failed_recovery_preserves_corrupt_bytes(corrupt_file, monkeypatch, fail
     elif failure == 'publication':
         def fail(*args, **kwargs):
             raise PermissionError('injected publication failure')
-        monkeypatch.setattr(_sqlite_recovery, 'restore_database', fail)
+        monkeypatch.setattr(sqlite_recovery, 'restore_database', fail)
         expected_error = PermissionError
     table = DatabaseTable('records', [('id', 'INT')], rows, primary_key='id')
     with pytest.raises(expected_error):
@@ -151,7 +153,7 @@ def test_interrupted_publication_rolls_back_written_pages_and_exact_length(tmp_p
     path = tmp_path / 'corrupt.db'
     before = b'x' * length
     path.write_bytes(before)
-    execute = _sqlite_recovery._execute
+    execute = sqlite_recovery.execute_sql
 
     def interrupted(connection, sql):
         execute(connection, sql)
@@ -162,10 +164,10 @@ def test_interrupted_publication_rolls_back_written_pages_and_exact_length(tmp_p
             error.sqlite_errorcode = sqlite3.SQLITE_IOERR
             raise error
 
-    monkeypatch.setattr(_sqlite_recovery, '_execute', interrupted)
+    monkeypatch.setattr(sqlite_recovery, 'execute_sql', interrupted)
     # Exercise failure inside the publisher, with no other SQLite handles open
     # in this process. Production publication always uses the isolated worker.
-    monkeypatch.setattr(_sqlite_recovery, 'restore_database', _sqlite_recovery._restore_database)
+    monkeypatch.setattr(sqlite_recovery, 'restore_database', sqlite_recovery.restore_database_in_process)
     frame = pd.DataFrame({'value': ['x' * 4000] * 1500})
     with pytest.raises(KeyboardInterrupt if failure == 'interrupt' else sqlite3.OperationalError):
         db_from_dataframe(path, 'records', frame, overwrite=True)
@@ -176,15 +178,15 @@ def test_interrupted_publication_rolls_back_written_pages_and_exact_length(tmp_p
 def test_error_after_native_commit_never_truncates_completed_replacement(tmp_path, monkeypatch):
     path = tmp_path / 'corrupt.db'
     path.write_bytes(b'broken')
-    execute = _sqlite_recovery._execute
+    execute = sqlite_recovery.execute_sql
 
     def after_commit(connection, sql):
         execute(connection, sql)
         if sql == 'COMMIT':
             raise RuntimeError('interrupted after commit')
 
-    monkeypatch.setattr(_sqlite_recovery, '_execute', after_commit)
-    monkeypatch.setattr(_sqlite_recovery, 'restore_database', _sqlite_recovery._restore_database)
+    monkeypatch.setattr(sqlite_recovery, 'execute_sql', after_commit)
+    monkeypatch.setattr(sqlite_recovery, 'restore_database', sqlite_recovery.restore_database_in_process)
     with pytest.raises(RuntimeError, match='after commit'):
         db_from_dataframe(path, 'records', pd.DataFrame({'id': [42]}), overwrite=True)
     with closing(sqlite3.connect(path)) as connection:
@@ -202,8 +204,8 @@ def test_incomplete_rollback_snapshot_never_replaces_original(tmp_path, monkeypa
         destination.write(source.read(10))
         raise OSError('snapshot failed')
 
-    monkeypatch.setattr(_sqlite_recovery, '_copy_file', fail_snapshot)
-    monkeypatch.setattr(_sqlite_recovery, 'restore_database', _sqlite_recovery._restore_database)
+    monkeypatch.setattr(sqlite_recovery, 'copy_file_contents', fail_snapshot)
+    monkeypatch.setattr(sqlite_recovery, 'restore_database', sqlite_recovery.restore_database_in_process)
     with pytest.raises(OSError, match='snapshot failed'):
         db_from_dataframe(path, 'records', pd.DataFrame({'id': [42]}), overwrite=True)
     assert path.read_bytes() == before
@@ -223,7 +225,7 @@ def test_repeated_parent_interrupt_waits_for_publication(tmp_path, monkeypatch):
                 raise KeyboardInterrupt()
             return super().communicate(*args, **kwargs)
 
-    monkeypatch.setattr(_sqlite_recovery.subprocess, 'Popen', InterruptedProcess)
+    monkeypatch.setattr(sqlite_recovery.subprocess, 'Popen', InterruptedProcess)
     with pytest.raises(KeyboardInterrupt):
         db_from_dataframe(path, 'records', pd.DataFrame({'id': [42]}), overwrite=True)
     with closing(connect_if_correct_version(path, 1)) as connection:
@@ -265,7 +267,7 @@ def test_corruption_from_new_rows_is_not_mistaken_for_old_cache_damage(tmp_path,
     def forbidden(*args, **kwargs):
         pytest.fail('must not recover an error raised while building new data')
 
-    monkeypatch.setattr(database_helpers, '_recover_cached_db', forbidden)
+    monkeypatch.setattr(database_helpers, 'recover_cached_database', forbidden)
 
     def rows():
         error = sqlite3.DatabaseError('injected data source corruption')
@@ -293,7 +295,7 @@ def test_other_sqlite_failures_do_not_trigger_recovery(tmp_path, monkeypatch, co
         pytest.fail('not a corruption recovery case')
 
     monkeypatch.setattr(Database, 'drop_all_tables', fail)
-    monkeypatch.setattr(database_helpers, '_recover_cached_db', forbidden)
+    monkeypatch.setattr(database_helpers, 'recover_cached_database', forbidden)
     with pytest.raises(sqlite3.OperationalError, match='injected'):
         db_from_dataframe(path, 'records', pd.DataFrame({'id': [2]}), overwrite=True)
     assert path.read_bytes() == before
@@ -338,13 +340,13 @@ def test_restore_respects_an_existing_sqlite_writer(tmp_path):
         writer.execute('BEGIN IMMEDIATE')
         writer.execute('UPDATE records SET id=7')
         with pytest.raises(sqlite3.OperationalError, match='locked'):
-            _sqlite_recovery.restore_database(source, destination, timeout=0.02)
+            sqlite_recovery.restore_database(source, destination, timeout=0.02)
         assert destination.read_bytes() == before
         writer.commit()
         assert writer.execute('SELECT * FROM records').fetchall() == [(7,)]
 
 
-@pytest.mark.parametrize('damage', ['schema', 'header', 'lost-header'])
+@pytest.mark.parametrize('damage', ['schema', 'header', 'lost-header', 'cookie'])
 def test_preexisting_reader_discards_its_cached_schema(tmp_path, damage):
     path = tmp_path / 'corrupt.db'
     with closing(sqlite3.connect(path)) as reader:
@@ -360,6 +362,8 @@ def test_preexisting_reader_discards_its_cached_schema(tmp_path, damage):
             contents[:16] = b'x' * 16
         else:
             contents[100] = 0xff
+            if damage == 'cookie':
+                contents[40:44] = bytes(4)  # Readable cookie 0 would increment to cached cookie 1.
         path.write_bytes(contents)
         with closing(db_from_dataframe(path, 'records', pd.DataFrame({'id': [42]}), overwrite=True)):
             pass
@@ -438,17 +442,103 @@ def test_failed_publication_preserves_a_concurrent_winners_wal_database(tmp_path
         winner.commit()
         wal = Path(str(destination) + '-wal').read_bytes()
     Path(str(destination) + '-wal').write_bytes(wal)
-    execute = _sqlite_recovery._execute
+    execute = sqlite_recovery.execute_sql
 
     def fail(connection, sql):
         execute(connection, sql)
         if sql.startswith('INSERT INTO main."records"'):
             raise RuntimeError('publication failed')
 
-    monkeypatch.setattr(_sqlite_recovery, '_execute', fail)
+    monkeypatch.setattr(sqlite_recovery, 'execute_sql', fail)
     with pytest.raises(RuntimeError, match='publication failed'):
-        _sqlite_recovery._restore_database(source, destination)
+        sqlite_recovery.restore_database_in_process(source, destination)
     with closing(sqlite3.connect(destination)) as connection:
         assert connection.execute('SELECT * FROM old').fetchall() == [(7,)]
         assert connection.execute('PRAGMA integrity_check').fetchall() == [('ok',)]
         assert connection.execute("SELECT name FROM sqlite_master WHERE name='records'").fetchall() == []
+
+
+def test_public_recovery_api_builds_and_reuses_all_complete_data(tmp_path):
+    path = tmp_path / 'cache.db'
+    path.write_bytes(b'broken')
+    rows = [(index, 'value-%d' % index) for index in range(10000)]
+    table = DatabaseTable('records', [('id', 'INT'), ('value', 'TEXT')],
+                          lambda: iter(rows), primary_key='id', indices=[('value',)])
+    with closing(recover_cached_database(path, [table], version=7)) as connection:
+        assert connection.execute('SELECT * FROM records ORDER BY id').fetchall() == rows
+    # A complete cached version remains reusable without rebuilding input data.
+    with closing(db_from_dataframe(path, 'records', None, version=7)) as connection:
+        assert connection.execute('SELECT * FROM records ORDER BY id').fetchall() == rows
+
+
+@pytest.mark.parametrize('source_kind', ['incomplete', 'corrupt', 'unsupported', 'same-file'])
+def test_public_restore_rejects_invalid_source_without_changing_complete_cache(tmp_path, source_kind):
+    destination, source = tmp_path / 'complete.db', tmp_path / 'source.db'
+    with closing(db_from_dataframe(destination, 'records', pd.DataFrame({'id': [7]}))):
+        pass
+    if source_kind == 'same-file':
+        source = destination
+    elif source_kind == 'corrupt':
+        source.write_bytes(b'not a database')
+    elif source_kind == 'unsupported':
+        with closing(db_from_dataframe(source, 'records', pd.DataFrame({'id': [9]}))) as connection:
+            connection.execute('CREATE VIEW visible AS SELECT * FROM records')
+            connection.commit()
+    else:
+        with closing(sqlite3.connect(source)) as connection:
+            connection.execute('CREATE TABLE records(id)')
+            connection.commit()
+    before = destination.read_bytes()
+    with pytest.raises((sqlite3.DatabaseError, ValueError)):
+        restore_database(source, destination)
+    assert destination.read_bytes() == before
+    with closing(connect_if_correct_version(destination, 1)) as connection:
+        assert connection.execute('SELECT * FROM records').fetchall() == [(7,)]
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows mandatory SQLite byte-range locks')
+def test_large_windows_recovery_and_rollback_cross_sqlite_lock_bytes(tmp_path, monkeypatch):
+    path = tmp_path / 'large-corrupt.db'
+    boundary = 0x40000000
+    with path.open('wb') as original:
+        original.write(b'not a database')
+        original.seek(boundary - 64)
+        original.write(b'lock-region-sentinel' * 64)
+        original.seek(boundary + 65536)
+        original.write(b'last-page-sentinel')
+    with path.open('rb') as original:
+        before = hashlib.file_digest(original, 'sha256').digest()
+    inode = path.stat().st_ino
+    execute = sqlite_recovery.execute_sql
+    checked_lock = False
+
+    def fail_after_insertion(connection, sql):
+        nonlocal checked_lock
+        execute(connection, sql)
+        if sql.startswith('INSERT INTO main."records"'):
+            # Confirm that the old raw-copy mechanism really cannot read this
+            # range through a second handle while SQLite holds its lock.
+            with path.open('rb', buffering=0) as other_handle:
+                other_handle.seek(boundary)
+                with pytest.raises(OSError) as error:
+                    other_handle.read(512)
+                # FileIO can report the CRT's EACCES rather than retaining
+                # ERROR_LOCK_VIOLATION as a winerror attribute.
+                assert getattr(error.value, 'winerror', None) == 33 or error.value.errno == errno.EACCES
+            checked_lock = True
+            raise RuntimeError('injected publication failure')
+
+    frame = pd.DataFrame({'id': range(1500), 'value': ['x' * 4000] * 1500})
+    with monkeypatch.context() as patch:
+        patch.setattr(sqlite_recovery, 'execute_sql', fail_after_insertion)
+        patch.setattr(sqlite_recovery, 'restore_database', sqlite_recovery.restore_database_in_process)
+        with pytest.raises(RuntimeError, match='injected publication failure'):
+            db_from_dataframe(path, 'records', frame, overwrite=True)
+    assert checked_lock
+    with path.open('rb') as original:
+        assert hashlib.file_digest(original, 'sha256').digest() == before
+    with closing(db_from_dataframe(path, 'records', frame, overwrite=True)) as connection:
+        assert connection.execute('SELECT * FROM records ORDER BY id').fetchall() == list(
+            frame.itertuples(index=False, name=None))
+        assert connection.execute('PRAGMA integrity_check').fetchall() == [('ok',)]
+    assert path.stat().st_ino == inode
