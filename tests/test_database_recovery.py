@@ -471,7 +471,131 @@ def test_public_recovery_api_builds_and_reuses_all_complete_data(tmp_path):
         assert connection.execute('SELECT * FROM records ORDER BY id').fetchall() == rows
 
 
-@pytest.mark.parametrize('source_kind', ['incomplete', 'corrupt', 'unsupported', 'same-file'])
+def test_public_native_connection_control_sql_and_error_contract(tmp_path):
+    path = tmp_path / 'native.db'
+    with closing(db_from_dataframe(path, 'records', pd.DataFrame({'id': [7]}))):
+        pass
+    # No Python-owned connection to this path remains open while the native
+    # adapter owns it, including when these use different SQLite libraries.
+    connection = sqlite_recovery.NativeSQLiteConnection(path, 0.01)
+    try:
+        assert connection.execute('SELECT id, NULL FROM records').fetchone() == ('7', None)
+        assert connection.execute('SELECT id FROM records WHERE 0').fetchone() is None
+        assert not connection.in_transaction
+        connection.setconfig(1010, False)
+        connection.execute('BEGIN IMMEDIATE')
+        assert connection.in_transaction
+        connection.execute('UPDATE records SET id=8')
+        connection.execute('ROLLBACK')
+        assert connection.execute('SELECT id FROM records').fetchone() == ('7',)
+        with pytest.raises(sqlite3.OperationalError) as error:
+            connection.execute('SELECT missing FROM records')
+        assert error.value.sqlite_errorcode == sqlite3.SQLITE_ERROR
+    finally:
+        connection.close()
+        connection.close()
+
+
+def test_public_native_connection_reports_corruption_and_failed_open(tmp_path):
+    path = tmp_path / 'corrupt.db'
+    path.write_bytes(b'not a database')
+    with closing(sqlite_recovery.NativeSQLiteConnection(path, 0.01)) as connection:
+        with pytest.raises(sqlite3.DatabaseError) as error:
+            connection.execute('SELECT * FROM sqlite_master')
+        assert error.value.sqlite_errorcode == sqlite3.SQLITE_NOTADB
+    missing = tmp_path / 'missing.db'
+    with pytest.raises(sqlite3.OperationalError) as error:
+        sqlite_recovery.NativeSQLiteConnection(missing, 0.01)
+    assert error.value.sqlite_errorcode == sqlite3.SQLITE_CANTOPEN
+    assert not missing.exists()
+
+
+@pytest.mark.parametrize('factory', [sqlite_recovery.NativeSQLiteConnection, sqlite_recovery.open_recovery_connection])
+def test_public_connections_reject_null_paths_without_opening_a_prefix(tmp_path, factory):
+    path = tmp_path / 'complete.db'
+    with closing(db_from_dataframe(path, 'records', pd.DataFrame({'id': [7]}))):
+        pass
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match='null'):
+        factory(str(path) + '\0suffix', 0.01)
+    assert path.read_bytes() == before
+
+
+def test_unavailable_native_api_has_an_explicit_error(monkeypatch):
+    def unavailable(*args, **kwargs):
+        raise OSError('SQLite library unavailable')
+
+    sqlite_recovery.load_sqlite_api.cache_clear()
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(sqlite_recovery.ctypes, 'CDLL', unavailable)
+            with pytest.raises(RuntimeError, match='does not expose the SQLite recovery APIs'):
+                sqlite_recovery.load_sqlite_api()
+    finally:
+        sqlite_recovery.load_sqlite_api.cache_clear()
+
+
+def test_invalid_native_timeout_does_not_leave_the_database_open(tmp_path, monkeypatch):
+    path = tmp_path / 'complete.db'
+    with closing(db_from_dataframe(path, 'records', pd.DataFrame({'id': [7]}))):
+        pass
+    closed = []
+    close = sqlite_recovery.NativeSQLiteConnection.close
+
+    def record_close(connection):
+        close(connection)
+        closed.append(connection.handle)
+
+    monkeypatch.setattr(sqlite_recovery.NativeSQLiteConnection, 'close', record_close)
+    with pytest.raises((TypeError, ValueError)):
+        sqlite_recovery.NativeSQLiteConnection(path, 'invalid')
+    assert closed == [None]
+    with closing(connect_if_correct_version(path, 1)) as connection:
+        assert connection.execute('SELECT * FROM records').fetchall() == [(7,)]
+
+
+def test_public_recovery_rejects_directory_before_building(tmp_path):
+    def forbidden():
+        pytest.fail('invalid target must not consume source rows')
+
+    table = DatabaseTable('records', [('id', 'INT')], forbidden)
+    with pytest.raises(ValueError, match='existing regular file'):
+        recover_cached_database(tmp_path, [table])
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize('page_size', [0, 513, 131072, True, '4096'])
+def test_public_recovery_rejects_invalid_page_size_before_reading_rows(tmp_path, page_size):
+    path = tmp_path / 'complete.db'
+    with closing(db_from_dataframe(path, 'records', pd.DataFrame({'id': [7]}))):
+        pass
+    before = path.read_bytes()
+
+    def forbidden():
+        pytest.fail('invalid options must not consume source rows')
+
+    table = DatabaseTable('records', [('id', 'INT')], forbidden)
+    with pytest.raises((TypeError, ValueError)):
+        recover_cached_database(path, [table], page_size=page_size)
+    assert path.read_bytes() == before
+
+
+def test_public_copy_handles_empty_source_and_rejects_same_file(tmp_path):
+    source, destination = tmp_path / 'source', tmp_path / 'destination'
+    source.write_bytes(b'')
+    destination.write_bytes(b'old bytes')
+    with source.open('rb') as input_file, destination.open('r+b') as output_file:
+        sqlite_recovery.copy_file_contents(input_file, output_file)
+        assert not input_file.closed and not output_file.closed
+    assert destination.read_bytes() == b''
+    source.write_bytes(b'keep this')
+    with source.open('rb') as input_file, source.open('r+b') as output_file:
+        with pytest.raises(ValueError, match='different files'):
+            sqlite_recovery.copy_file_contents(input_file, output_file)
+    assert source.read_bytes() == b'keep this'
+
+
+@pytest.mark.parametrize('source_kind', ['incomplete', 'empty-version', 'corrupt', 'freelist', 'unsupported', 'same-file'])
 def test_public_restore_rejects_invalid_source_without_changing_complete_cache(tmp_path, source_kind):
     destination, source = tmp_path / 'complete.db', tmp_path / 'source.db'
     with closing(db_from_dataframe(destination, 'records', pd.DataFrame({'id': [7]}))):
@@ -484,9 +608,22 @@ def test_public_restore_rejects_invalid_source_without_changing_complete_cache(t
         with closing(db_from_dataframe(source, 'records', pd.DataFrame({'id': [9]}))) as connection:
             connection.execute('CREATE VIEW visible AS SELECT * FROM records')
             connection.commit()
+    elif source_kind == 'freelist':
+        with closing(db_from_dataframe(source, 'records', pd.DataFrame({'id': [9]}))) as connection:
+            connection.execute('CREATE TABLE unused(id)')
+            connection.execute('DROP TABLE unused')
+            connection.commit()
+        contents = bytearray(source.read_bytes())
+        page_size = int.from_bytes(contents[16:18], 'big')
+        trunk = int.from_bytes(contents[32:36], 'big')
+        offset = (trunk - 1) * page_size
+        contents[offset:offset + 4] = (999999).to_bytes(4, 'big')
+        source.write_bytes(contents)
     else:
         with closing(sqlite3.connect(source)) as connection:
             connection.execute('CREATE TABLE records(id)')
+            if source_kind == 'empty-version':
+                connection.execute('CREATE TABLE _datacache_metadata(version INT)')
             connection.commit()
     before = destination.read_bytes()
     with pytest.raises((sqlite3.DatabaseError, ValueError)):

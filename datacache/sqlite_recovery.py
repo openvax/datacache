@@ -105,9 +105,10 @@ def open_native_database(api, path, flags):
     successful handle with api.sqlite3_close. Failed opens close it here and
     raise a sqlite3 exception. Do not pass a Python connection's pointer.
     """
-    encoded = Path(path).absolute().as_uri().encode('utf-8')
-    if b'\0' in encoded:
+    path = Path(path)
+    if '\0' in os.fspath(path):
         raise ValueError('embedded null byte')
+    encoded = path.absolute().as_uri().encode('utf-8')
     connection = ctypes.c_void_p()
     # Private cache avoids sharing the destination's pager with other handles.
     code = api.sqlite3_open_v2(encoded, ctypes.byref(connection), flags | 0x40000 | 0x40, None)
@@ -192,6 +193,8 @@ def open_recovery_connection(path, timeout):
     3.11 returns NativeSQLiteConnection. Both support execute, setconfig,
     in_transaction, and close. Use in an isolated worker and close after use.
     """
+    if '\0' in os.fspath(path):
+        raise ValueError('embedded null byte')
     if hasattr(sqlite3.Connection, 'setconfig'):
         return sqlite3.connect(Path(path).absolute().as_uri() + '?mode=rw', uri=True,
                                isolation_level=None, timeout=timeout)

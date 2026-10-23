@@ -27,7 +27,12 @@ dynamic = ["version", "dependencies"]
 # Compatibility alias: tqdm is now installed with the base package.
 progress = []
 html = ["lxml>=4.9"]
-test = ["pytest>=7", "pytest-cov", "ruff", "lxml>=4.9"]
+test = ["pytest>=7", "pytest-cov>=7", "ruff", "lxml>=4.9"]
+
+[tool.coverage.run]
+# Recovery executes in a separate interpreter; include its actual execution
+# instead of reporting the already-tested worker as uncovered.
+patch = ["subprocess"]
 
 [tool.setuptools.dynamic]
 version = {attr = "datacache.version.__version__"}
