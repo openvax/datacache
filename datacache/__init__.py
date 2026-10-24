@@ -21,8 +21,10 @@ from .database_helpers import (
     db_from_dataframes,
     db_from_dataframes_with_absolute_path,
     fetch_csv_db,
-    connect_if_correct_version
+    connect_if_correct_version,
+    recover_cached_database,
 )
+from .sqlite_recovery import restore_database
 from .common import (
     ensure_dir,
     get_data_dir,
@@ -81,6 +83,8 @@ __all__ = [
     'db_from_dataframes_with_absolute_path',
     'fetch_csv_db',
     'connect_if_correct_version',
+    'recover_cached_database',
+    'restore_database',
     'ensure_dir',
     'get_data_dir',
     'get_cache_root',

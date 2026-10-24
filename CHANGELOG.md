@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.29.3
+
+- Allow explicit SQLite `overwrite=True` to recover corrupt or non-SQLite
+  caches from a privately built, validated replacement. Publish through SQLite
+  locks and a transaction while preserving the file's inode, links, permissions,
+  ACLs, and existing readers. Failed builds preserve the original bytes;
+  ordinary reads, version changes, and unrelated SQLite errors never trigger
+  corruption recovery (#132).
+- Expose documented `recover_cached_database`, `restore_database`, and
+  `datacache.sqlite_recovery` APIs. Recovery chooses a fresh schema cookie
+  independently of damaged headers and uses mapped snapshots/rollback across
+  Windows lock bytes, including caches larger than 1 GiB.
+- Invalidate reader page caches after a lost header, normalize corrupt vacuum
+  metadata, and validate the rebuilt destination before committing. Preserve
+  AUTOINCREMENT high-water marks and compatible UTF-8/UTF-16 text encodings.
+
 ## 1.29.2
 
 - Require Python 3.11 or newer, with package metadata and CI covering

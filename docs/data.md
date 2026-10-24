@@ -82,6 +82,39 @@ the tables. Ordinary cache hits and version rebuilds retain existing views.
 Rebuilds also handle virtual tables, such as SQLite FTS tables, whose internal
 shadow tables disappear automatically when the parent table is dropped.
 
+Before rebuilding an existing database, DataCache runs SQLite's `quick_check`
+so damaged pages cannot silently survive a rebuild. Matching cache hits do not
+run this scan. Explicit `overwrite=True` also recovers corrupt or non-SQLite
+cache files. DataCache builds a private replacement and runs `quick_check`,
+then copies its tables, rows, indexes, and version in one SQLite transaction.
+The original inode, links, permissions, and ACLs remain in place. Existing
+connections discard their cached schema and pages when they next read the
+committed replacement. Recovery preserves a readable destination text encoding
+and validates the rebuilt database before committing. A failed build leaves
+the corrupt file untouched; handled failures before commit restore its original
+bytes while holding SQLite's lock. Errors after commit leave the complete
+replacement installed; reopen and inspect the cache before deciding to retry.
+Ordinary reads and version changes never repair corruption. Lock, permission,
+and I/O errors are propagated rather than treated as corruption.
+Open WAL connections can prevent recovery's exclusive lock even between read
+transactions; close those connections before retrying a lock timeout.
+
+Recovery needs space beside the database for the staged replacement, a
+temporary snapshot of the original file, and SQLite's journal. Publication
+runs in a short-lived process using the current Python executable, so the
+runtime must allow child processes. On Python 3.11, it also needs an available
+SQLite library exposing the database-reset APIs; if these are unavailable,
+recovery fails without replacing the cache. Healthy database rebuilds continue
+to use the normal SQLite transaction in the calling process.
+
+Applications can also call the public
+[`recover_cached_database`](api.md#recover_cached_database) and
+[`restore_database`](api.md#restore_database) APIs directly. The
+[`datacache.sqlite_recovery` reference](sqlite-recovery.md) documents worker
+and file-copy APIs for integrations. File snapshots and rollback use bounded
+memory mappings so Windows databases larger than 1 GiB can cross SQLite's
+mandatory lock-byte range while the exclusive lock remains held.
+
 New databases are built in private sibling files, closed, and published using
 an atomic operation that cannot overwrite a concurrent creator. DataCache
 tries a hard link first. If hard links are unsupported, it tries an atomic

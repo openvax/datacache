@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.29.2. Import these names from `datacache`.
+public `Cache` method in DataCache 1.29.3. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -759,6 +759,11 @@ raises a `ValueError` that says so, while creating and reusing the database
 still work. See [reuse and replacement](data.md#reuse-and-replacement) for
 locking, symlink, and filesystem requirements.
 
+Explicit `overwrite=True` can also rebuild a corrupt or non-SQLite cache. It
+builds and validates a private replacement before restoring the existing file
+under SQLite's locks, preserving its inode, links, permissions, and ACLs.
+Reads and version changes alone never trigger corruption recovery.
+
 Table names must be nonempty strings, distinct ignoring the case of ASCII
 letters (as SQLite compares names), and must not be the reserved metadata name
 `_datacache_metadata` or start with `sqlite_`, in any case. They are checked
@@ -939,6 +944,53 @@ with closing(connection):
     assert connection.execute("SELECT COUNT(*) FROM records").fetchone() == (2,)
 assert dc.connect_if_correct_version(root / "absent.db", 1) is None
 ```
+
+### `recover_cached_database`
+
+```text
+recover_cached_database(db_path, tables, version=1, *, page_size=None, show_progress=False)
+```
+
+Explicitly replace an existing cache from an iterable of
+`datacache.database_table.DatabaseTable` objects. The target and its parent
+must already exist. The target may be healthy or corrupt; **all existing
+tables are replaced**. Input rows are consumed once into a temporary sibling
+database, which is validated before publication. `version` is an integer;
+optional `page_size` is a power of two from 512 through 65536. `None` uses
+SQLite's default. `show_progress=True` reports row counts.
+
+**Returns:** an open caller-owned `sqlite3.Connection` after successful
+publication. **Raises:** validation errors for invalid inputs, `sqlite3.Error`
+or `OSError` for build/publication failures, and `RuntimeError` when the recovery
+runtime is unavailable. Failed builds leave the previous cache untouched.
+See [SQLite recovery APIs](sqlite-recovery.md) for locking and rollback details.
+
+### `restore_database`
+
+```text
+restore_database(source, destination, *, timeout=5.0)
+```
+
+Replace an existing cache from a completed DataCache database at `source`.
+Both arguments are existing file paths and must refer to different files.
+Keep the source closed to writers throughout the call. The source's integrity
+and version record are checked before changing the destination. Ordinary
+tables, rows, constraints, indexes, AUTOINCREMENT high-water marks, and cache version are copied; unsupported
+source views, triggers, and virtual tables raise `ValueError` instead of being
+silently omitted. The destination may be healthy or corrupt.
+Recovery preserves a readable destination text encoding, converting the source
+when necessary; otherwise it uses the source encoding. The rebuilt destination
+passes `integrity_check` before commit.
+
+**Returns:** `None` after committing. **Raises:** `sqlite3.Error`, `OSError`,
+`ValueError`, or `RuntimeError` for an unavailable recovery runtime. `timeout`
+is SQLite's lock-wait time in seconds, not a limit on total copy time.
+Publication preserves the destination inode, permissions, and ACLs. It runs
+in an isolated process; cancellation waits for publication or rollback.
+Handled failures before commit restore the previous bytes; errors after commit
+leave the complete replacement installed. Open WAL connections can prevent the
+required exclusive lock even between read transactions.
+See [SQLite recovery APIs](sqlite-recovery.md) for the public worker interfaces.
 
 ## Cache object
 

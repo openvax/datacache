@@ -144,6 +144,56 @@ def _explain_rebuild_failure(db_path, error):
                 "%r file beside it. Use a shorter filename." % (name, name + "-journal")) from error
 
 
+def recover_cached_database(db_path, tables, version=1, *, page_size=None, show_progress=False):
+    """Explicitly replace an existing SQLite cache from DatabaseTable objects.
+
+    Build tables once in a temporary sibling database, validate the completed
+    build, then publish with restore_database. db_path may be healthy or corrupt;
+    all previous tables are replaced. Its parent and target must already exist.
+    version is an integer cache version. Optional page_size is a SQLite page
+    size (a power of two from 512 through 65536); None uses SQLite's default.
+    show_progress enables row counts. Return an owned sqlite3.Connection that
+    the caller must close. Build failures leave the existing file untouched;
+    publication preserves its inode, permissions, ACLs and SQLite locking.
+    """
+    from .sqlite_recovery import restore_database
+
+    db_path = os.fspath(db_path)
+    require_string(db_path, 'db_path')
+    db_path = _database_target_path(db_path)
+    if not stat.S_ISREG(os.stat(db_path).st_mode):
+        raise ValueError('database recovery requires an existing regular file')
+    tables = list(tables)
+    require_iterable_of(tables, DatabaseTable)
+    _validate_table_names([table.name for table in tables])
+    require_integer(version, 'version')
+    if page_size is not None:
+        require_integer(page_size, 'page_size')
+        if not 512 <= page_size <= 65536 or page_size & (page_size - 1):
+            raise ValueError('page_size must be a power of two from 512 through 65536')
+    staged_path = None
+    staged_db = None
+    try:
+        with _open_staging_file(directory=os.path.dirname(db_path) or '.', suffix='.db') as staged:
+            staged_path = staged.name
+        staged_db = Database(staged_path)
+        # Keep the replacement compatible with the destination's page size.
+        if page_size is not None:
+            staged_db.connection.execute('PRAGMA page_size=%d' % page_size)
+        staged_db.create(tables, version, show_progress=show_progress)
+        if staged_db.connection.execute('PRAGMA quick_check').fetchall() != [('ok',)]:
+            raise sqlite3.DatabaseError('replacement database failed SQLite quick_check')
+        staged_db.connection.close()
+        staged_db = None
+        restore_database(staged_path, db_path)
+        return Database(db_path, must_exist=True).connection
+    finally:
+        if staged_db is not None:
+            staged_db.connection.close()
+        if staged_path is not None:
+            _remove_staging_file(staged_path)
+
+
 def _create_cached_db(
         db_path,
         tables,
@@ -209,6 +259,7 @@ def _create_cached_db(
         return (not overwrite and db.has_tables(table_names) and
                 db.has_version() and db.version() == version)
 
+    preparing = True
     try:
         if reusable():
             logger.info("Found existing table in database %s", db_path)
@@ -219,20 +270,37 @@ def _create_cached_db(
                 with db.connection:
                     db.connection.execute("BEGIN IMMEDIATE")
                     if not reusable():
+                        # Dropping tables need not visit damaged data/freelist
+                        # pages. Detect corruption before consuming new rows,
+                        # including damage a rebuild could otherwise retain.
+                        if db.connection.execute('PRAGMA quick_check(1)').fetchall() != [('ok',)]:
+                            error = sqlite3.DatabaseError('existing cache failed SQLite quick_check')
+                            error.sqlite_errorcode = sqlite3.SQLITE_CORRUPT
+                            raise error
                         db.drop_all_tables(commit=False, include_views=overwrite)
                         logger.info("Creating database %s containing: %s", db_path, ", ".join(table_names))
+                        preparing = False
                         db.create(tables, version, show_progress=show_progress)
             except sqlite3.OperationalError as error:
                 if not _is_lock_error(error):
                     _explain_rebuild_failure(db_path, error)
                 raise
-    except BaseException:
+    except BaseException as error:
+        recover = (overwrite and preparing and isinstance(error, sqlite3.DatabaseError) and
+                   (getattr(error, 'sqlite_errorcode', 0) & 255) in (sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB))
+        try:
+            db.connection.rollback()
+            if recover:
+                page_size = db.connection.execute('PRAGMA page_size').fetchone()[0]
+        finally:
+            db.connection.close()
+        if recover:
+            logger.info('Rebuilding corrupt database %s from a complete staged replacement', db_path)
+            return recover_cached_database(db_path, tables, version, page_size=page_size, show_progress=show_progress)
         logger.warning(
             "Failed to create tables %s in database %s",
             table_names,
             db_path)
-        db.connection.rollback()
-        db.connection.close()
         raise
     return db.connection
 
@@ -283,6 +351,8 @@ def db_from_dataframes_with_absolute_path(
     Return an open connection owned by the caller. The parent directory must
     already exist. Rebuilds, including overwrite=True, roll back on failure;
     existing databases are not unlinked. show_progress enables tqdm row counts.
+    Explicit overwrite can recover corrupt files through a staged replacement;
+    ordinary reads and version changes do not repair corruption.
 
     Parameters
     ----------
