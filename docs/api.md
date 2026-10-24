@@ -975,15 +975,21 @@ Replace an existing cache from a completed DataCache database at `source`.
 Both arguments are existing file paths and must refer to different files.
 Keep the source closed to writers throughout the call. The source's integrity
 and version record are checked before changing the destination. Ordinary
-tables, rows, constraints, indexes, and cache version are copied; unsupported
+tables, rows, constraints, indexes, AUTOINCREMENT high-water marks, and cache version are copied; unsupported
 source views, triggers, and virtual tables raise `ValueError` instead of being
 silently omitted. The destination may be healthy or corrupt.
+Recovery preserves a readable destination text encoding, converting the source
+when necessary; otherwise it uses the source encoding. The rebuilt destination
+passes `integrity_check` before commit.
 
 **Returns:** `None` after committing. **Raises:** `sqlite3.Error`, `OSError`,
 `ValueError`, or `RuntimeError` for an unavailable recovery runtime. `timeout`
 is SQLite's lock-wait time in seconds, not a limit on total copy time.
 Publication preserves the destination inode, permissions, and ACLs. It runs
 in an isolated process; cancellation waits for publication or rollback.
+Handled failures before commit restore the previous bytes; errors after commit
+leave the complete replacement installed. Open WAL connections can prevent the
+required exclusive lock even between read transactions.
 See [SQLite recovery APIs](sqlite-recovery.md) for the public worker interfaces.
 
 ## Cache object

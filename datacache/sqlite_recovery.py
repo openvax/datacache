@@ -12,7 +12,7 @@ integrators build isolated workers; see docs/sqlite-recovery.md for contracts.
 
 import ctypes
 import ctypes.util
-from contextlib import closing
+from contextlib import closing, contextmanager, ExitStack
 from functools import lru_cache
 import json
 import mmap
@@ -31,6 +31,7 @@ __all__ = [
     'open_recovery_connection', 'NativeSQLiteConnection', 'SQLiteRows',
     'execute_sql', 'read_schema_version', 'load_sqlite_api',
     'check_sqlite_result', 'open_native_database',
+    'read_database_schema', 'database_with_encoding', 'publish_change_counter', 'notify_wal_readers',
 ]
 
 
@@ -244,21 +245,15 @@ def copy_file_contents(source, destination):
                 output.flush()
 
 
-def restore_database_in_process(source, destination, *, timeout=5.0):
-    """Copy a complete staged database in one destination write transaction.
+def read_database_schema(source):
+    """Validate a complete DataCache source and describe its schema.
 
-    RESET_DATABASE permits opening the corrupt b-tree as an empty one without
-    committing an empty database. Set a fresh schema cookie before the same
-    commit so pre-existing readers discard their old schema cache. Exclusive
-    locking retains the lock through rollback/cleanup too.
-
-    The arguments and result match restore_database. Call this only in a
-    dedicated process without other connections to either path; normal
-    applications should use restore_database for automatic process isolation.
+    Return (schema, encoding, has_sequence), where schema contains (type, name,
+    create_sql) tuples ordered with tables before indexes, encoding is SQLite's
+    canonical encoding name, and has_sequence indicates sqlite_sequence.
+    Source must remain stable throughout recovery. Invalid/incomplete caches
+    and unsupported source objects raise sqlite3.Error or ValueError.
     """
-    if os.path.samefile(source, destination):
-        raise ValueError('source and destination must be different files')
-    # Read only the schema into Python; rows stay in SQLite's bounded cache.
     with closing(sqlite3.connect(Path(source).absolute().as_uri() + '?mode=ro', uri=True)) as staged:
         if staged.execute('PRAGMA quick_check').fetchall() != [('ok',)]:
             raise sqlite3.DatabaseError('source database failed SQLite quick_check')
@@ -271,7 +266,121 @@ def restore_database_in_process(source, destination, *, timeout=5.0):
         schema = staged.execute("SELECT type, name, sql FROM sqlite_master "
                                 "WHERE type IN ('table', 'index') AND sql IS NOT NULL "
                                 "AND name NOT GLOB 'sqlite_*' ORDER BY type DESC, name").fetchall()
-    connection = original = saved = old_version = None
+        encoding = staged.execute('PRAGMA encoding').fetchone()[0]
+        has_sequence = staged.execute("SELECT 1 FROM sqlite_master WHERE name='sqlite_sequence'").fetchone() is not None
+    return schema, encoding, has_sequence
+
+
+@contextmanager
+def database_with_encoding(source, encoding, *, directory=None):
+    """Yield a stable source path compatible with the requested SQLite encoding.
+
+    Source must already be validated by read_database_schema and remain closed
+    to writers. Matching encodings reuse source. Otherwise create a temporary
+    complete copy using bounded row batches, preserving values, constraints,
+    indexes and AUTOINCREMENT state. The copy is deleted on context exit, so
+    close all attached connections first. directory chooses temporary storage.
+    """
+    if encoding not in ('UTF-8', 'UTF-16le', 'UTF-16be'):
+        raise ValueError('unsupported SQLite text encoding')
+    with closing(sqlite3.connect(Path(source).absolute().as_uri() + '?mode=ro', uri=True)) as reader:
+        source_encoding = reader.execute('PRAGMA encoding').fetchone()[0]
+        if source_encoding == encoding:
+            # Close this Python connection before the native adapter attaches
+            # the same file; never mix their descriptor bookkeeping.
+            reader.close()
+            yield os.fspath(source)
+            return
+        schema, unused_encoding, has_sequence = read_database_schema(source)
+        with tempfile.TemporaryDirectory(dir=directory) as temporary:
+            path = os.path.join(temporary, 'encoded.db')
+            with closing(sqlite3.connect(path)) as converted:
+                converted.execute("PRAGMA encoding='%s'" % encoding)
+                with converted:
+                    converted.execute('BEGIN')
+                    for kind, name, sql in schema:
+                        converted.execute(sql)
+                        if kind == 'table':
+                            quoted = '"' + name.replace('"', '""') + '"'
+                            rows = reader.execute('SELECT * FROM ' + quoted)
+                            insert = 'INSERT INTO %s VALUES(%s)' % (quoted, ','.join('?' for column in rows.description))
+                            while batch := rows.fetchmany(1000):
+                                converted.executemany(insert, batch)
+                    if has_sequence and converted.execute(
+                            "SELECT 1 FROM sqlite_master WHERE name='sqlite_sequence'").fetchone():
+                        converted.execute('DELETE FROM sqlite_sequence')
+                        converted.executemany('INSERT INTO sqlite_sequence(name,seq) VALUES(?,?)',
+                                              reader.execute('SELECT name,seq FROM sqlite_sequence'))
+                    if converted.execute('PRAGMA integrity_check').fetchone() != ('ok',):
+                        raise sqlite3.DatabaseError('encoded source failed SQLite integrity_check')
+            reader.close()
+            yield path
+
+
+def publish_change_counter(connection, database_file, *, wal=False):
+    """Invalidate other readers' page caches after a recovery commit.
+
+    Caller must retain SQLite's exclusive lock, have no active transaction,
+    and close connection before database_file. wal=True retains an earlier WAL
+    installation after header loss; call notify_wal_readers after closing this
+    connection to refresh its shared reader state. Checkpoint any WAL, then publish
+    a fresh file-change counter and matching version-valid-for field through
+    a flushed header mapping. Return the counter. Do not perform further SQL
+    writes with this connection. Errors propagate; committed data stays intact.
+    """
+    if connection.in_transaction:
+        raise ValueError('change counter publication requires a completed transaction')
+    if wal:
+        if connection.execute('PRAGMA main.journal_mode=WAL').fetchone()[0].lower() != 'wal':
+            raise sqlite3.OperationalError('could not restore WAL mode after recovery')
+        execute_sql(connection, 'PRAGMA main.schema_version=%d' % read_schema_version(connection))
+    checkpoint = connection.execute('PRAGMA wal_checkpoint(TRUNCATE)').fetchone()
+    if int(checkpoint[0]) != 0:
+        raise sqlite3.OperationalError('database is locked during recovery checkpoint')
+    with mmap.mmap(database_file.fileno(), 100, access=mmap.ACCESS_WRITE) as header:
+        if header[:16] != b'SQLite format 3\0':
+            raise sqlite3.DatabaseError('recovered database has an invalid header')
+        previous = int.from_bytes(header[24:28], 'big')
+        counter = 0x40000000 | secrets.randbits(30)
+        while counter == previous:
+            counter = 0x40000000 | secrets.randbits(30)
+        header[24:28] = header[92:96] = counter.to_bytes(4, 'big')
+        header.flush()
+    os.fsync(database_file.fileno())
+    return counter
+
+
+def notify_wal_readers(destination, *, timeout=5.0):
+    """Refresh WAL's shared reader state after an exclusive recovery worker closes.
+
+    Exclusive-locking SQLite can use a private WAL index. A normal connection
+    must publish a page-one frame through the shared index for existing readers.
+    Serialize with other writers and rewrite only the current user_version to
+    its existing value; preserve any intervening writer's complete cache.
+    Return None, propagating SQLite errors. No other worker handles may remain.
+    """
+    with closing(sqlite3.connect(Path(destination).absolute().as_uri() + '?mode=rw',
+                                 uri=True, isolation_level=None, timeout=timeout)) as connection:
+        with connection:
+            connection.execute('BEGIN IMMEDIATE')
+            version = connection.execute('PRAGMA user_version').fetchone()[0]
+            connection.execute('PRAGMA user_version=%d' % version)
+
+
+def restore_database_in_process(source, destination, *, timeout=5.0):
+    """Copy a complete staged database while retaining SQLite's exclusive lock.
+
+    The arguments and result match restore_database. Call this only in a
+    dedicated process without other connections to either path; normal
+    applications should use restore_database for automatic process isolation.
+    Tables, sequence state and a fresh schema cookie commit together. A fresh
+    pager change counter is published before releasing the exclusive lock.
+    """
+    if os.path.samefile(source, destination):
+        raise ValueError('source and destination must be different files')
+    schema, source_encoding, has_sequence = read_database_schema(source)
+    connection = original = saved = old_version = old_encoding = None
+    resources = ExitStack()
     completed = commit_attempted = snapshot_ready = False
     try:
         original = open(destination, 'r+b', buffering=0)
@@ -279,6 +388,10 @@ def restore_database_in_process(source, destination, *, timeout=5.0):
         if not stat.S_ISREG(os.fstat(descriptor).st_mode):
             raise ValueError('database recovery requires an existing regular file')
         connection = open_recovery_connection(destination, timeout)
+        # Keep existing WAL descriptors valid, including readers attached to
+        # the original shared-memory index while this worker uses private WAL
+        # state under exclusive locking. Checkpoint explicitly after commit.
+        connection.setconfig(1006, True)  # SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE
         # Some platform SQLite builds enable DEFENSIVE by default, silently
         # ignoring schema_version writes. This private recovery connection
         # must be able to invalidate other readers' old schema caches.
@@ -289,6 +402,7 @@ def restore_database_in_process(source, destination, *, timeout=5.0):
         try:
             execute_sql(connection, 'BEGIN EXCLUSIVE')
             old_version = read_schema_version(connection)
+            old_encoding = connection.execute('PRAGMA encoding').fetchone()[0]
         except sqlite3.DatabaseError as error:
             if (error.sqlite_errorcode & 255) not in (sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB):
                 raise
@@ -296,6 +410,10 @@ def restore_database_in_process(source, destination, *, timeout=5.0):
             if connection.in_transaction:
                 execute_sql(connection, 'ROLLBACK')
         connection.setconfig(1009, True)  # SQLITE_DBCONFIG_RESET_DATABASE
+        # Reset inherited incremental-vacuum state before newDatabase creates
+        # its header. Setting NONE also clears a stray incremental flag when
+        # the old file has no pointer-map pages.
+        execute_sql(connection, 'PRAGMA auto_vacuum=NONE')
         execute_sql(connection, 'BEGIN EXCLUSIVE')
         # The main b-tree is now reset inside the uncommitted transaction.
         # Disable the flag before attaching the valid replacement database.
@@ -310,6 +428,15 @@ def restore_database_in_process(source, destination, *, timeout=5.0):
         saved = tempfile.TemporaryFile(dir=os.path.dirname(destination) or '.')
         copy_file_contents(original, saved)
         snapshot_ready = True
+        saved.seek(18)
+        was_wal = saved.read(2) == b'\x02\x02' or os.path.exists(os.fspath(destination) + '-wal')
+        if old_encoding is None:
+            saved.seek(56)
+            old_encoding = {1: 'UTF-8', 2: 'UTF-16le', 3: 'UTF-16be'}.get(
+                int.from_bytes(saved.read(4), 'big'), source_encoding)
+        execute_sql(connection, "PRAGMA encoding='%s'" % old_encoding)
+        source = resources.enter_context(database_with_encoding(
+            source, old_encoding, directory=os.path.dirname(destination) or '.'))
         # Even a readable cookie may be corrupt. Incrementing it could recreate
         # a value cached by an existing reader. Choose a fresh high-range nonce
         # independently of the header, excluding its currently readable value.
@@ -324,12 +451,19 @@ def restore_database_in_process(source, destination, *, timeout=5.0):
             if kind == 'table':
                 quoted = '"' + name.replace('"', '""') + '"'
                 execute_sql(connection, 'INSERT INTO main.%s SELECT * FROM replacement.%s' % (quoted, quoted))
+        if has_sequence and connection.execute(
+                "SELECT 1 FROM main.sqlite_master WHERE name='sqlite_sequence'").fetchone():
+            execute_sql(connection, 'DELETE FROM main.sqlite_sequence')
+            execute_sql(connection, 'INSERT INTO main.sqlite_sequence(name,seq) SELECT name,seq FROM replacement.sqlite_sequence')
         execute_sql(connection, 'PRAGMA main.schema_version=%d' % new_version)
         if read_schema_version(connection) != new_version:
             raise sqlite3.DatabaseError('SQLite did not update the replacement schema version')
+        if connection.execute('PRAGMA main.integrity_check').fetchone() != ('ok',):
+            raise sqlite3.DatabaseError('replacement database failed SQLite integrity_check')
         commit_attempted = True
         execute_sql(connection, 'COMMIT')
         completed = True
+        publish_change_counter(connection, original, wal=was_wal)
     finally:
         try:
             if connection and connection.in_transaction:
@@ -351,6 +485,9 @@ def restore_database_in_process(source, destination, *, timeout=5.0):
                 original.close()
             if saved is not None:
                 saved.close()
+            resources.close()
+    if was_wal:
+        notify_wal_readers(destination, timeout=timeout)
 
 
 def restore_database(source, destination, *, timeout=5.0):
@@ -360,14 +497,19 @@ def restore_database(source, destination, *, timeout=5.0):
     must be a completed DataCache cache of ordinary tables/indexes, closed to
     writers for the duration of this call. Its integrity and version record
     are checked before destination changes. All tables, rows, constraints,
-    indexes and the source's DataCache version are copied. Unsupported source
-    objects are rejected rather than silently omitted.
+    indexes, AUTOINCREMENT high-water marks and the source's DataCache version
+    are copied. Preserve a readable destination encoding, converting source
+    values when necessary; otherwise use the source encoding. Unsupported
+    source objects are rejected rather than silently omitted.
 
     Return None after committing the replacement. Destination may be healthy
     or corrupt; its previous schema is replaced, while its inode, permissions
     and ACLs survive. SQLite locks serialize writers; timeout is lock-wait
-    seconds. Handled publication failures restore the previous bytes. A child
-    process performs publication, and cancellation waits for it to finish.
+    seconds. Open WAL readers can prevent exclusive access even between read
+    transactions. Validate the rebuilt destination before committing. Handled
+    failures before commit restore previous bytes; errors after commit leave
+    the complete replacement installed. A child process performs publication,
+    and cancellation waits for it to finish.
     sqlite3 and OS errors propagate; unavailable recovery APIs raise RuntimeError.
     """
     command = [sys.executable, os.path.abspath(__file__), os.fspath(source), os.fspath(destination), str(timeout)]

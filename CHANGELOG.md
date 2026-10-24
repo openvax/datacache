@@ -12,6 +12,9 @@
   `datacache.sqlite_recovery` APIs. Recovery chooses a fresh schema cookie
   independently of damaged headers and uses mapped snapshots/rollback across
   Windows lock bytes, including caches larger than 1 GiB.
+- Invalidate reader page caches after a lost header, normalize corrupt vacuum
+  metadata, and validate the rebuilt destination before committing. Preserve
+  AUTOINCREMENT high-water marks and compatible UTF-8/UTF-16 text encodings.
 
 ## 1.29.2
 

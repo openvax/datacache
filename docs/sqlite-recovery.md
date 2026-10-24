@@ -31,9 +31,21 @@ with TemporaryDirectory() as directory:
 Recovery validates the complete replacement before publishing. SQLite's locks
 protect the destination throughout publication and rollback. An existing
 complete cache, including a concurrent writer's completed replacement, remains
-usable if publication fails. Corrupt or incomplete source databases are rejected;
+usable if publication fails before commit. Errors after commit leave the complete
+replacement installed; reopen and inspect its version before retrying. Corrupt or incomplete source databases are rejected;
 they are not copied over a complete cache. Normal matching-cache reuse still
 returns the complete cached data without consuming replacement inputs.
+
+The rebuilt destination passes `integrity_check` before commit. Recovery resets
+corrupt vacuum metadata, retains AUTOINCREMENT high-water marks, and preserves a
+readable destination text encoding. A temporary converted source makes UTF-8
+and UTF-16 replacements compatible; if the destination encoding is lost, the
+source encoding is used; readers that cached a different encoding must reopen.
+Fresh schema and pager counters invalidate existing
+readers, including when the original header is gone. WAL recovery also refreshes
+the shared reader state. Intact WAL installations can prevent exclusive access
+while other connections remain open, even between transactions; a lock timeout
+leaves the cache unchanged. Close those connections before retrying.
 
 Snapshots use bounded memory mappings, which
 [Windows allows across locked byte ranges](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-lockfileex#remarks).
@@ -66,6 +78,54 @@ Call it only in a dedicated process with no other connections to either path.
 In particular, independently linked SQLite libraries must not manage the
 same files in one process: closing one library's descriptors can release the
 other library's POSIX locks. Use `restore_database` unless you own that isolation.
+
+### `read_database_schema`
+
+`read_database_schema(source)` validates a completed DataCache source using
+`quick_check` and its single integer version record. It returns
+`(schema, encoding, has_sequence)`: ordered `(type, name, create_sql)` tuples for
+ordinary tables and indexes, SQLite's canonical encoding name, and a boolean
+indicating `sqlite_sequence`. Views, triggers, and virtual tables are rejected.
+Invalid sources raise `sqlite3.Error` or `ValueError`. Keep the source stable
+until publication finishes.
+
+### `database_with_encoding`
+
+`database_with_encoding(source, encoding, *, directory=None)` is a context manager
+yielding a stable source path. Validate the source with `read_database_schema`
+first and keep it closed to writers. `encoding` must be `UTF-8`, `UTF-16le`, or
+`UTF-16be`; other values raise `ValueError`. Matching encodings reuse the source.
+Otherwise a temporary copy preserves table values, constraints, indexes, and
+AUTOINCREMENT sequence state, transferring rows in batches of at most 1,000.
+`directory` selects temporary storage; `None` uses the system default. Close all
+connections that attach the yielded database before leaving the context, which
+deletes any temporary copy. SQLite and filesystem errors propagate.
+
+### `publish_change_counter`
+
+`publish_change_counter(connection, database_file, *, wal=False)` publishes a
+fresh pager change counter after a committed recovery transaction and returns
+it as an integer. The caller must retain SQLite's exclusive lock and supply an
+open readable/writable file handle for the same destination. Active transactions
+raise `ValueError`. The function checkpoints any WAL and updates both the file
+change counter and its matching version-valid-for field through a flushed,
+synchronized header mapping. No further SQL writes may use this connection.
+Close it before closing `database_file`. SQLite and I/O errors propagate; the
+already committed replacement remains intact.
+
+With `wal=True`, restore the WAL mode lost with a damaged header. The connection
+must have `SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE` enabled so existing WAL file handles
+remain valid. After closing all worker handles, call `notify_wal_readers`.
+
+### `notify_wal_readers`
+
+`notify_wal_readers(destination, *, timeout=5.0)` opens a normal SQLite connection
+and writes a page-one frame through the shared WAL index. Exclusive recovery
+can use a private WAL index, so this step notifies existing readers after the
+exclusive worker connection closes. It holds a write transaction and rewrites
+the current `user_version` to the same value, preserving any completed intervening
+writer's data and metadata. No other worker handles may remain open. Returns
+`None`; `timeout` is lock-wait seconds, and SQLite errors propagate.
 
 ### `copy_file_contents`
 

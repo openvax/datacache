@@ -88,11 +88,16 @@ run this scan. Explicit `overwrite=True` also recovers corrupt or non-SQLite
 cache files. DataCache builds a private replacement and runs `quick_check`,
 then copies its tables, rows, indexes, and version in one SQLite transaction.
 The original inode, links, permissions, and ACLs remain in place. Existing
-connections discard their cached schema when they next read the committed
-replacement. A failed build leaves the corrupt file untouched; handled
-publication failures restore its original bytes while holding SQLite's lock.
+connections discard their cached schema and pages when they next read the
+committed replacement. Recovery preserves a readable destination text encoding
+and validates the rebuilt database before committing. A failed build leaves
+the corrupt file untouched; handled failures before commit restore its original
+bytes while holding SQLite's lock. Errors after commit leave the complete
+replacement installed; reopen and inspect the cache before deciding to retry.
 Ordinary reads and version changes never repair corruption. Lock, permission,
 and I/O errors are propagated rather than treated as corruption.
+Open WAL connections can prevent recovery's exclusive lock even between read
+transactions; close those connections before retrying a lock timeout.
 
 Recovery needs space beside the database for the staged replacement, a
 temporary snapshot of the original file, and SQLite's journal. Publication
