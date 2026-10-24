@@ -1,6 +1,7 @@
 """Retain SQLite metadata and invalidate both schema and pager caches."""
 
-from contextlib import closing
+from contextlib import closing, nullcontext
+import os
 from pathlib import Path
 import sqlite3
 
@@ -20,12 +21,21 @@ def test_lost_header_invalidates_single_transaction_readers(tmp_path, journal):
         reader.execute('PRAGMA journal_mode=' + journal)
         assert reader.execute('SELECT * FROM old').fetchall() == [(1,)]
         path.write_bytes(b'broken')
+        reopen = os.name == 'nt' and journal == 'WAL'
+        if reopen:
+            # Windows retains the WAL reader's locks after raw corruption;
+            # POSIX closes above release the process's database file locks.
+            with pytest.raises(sqlite3.OperationalError, match='locked'):
+                db_from_dataframe(path, 'fresh', pd.DataFrame({'id': [42]}), overwrite=True)
+            assert path.read_bytes() == b'broken'
+            reader.close()
         with closing(db_from_dataframe(path, 'fresh', pd.DataFrame({'id': [42]}), overwrite=True)) as connection:
             assert connection.execute('PRAGMA page_count').fetchone()[0] == before_pages
             assert connection.execute('PRAGMA integrity_check').fetchall() == [('ok',)]
-        assert reader.execute('SELECT * FROM fresh').fetchall() == [(42,)]
-        with pytest.raises(sqlite3.OperationalError, match='no such table'):
-            reader.execute('SELECT * FROM old').fetchall()
+            observer = connection if reopen else reader
+            assert observer.execute('SELECT * FROM fresh').fetchall() == [(42,)]
+            with pytest.raises(sqlite3.OperationalError, match='no such table'):
+                observer.execute('SELECT * FROM old').fetchall()
 
 
 @pytest.mark.parametrize('auto_vacuum', [0, 1, 2])
@@ -100,16 +110,23 @@ def test_recovery_preserves_text_encoding_and_unicode(tmp_path, encoding, operat
         else:
             raw[100] = 0xff
             destination.write_bytes(raw)
+        reopen = os.name == 'nt' and journal == 'WAL'
+        if reopen:
+            with pytest.raises(sqlite3.OperationalError, match='locked'):
+                restore_database(source, destination, timeout=0.05)
+            assert destination.read_bytes() == b'broken'
+            reader.close()
         if operation == 'builder':
             with closing(db_from_dataframe(destination, 'records', pd.DataFrame({'value': [text]}), overwrite=True)):
                 pass
         else:
             restore_database(source, destination)
-        assert reader.execute('PRAGMA encoding').fetchone() == (encoding,)
-        assert reader.execute('SELECT value FROM records').fetchall() == [(text,)]
-        if operation != 'builder':
-            assert reader.execute('SELECT payload FROM records').fetchone() == (b'\x00\xff',)
-        assert reader.execute('PRAGMA integrity_check').fetchall() == [('ok',)]
+        with closing(sqlite3.connect(destination)) if reopen else nullcontext(reader) as observer:
+            assert observer.execute('PRAGMA encoding').fetchone() == (encoding,)
+            assert observer.execute('SELECT value FROM records').fetchall() == [(text,)]
+            if operation != 'builder':
+                assert observer.execute('SELECT payload FROM records').fetchone() == (b'\x00\xff',)
+            assert observer.execute('PRAGMA integrity_check').fetchall() == [('ok',)]
 
 
 def test_restore_respects_existing_wal_reader_locks(tmp_path):

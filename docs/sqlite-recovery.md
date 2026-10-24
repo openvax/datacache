@@ -43,7 +43,7 @@ and UTF-16 replacements compatible; if the destination encoding is lost, the
 source encoding is used; readers that cached a different encoding must reopen.
 Fresh schema and pager counters invalidate existing
 readers, including when the original header is gone. WAL recovery also refreshes
-the shared reader state. Intact WAL installations can prevent exclusive access
+the shared reader state. WAL connections can prevent exclusive access
 while other connections remain open, even between transactions; a lock timeout
 leaves the cache unchanged. Close those connections before retrying.
 
