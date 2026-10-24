@@ -1,0 +1,1637 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Download, verify and reuse datasets for Python applications">
+      
+      
+      
+        <link rel="canonical" href="https://openvax.github.io/datacache/sqlite-recovery/">
+      
+      
+        <link rel="prev" href="../api/">
+      
+      
+        <link rel="next" href="../dev/documentation-style/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>SQLite recovery APIs - datacache</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/docs.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="white" data-md-color-accent="blue">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#sqlite-recovery-apis" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="datacache" class="md-header__button md-logo" aria-label="datacache" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            datacache
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              SQLite recovery APIs
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/openvax/datacache" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    openvax/datacache
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="datacache" class="md-nav__button md-logo" aria-label="datacache" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    datacache
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/openvax/datacache" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    openvax/datacache
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Common tasks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Common tasks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../downloads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Download and inspect files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Read tables and build SQLite caches
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../shared-caches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Share a cache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../progress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Report progress
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versioned datasets
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Versioned datasets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bundles/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install bundles
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../archives/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install archive trees
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../zip-members/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fetch individual ZIP members
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../materialization/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Build derived files
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../file_registry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Keep files at fixed paths
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../integration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Integrate a consuming library
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/choosing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Choose an interface
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQLite recovery APIs
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SQLite recovery APIs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#worker-interfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worker interfaces
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Worker interfaces">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#restore_database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        restore_database
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#restore_database_in_process" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        restore_database_in_process
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read_database_schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_database_schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#database_with_encoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        database_with_encoding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#publish_change_counter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        publish_change_counter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notify_wal_readers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        notify_wal_readers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#copy_file_contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        copy_file_contents
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#open_recovery_connection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        open_recovery_connection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nativesqliteconnection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NativeSQLiteConnection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sqliterows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SQLiteRows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#execute_sql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        execute_sql
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read_schema_version" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_schema_version
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#load_sqlite_api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        load_sqlite_api
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#open_native_database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        open_native_database
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check_sqlite_result" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        check_sqlite_result
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/openvax/datacache/blob/master/CHANGELOG.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dev/documentation-style/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentation style
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#worker-interfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Worker interfaces
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Worker interfaces">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#restore_database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        restore_database
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#restore_database_in_process" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        restore_database_in_process
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read_database_schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_database_schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#database_with_encoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        database_with_encoding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#publish_change_counter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        publish_change_counter
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notify_wal_readers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        notify_wal_readers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#copy_file_contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        copy_file_contents
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#open_recovery_connection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        open_recovery_connection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nativesqliteconnection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NativeSQLiteConnection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sqliterows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SQLiteRows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#execute_sql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        execute_sql
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read_schema_version" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        read_schema_version
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#load_sqlite_api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        load_sqlite_api
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#open_native_database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        open_native_database
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#check_sqlite_result" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        check_sqlite_result
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="sqlite-recovery-apis">SQLite recovery APIs<a class="headerlink" href="#sqlite-recovery-apis" title="Permanent link">&para;</a></h1>
+<p>Use <code>overwrite=True</code> on a database builder to recover a corrupt cache from
+source data. For direct control, import <code>recover_cached_database</code> or
+<code>restore_database</code> from <code>datacache</code>; their parameters, return values, and
+exceptions are in the <a href="../api/#recover_cached_database">API reference</a>.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">closing</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tempfile</span><span class="w"> </span><span class="kn">import</span> <span class="n">TemporaryDirectory</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">datacache</span><span class="w"> </span><span class="kn">import</span> <span class="n">db_from_dataframe</span><span class="p">,</span> <span class="n">restore_database</span>
+
+<span class="k">with</span> <span class="n">TemporaryDirectory</span><span class="p">()</span> <span class="k">as</span> <span class="n">directory</span><span class="p">:</span>
+    <span class="n">source</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">directory</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"complete.db"</span>
+    <span class="n">destination</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">directory</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"broken.db"</span>
+    <span class="k">with</span> <span class="n">closing</span><span class="p">(</span><span class="n">db_from_dataframe</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="s2">"records"</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"id"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]}))):</span>
+        <span class="k">pass</span>
+    <span class="n">destination</span><span class="o">.</span><span class="n">write_bytes</span><span class="p">(</span><span class="sa">b</span><span class="s2">"not a SQLite database"</span><span class="p">)</span>
+    <span class="n">restore_database</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">destination</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">closing</span><span class="p">(</span><span class="n">db_from_dataframe</span><span class="p">(</span><span class="n">destination</span><span class="p">,</span> <span class="s2">"records"</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span> <span class="k">as</span> <span class="n">connection</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">connection</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="s2">"SELECT id FROM records ORDER BY id"</span><span class="p">)</span><span class="o">.</span><span class="n">fetchall</span><span class="p">())</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>[(1,), (2,)]
+</code></pre></div>
+<p>Recovery validates the complete replacement before publishing. SQLite's locks
+protect the destination throughout publication and rollback. An existing
+complete cache, including a concurrent writer's completed replacement, remains
+usable if publication fails before commit. Errors after commit leave the complete
+replacement installed; reopen and inspect its version before retrying. Corrupt or incomplete source databases are rejected;
+they are not copied over a complete cache. Normal matching-cache reuse still
+returns the complete cached data without consuming replacement inputs.</p>
+<p>The rebuilt destination passes <code>integrity_check</code> before commit. Recovery resets
+corrupt vacuum metadata, retains AUTOINCREMENT high-water marks, and preserves a
+readable destination text encoding. A temporary converted source makes UTF-8
+and UTF-16 replacements compatible; if the destination encoding is lost, the
+source encoding is used; readers that cached a different encoding must reopen.
+Fresh schema and pager counters invalidate existing
+readers, including when the original header is gone. WAL recovery also refreshes
+the shared reader state. WAL connections can prevent exclusive access
+while other connections remain open, even between transactions; a lock timeout
+leaves the cache unchanged. Close those connections before retrying.</p>
+<p>Snapshots use bounded memory mappings, which
+<a href="https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-lockfileex#remarks">Windows allows across locked byte ranges</a>.
+This preserves file contents during handled publication failures without raw
+reads or writes through a second handle at SQLite's 1 GiB lock boundary. All
+mappings close before SQLite continues. Recovery needs disk space for staging,
+the original-file snapshot, and the SQLite journal. Process termination,
+power loss, or storage failure during rollback is outside the handled-failure
+guarantee; do not treat an error as a successfully installed cache.</p>
+<h2 id="worker-interfaces">Worker interfaces<a class="headerlink" href="#worker-interfaces" title="Permanent link">&para;</a></h2>
+<p>All APIs below are public imports from <code>datacache.sqlite_recovery</code>. Applications
+normally need <code>restore_database</code>, which creates and waits for the worker. The
+lower-level interfaces are for integrations that own their worker lifecycle.
+They are documented here rather than hidden behind underscored helper names.</p>
+<h3 id="restore_database"><code>restore_database</code><a class="headerlink" href="#restore_database" title="Permanent link">&para;</a></h3>
+<p><code>restore_database(source, destination, *, timeout=5.0)</code> is the same callable
+exported from <code>datacache</code>. It returns <code>None</code> after publication and propagates
+the worker's exception on failure. The source must remain stable until the
+call returns, including while cancellation waits for the worker to finish.</p>
+<h3 id="restore_database_in_process"><code>restore_database_in_process</code><a class="headerlink" href="#restore_database_in_process" title="Permanent link">&para;</a></h3>
+<p><code>restore_database_in_process(source, destination, *, timeout=5.0)</code> performs the
+same validated copy and returns <code>None</code>, without starting a child process.
+Call it only in a dedicated process with no other connections to either path.
+In particular, independently linked SQLite libraries must not manage the
+same files in one process: closing one library's descriptors can release the
+other library's POSIX locks. Use <code>restore_database</code> unless you own that isolation.</p>
+<h3 id="read_database_schema"><code>read_database_schema</code><a class="headerlink" href="#read_database_schema" title="Permanent link">&para;</a></h3>
+<p><code>read_database_schema(source)</code> validates a completed DataCache source using
+<code>quick_check</code> and its single integer version record. It returns
+<code>(schema, encoding, has_sequence)</code>: ordered <code>(type, name, create_sql)</code> tuples for
+ordinary tables and indexes, SQLite's canonical encoding name, and a boolean
+indicating <code>sqlite_sequence</code>. Views, triggers, and virtual tables are rejected.
+Invalid sources raise <code>sqlite3.Error</code> or <code>ValueError</code>. Keep the source stable
+until publication finishes.</p>
+<h3 id="database_with_encoding"><code>database_with_encoding</code><a class="headerlink" href="#database_with_encoding" title="Permanent link">&para;</a></h3>
+<p><code>database_with_encoding(source, encoding, *, directory=None)</code> is a context manager
+yielding a stable source path. Validate the source with <code>read_database_schema</code>
+first and keep it closed to writers. <code>encoding</code> must be <code>UTF-8</code>, <code>UTF-16le</code>, or
+<code>UTF-16be</code>; other values raise <code>ValueError</code>. Matching encodings reuse the source.
+Otherwise a temporary copy preserves table values, constraints, indexes, and
+AUTOINCREMENT sequence state, transferring rows in batches of at most 1,000.
+<code>directory</code> selects temporary storage; <code>None</code> uses the system default. Close all
+connections that attach the yielded database before leaving the context, which
+deletes any temporary copy. SQLite and filesystem errors propagate.</p>
+<h3 id="publish_change_counter"><code>publish_change_counter</code><a class="headerlink" href="#publish_change_counter" title="Permanent link">&para;</a></h3>
+<p><code>publish_change_counter(connection, database_file, *, wal=False)</code> publishes a
+fresh pager change counter after a committed recovery transaction and returns
+it as an integer. The caller must retain SQLite's exclusive lock and supply an
+open readable/writable file handle for the same destination. Active transactions
+raise <code>ValueError</code>. The function checkpoints any WAL and updates both the file
+change counter and its matching version-valid-for field through a flushed,
+synchronized header mapping. No further SQL writes may use this connection.
+Close it before closing <code>database_file</code>. SQLite and I/O errors propagate; the
+already committed replacement remains intact.</p>
+<p>With <code>wal=True</code>, restore the WAL mode lost with a damaged header. The connection
+must have <code>SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE</code> enabled so existing WAL file handles
+remain valid. After closing all worker handles, call <code>notify_wal_readers</code>.</p>
+<h3 id="notify_wal_readers"><code>notify_wal_readers</code><a class="headerlink" href="#notify_wal_readers" title="Permanent link">&para;</a></h3>
+<p><code>notify_wal_readers(destination, *, timeout=5.0)</code> opens a normal SQLite connection
+and writes a page-one frame through the shared WAL index. Exclusive recovery
+can use a private WAL index, so this step notifies existing readers after the
+exclusive worker connection closes. It holds a write transaction and rewrites
+the current <code>user_version</code> to the same value, preserving any completed intervening
+writer's data and metadata. No other worker handles may remain open. Returns
+<code>None</code>; <code>timeout</code> is lock-wait seconds, and SQLite errors propagate.</p>
+<h3 id="copy_file_contents"><code>copy_file_contents</code><a class="headerlink" href="#copy_file_contents" title="Permanent link">&para;</a></h3>
+<p><code>copy_file_contents(source, destination)</code> copies the entire source file,
+resizes the destination to the exact source length, and returns <code>None</code>.
+The arguments are open binary regular files with <code>fileno()</code>; the destination
+must be readable and writable. Buffered writes are flushed before mapping.
+At most two 1 MiB windows are mapped at once on supported platforms. Mappings
+are flushed and closed on exit; the supplied files stay open and their seek
+positions are not used. Call <code>os.fsync(destination.fileno())</code> when durable
+storage synchronization is required.</p>
+<p>The caller must prevent concurrent file changes and hold the appropriate
+SQLite locks when copying an active database. This API does not acquire locks
+and does not provide an atomic copy by itself. Passing the same file twice
+raises <code>ValueError</code>; mapping and I/O failures propagate. A failed copy can leave
+its destination partially written, so the recovery publisher only restores
+from snapshots whose copy completed successfully.</p>
+<h3 id="open_recovery_connection"><code>open_recovery_connection</code><a class="headerlink" href="#open_recovery_connection" title="Permanent link">&para;</a></h3>
+<p><code>open_recovery_connection(path, timeout)</code> opens an existing database for writing
+without creating it. <code>timeout</code> is lock-wait seconds. It returns an autocommit
+<code>sqlite3.Connection</code> on Python 3.12+, or <code>NativeSQLiteConnection</code> on Python 3.11.
+Both provide <code>execute</code>, <code>setconfig</code>, <code>in_transaction</code>, and <code>close</code>. The caller
+owns the returned connection and must close it. Use this in an isolated worker.</p>
+<h3 id="nativesqliteconnection"><code>NativeSQLiteConnection</code><a class="headerlink" href="#nativesqliteconnection" title="Permanent link">&para;</a></h3>
+<p><code>NativeSQLiteConnection(path, timeout)</code> opens an existing database using public
+SQLite C APIs and raises <code>sqlite3.Error</code> on failure. It is a control-SQL adapter
+for recovery workers, not a replacement for Python's DB-API connection.</p>
+<table>
+<thead>
+<tr>
+<th>Member</th>
+<th>Contract</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>execute(sql)</code></td>
+<td>Execute trusted SQL without parameters; return <code>SQLiteRows</code>. Results are strings or <code>None</code>; numeric results are text, and BLOB queries are unsupported. Copy cache rows with SQL <code>INSERT … SELECT</code> to preserve their original SQLite types.</td>
+</tr>
+<tr>
+<td><code>setconfig(option, enabled)</code></td>
+<td>Set an integer boolean SQLite database-configuration option. Unsupported options raise <code>sqlite3.Error</code>.</td>
+</tr>
+<tr>
+<td><code>in_transaction</code></td>
+<td>Boolean property indicating an active transaction.</td>
+</tr>
+<tr>
+<td><code>close()</code></td>
+<td>Close the connection. Repeated closes are safe; other operations require an open connection.</td>
+</tr>
+<tr>
+<td><code>api</code>, <code>handle</code></td>
+<td>Native library and owned <code>c_void_p</code> connection handle. Use only together; never substitute pointers from Python's managed connections.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="sqliterows"><code>SQLiteRows</code><a class="headerlink" href="#sqliterows" title="Permanent link">&para;</a></h3>
+<p><code>SQLiteRows(rows)</code> stores materialized row tuples returned by the native
+adapter. <code>rows</code> is the supplied collection. <code>fetchone()</code> returns its first
+tuple, or <code>None</code> if empty; it does not advance a cursor. Values produced by
+<code>NativeSQLiteConnection</code> are strings or <code>None</code>.</p>
+<h3 id="execute_sql"><code>execute_sql</code><a class="headerlink" href="#execute_sql" title="Permanent link">&para;</a></h3>
+<p><code>execute_sql(connection, sql)</code> executes control SQL on either recovery
+connection type, discards result rows, and returns <code>None</code>. SQLite exceptions
+propagate. The connection remains caller-owned.</p>
+<h3 id="read_schema_version"><code>read_schema_version</code><a class="headerlink" href="#read_schema_version" title="Permanent link">&para;</a></h3>
+<p><code>read_schema_version(connection)</code> returns the main database's schema cookie as
+an integer or propagates a SQLite error. A readable cookie is still untrusted
+when storage is corrupt; it cannot tell you what another reader has cached.
+Recovery chooses a fresh high-range cookie independently of damaged headers.</p>
+<h3 id="load_sqlite_api"><code>load_sqlite_api</code><a class="headerlink" href="#load_sqlite_api" title="Permanent link">&para;</a></h3>
+<p><code>load_sqlite_api()</code> returns a cached <code>ctypes.CDLL</code> whose SQLite recovery
+functions have configured signatures. It prefers Python's linked SQLite and
+falls back to the platform library. If the necessary functions are unavailable,
+it raises <code>RuntimeError</code>. Use native handles only in an isolated worker.</p>
+<h3 id="open_native_database"><code>open_native_database</code><a class="headerlink" href="#open_native_database" title="Permanent link">&para;</a></h3>
+<p><code>open_native_database(api, path, flags)</code> returns an owned native connection
+handle using SQLite's integer <code>sqlite3_open_v2</code> flags. It additionally enables
+URI paths and private cache. <code>api</code> must be returned by <code>load_sqlite_api</code>.
+Close successful handles with <code>api.sqlite3_close(handle)</code>; failed opens close
+their handle before raising. <code>NativeSQLiteConnection</code> manages that ownership
+for ordinary worker code.</p>
+<h3 id="check_sqlite_result"><code>check_sqlite_result</code><a class="headerlink" href="#check_sqlite_result" title="Permanent link">&para;</a></h3>
+<p><code>check_sqlite_result(api, connection, code)</code> returns <code>None</code> for <code>SQLITE_OK</code>.
+Otherwise it raises <code>sqlite3.DatabaseError</code> for corruption or
+<code>sqlite3.OperationalError</code> for other failures, preserving <code>sqlite_errorcode</code>.
+<code>connection</code> must be a live native handle owned by the same <code>api</code> library.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.indexes", "navigation.expand", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
