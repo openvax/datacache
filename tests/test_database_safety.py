@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 import errno
+from io import StringIO
 import os
 import sqlite3
 import stat
@@ -47,6 +48,25 @@ def test_missing_scalars_and_datetime_roundtrip(tmp_path):
     with closing(db_from_dataframe(tmp_path / "data.db", "records", frame)) as connection:
         assert connection.execute("SELECT * FROM records").fetchall() == [
             (1, 1, 1.5, "hello", "value", "2026-01-02T00:00:00"), (None,) * 6]
+
+
+@pytest.mark.parametrize("source", ["constructor", "csv"])
+def test_inferred_strings_and_copy_on_write_frames_roundtrip(tmp_path, source):
+    if source == "csv":
+        original = pd.read_csv(StringIO("sample id,label\n1,original\n2,\n"))
+    else:
+        original = pd.DataFrame({"sample id": [1, 2], "label": ["original", None]})
+    original_before = original.copy(deep=True)
+    frame = original.copy(deep=False)
+    frame.loc[0, "label"] = "updated"
+    frame.index = [101, 102]
+    frame_before = frame.copy(deep=True)
+    assert str(frame["label"].dtype) == "str"
+    with closing(db_from_dataframe(tmp_path / "data.db", "records", frame, primary_key="sample id")) as connection:
+        assert connection.execute("SELECT * FROM records").fetchall() == [(1, "updated"), (2, None)]
+        assert [row[2] for row in connection.execute("PRAGMA table_info(records)")] == ["INT", "TEXT"]
+    pd.testing.assert_frame_equal(original, original_before)
+    pd.testing.assert_frame_equal(frame, frame_before)
 
 
 @pytest.mark.parametrize("key", ["sample id", "sample_id"])

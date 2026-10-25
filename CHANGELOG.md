@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Require `pandas>=3,<4`, replacing the historical pandas minimum. Test current
+  pandas 3.x across Python 3.11–3.14 and pandas 3.0.0 on Python 3.11. Remove
+  obsolete scalar and row-iteration compatibility workarounds while preserving
+  existing SQLite caches and lossless DataFrame conversion (#131).
+
 ## 1.29.3
 
 - Allow explicit SQLite `overwrite=True` to recover corrupt or non-SQLite

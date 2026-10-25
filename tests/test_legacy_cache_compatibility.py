@@ -16,7 +16,7 @@ from datacache import (
     db_from_dataframe, db_from_dataframes_with_absolute_path,
     fetch_and_transform, fetch_csv_db, fetch_file,
 )
-from datacache import database_helpers, database_table, download
+from datacache import database_helpers, download
 from datacache import common
 
 
@@ -133,17 +133,6 @@ def test_existing_custom_transform_works_without_source(tmp_path, monkeypatch):
                                "missing.txt", "https://offline.invalid/missing.txt",
                                cache_root=tmp_path) == "old transformation"
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
-
-
-def test_build_does_not_require_new_pandas_scalar_or_row_apis(tmp_path, monkeypatch):
-    # Also run this module on pandas <1.5 in CI. Feature removal catches
-    # accidental reintroduction of newer APIs in the ordinary numeric path.
-    frame = pd.DataFrame({"id": [2**53 + 1], "weight": [1.5], "missing": [float("nan")]})
-    monkeypatch.delattr(pd, "NA", raising=False)
-    monkeypatch.delattr(pd, "isna", raising=False)
-    monkeypatch.setattr(pd.DataFrame, "itertuples", reject)
-    with closing(db_from_dataframe(tmp_path / "data.db", "records", frame)) as connection:
-        assert connection.execute("SELECT * FROM records").fetchall() == [(2**53 + 1, 1.5, None)]
 
 
 def test_new_database_is_readable_with_legacy_sql(tmp_path):
