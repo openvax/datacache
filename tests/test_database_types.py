@@ -36,8 +36,8 @@ def test_numpy_fixed_width_and_bytes_types_are_mapped():
 
 
 def test_dataframes_of_fixed_width_arrays_keep_text_columns(tmp_path):
-    # pandas stores such arrays with the object dtype, so existing schemas
-    # built from DataFrames are unchanged.
+    # pandas keeps bytes as object dtype and infers strings for Unicode.
+    # Both still map to TEXT, preserving existing DataFrame cache schemas.
     frame = pd.DataFrame({"b": np.array([b"ab"], dtype="S2"), "u": np.array(["x"], dtype="U1")})
     with closing(db_from_dataframe("fixed.db", "t", frame, cache_root=tmp_path)) as connection:
         assert [row[2] for row in connection.execute("PRAGMA table_info(t)")] == ["TEXT", "TEXT"]

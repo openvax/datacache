@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 import errno
+from io import StringIO
 import os
 import sqlite3
 import stat
@@ -49,6 +50,25 @@ def test_missing_scalars_and_datetime_roundtrip(tmp_path):
             (1, 1, 1.5, "hello", "value", "2026-01-02T00:00:00"), (None,) * 6]
 
 
+@pytest.mark.parametrize("source", ["constructor", "csv"])
+def test_inferred_strings_and_copy_on_write_frames_roundtrip(tmp_path, source):
+    if source == "csv":
+        original = pd.read_csv(StringIO("sample id,label\n1,original\n2,\n"))
+    else:
+        original = pd.DataFrame({"sample id": [1, 2], "label": ["original", None]})
+    original_before = original.copy(deep=True)
+    frame = original.copy(deep=False)
+    frame.loc[0, "label"] = "updated"
+    frame.index = [101, 102]
+    frame_before = frame.copy(deep=True)
+    assert str(frame["label"].dtype) == "str"
+    with closing(db_from_dataframe(tmp_path / "data.db", "records", frame, primary_key="sample id")) as connection:
+        assert connection.execute("SELECT * FROM records").fetchall() == [(1, "updated"), (2, None)]
+        assert [row[2] for row in connection.execute("PRAGMA table_info(records)")] == ["INT", "TEXT"]
+    pd.testing.assert_frame_equal(original, original_before)
+    pd.testing.assert_frame_equal(frame, frame_before)
+
+
 @pytest.mark.parametrize("key", ["sample id", "sample_id"])
 def test_spaced_names_apply_to_keys_nullability_and_indices(tmp_path, key):
     frame = pd.DataFrame({"sample id": [1, 2], "group by": ["a", None]})
@@ -68,6 +88,7 @@ def test_spaced_names_apply_to_keys_nullability_and_indices(tmp_path, key):
     (pd.DataFrame({"value": [1]}), {"primary_key": "missing"}),
     (pd.DataFrame({"value": [1]}), {"indices": [("missing",)]}),
     (pd.DataFrame({"value": [1]}), {"indices": ["value"]}),
+    (pd.DataFrame({"value": pd.to_timedelta([1], unit="D")}), {}),
 ])
 def test_invalid_schema_does_not_destroy_existing_database(tmp_path, frame, options):
     path = tmp_path / "data.db"

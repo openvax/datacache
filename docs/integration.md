@@ -78,10 +78,12 @@ reuse and deliberate repair of previously corrupted data. Optional
 `make_file_readable` maintenance lets file owners share selected old `0600`
 files without changing them during normal cache access.
 
-The existing pandas dependency range remains unchanged. CI exercises pandas
-1.4.4, 1.5.3, and current versions; older versions in the historical dependency
-range are not all tested on modern Python. Nullable dtype support depends on
-the installed pandas version.
+DataCache requires `pandas>=3,<4` on Python 3.11 or newer. CI tests current
+pandas 3.x across Python 3.11–3.14 and the pandas 3.0.0 minimum on Python 3.11.
+The pandas baseline does not change existing cache filenames or SQLite schemas;
+complete caches remain reusable without rebuilding them. DataFrame conversion
+supports pandas 3's inferred string dtype and nullable scalars without mutating
+the caller's data.
 
 DataCache caches by path or database version, not by tracking remote content
 changes. Refreshing a URL does not invalidate arbitrary downstream artifacts.

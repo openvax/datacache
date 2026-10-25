@@ -64,9 +64,9 @@ tqdm is installed by default; existing download APIs enable displays with
 does not import tqdm or configure your application's logging. The old
 `datacache[progress]` install syntax remains supported as a compatibility alias.
 
-The existing pandas dependency range is unchanged; upgrading DataCache does
-not introduce a pandas 1.5 requirement. CI covers pandas 1.4.4, 1.5.3, and
-current releases on supported Python versions.
+DataCache requires `pandas>=3,<4` and Python 3.11 or newer. CI tests current
+pandas 3.x across Python 3.11–3.14 and checks the pandas 3.0.0 minimum on
+Python 3.11. Existing SQLite caches remain reusable without rebuilding them.
 
 ## Development
 
