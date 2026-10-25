@@ -88,6 +88,7 @@ def test_spaced_names_apply_to_keys_nullability_and_indices(tmp_path, key):
     (pd.DataFrame({"value": [1]}), {"primary_key": "missing"}),
     (pd.DataFrame({"value": [1]}), {"indices": [("missing",)]}),
     (pd.DataFrame({"value": [1]}), {"indices": ["value"]}),
+    (pd.DataFrame({"value": pd.to_timedelta([1], unit="D")}), {}),
 ])
 def test_invalid_schema_does_not_destroy_existing_database(tmp_path, frame, options):
     path = tmp_path / "data.db"
