@@ -6,6 +6,9 @@ have nested paths inside `.tar.bz2` files. DataCache owns transfer, extraction,
 integrity receipts, concurrency and publication; the caller continues to own
 catalogue versions and domain-specific validation.
 
+Names such as `cache_root`, `release_directory` and the `trusted_*` checksums
+in the examples stand for your own values.
+
 For a reusable catalogue, wrap it in `VersionedArchiveRegistry`; the lower-level
 functions remain useful when a downstream library already owns version lookup.
 

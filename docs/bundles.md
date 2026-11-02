@@ -6,6 +6,9 @@ versions, URLs, and biological interpretation belong to the caller. DataCache
 owns the transfer, verification, and publication. Existing `Cache` and database
 APIs work independently; adopting a registry is optional.
 
+Names such as `source_directory`, `datasets` and the `trusted_*` checksums in
+the examples stand for your own values.
+
 A dataset can contain one file, a records/manifest pair, or many source files:
 
 ```python

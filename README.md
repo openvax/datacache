@@ -1,12 +1,18 @@
 # DataCache
 
 [![Tests](https://github.com/openvax/datacache/actions/workflows/tests.yml/badge.svg)](https://github.com/openvax/datacache/actions/workflows/tests.yml)
+[![Coverage](https://coveralls.io/repos/github/openvax/datacache/badge.svg?branch=master)](https://coveralls.io/github/openvax/datacache?branch=master)
 [![PyPI](https://img.shields.io/pypi/v/datacache.svg)](https://pypi.org/project/datacache/)
 
 Download a dataset once, verify it, and reuse the local file on later runs.
 DataCache handles streaming downloads, gzip/ZIP decompression, tar-tree
-installation, offline inspection and SQLite caches built from pandas DataFrames,
-for Python applications including OpenVax libraries such as pyensembl.
+installation, offline inspection and SQLite caches built from pandas DataFrames.
+It is the download layer of the [OpenVax](https://github.com/openvax) tools:
+[PyEnsembl](https://github.com/openvax/pyensembl),
+[pepdata](https://github.com/openvax/pepdata),
+[orfdata](https://github.com/openvax/orfdata) and
+[Vaxrank](https://github.com/openvax/vaxrank) use it, and any Python
+application can.
 
 ## Install
 
@@ -18,9 +24,9 @@ python -m pip install datacache
 python -m pip install "datacache[html]"
 ```
 
-## Quickstart
+## Quick start
 
-Download a file once, then reuse its local path on later calls:
+<a id="quickstart"></a>Download a file once, then reuse its local path on later calls:
 
 ```python
 from datacache import Cache
@@ -28,34 +34,49 @@ from datacache import Cache
 cache = Cache("my-project")
 url = "https://raw.githubusercontent.com/openvax/datacache/master/LICENSE"
 path = cache.fetch(url, filename="LICENSE", timeout=30)
-print(path)
+print(open(path).readline().strip())
 
 # Reuses the cached file without a network request, even in a later process.
-assert cache.fetch(url, filename="LICENSE") == path
+print(cache.fetch(url, filename="LICENSE") == path)
 ```
 
-Replace the URL and filename with your dataset. Existing files are reused until
-you refresh them with `force=True`, or periodically with `expire_after`;
-DataCache doesn't ask the server whether a file has changed. Add
-`show_progress=True` to display a download bar; no extra installation is needed.
+```text
+Apache License
+True
+```
 
-## Guides
+`path` is under the platform cache directory, for example
+`~/Library/Caches/my-project/LICENSE` on macOS or `~/.cache/my-project/LICENSE`
+on Linux. Replace the URL and filename with your dataset. Existing files are
+reused until you refresh them with `force=True`, or periodically with
+`expire_after`; DataCache doesn't ask the server whether a file has changed.
+Add `show_progress=True` to display a download bar; no extra installation is
+needed.
 
-The guides are also published at <https://openvax.github.io/datacache/>.
+## Documentation
 
-- <a id="offline-example-with-integrity-checking"></a>[Working offline example, verification and interface choices](https://github.com/openvax/datacache/blob/master/docs/index.md)
-- <a id="find-inspect-or-clear-your-cache"></a>[Downloads, inspection, integrity, freshness, retries and resumption](https://github.com/openvax/datacache/blob/master/docs/downloads.md)
-- [Tables, SQLite and transformations](https://github.com/openvax/datacache/blob/master/docs/data.md)
-- [Shared caches](https://github.com/openvax/datacache/blob/master/docs/shared-caches.md)
-- [Progress and logging](https://github.com/openvax/datacache/blob/master/docs/progress.md)
-- <a id="versioned-datasets-and-large-downloads"></a>[Pinned bundles](https://github.com/openvax/datacache/blob/master/docs/bundles.md), [archive trees](https://github.com/openvax/datacache/blob/master/docs/archives.md) and the [fixed-path file registry](https://github.com/openvax/datacache/blob/master/docs/file_registry.md)
-- <a id="choose-the-right-api"></a><a id="guarantees-and-limits"></a>[Interface selection and guarantees](https://github.com/openvax/datacache/blob/master/docs/reference/choosing.md)
-- [Derived-artifact materialization](https://github.com/openvax/datacache/blob/master/docs/materialization.md): caller-owned
-  builders, outputs published together as one bundle, dependency receipts and resumable inputs.
-- [Complete API reference](https://github.com/openvax/datacache/blob/master/docs/api.md)
-- [Individual HTTP ZIP members](https://github.com/openvax/datacache/blob/master/docs/zip-members.md): bounded range downloads with compressed and expanded checksums.
-- [Downstream integration](https://github.com/openvax/datacache/blob/master/docs/integration.md): contracts for consuming libraries.
-- [Release notes](https://github.com/openvax/datacache/blob/master/CHANGELOG.md) and [release procedure](https://github.com/openvax/datacache/blob/master/RELEASING.md).
+<a id="guides"></a><a id="offline-example-with-integrity-checking"></a>The [documentation](https://openvax.github.io/datacache/)
+starts with an offline example that verifies a file's checksum, then covers one
+task per page. In reading order:
+
+1. <a id="find-inspect-or-clear-your-cache"></a>[Download and inspect files](https://openvax.github.io/datacache/downloads/):
+   exact destinations, integrity checks, freshness, retries, resumable
+   transfers and offline inspection.
+2. [Read tables and build SQLite caches](https://openvax.github.io/datacache/data/)
+   from CSV files and pandas DataFrames.
+3. [Share a cache](https://openvax.github.io/datacache/shared-caches/) between
+   users and packages.
+4. <a id="versioned-datasets-and-large-downloads"></a>[Install pinned bundles](https://openvax.github.io/datacache/bundles/)
+   of files that belong together, or
+   [archive trees](https://openvax.github.io/datacache/archives/).
+5. [Build derived files](https://openvax.github.io/datacache/materialization/)
+   from downloads and publish them together.
+6. [Integrate a consuming library](https://openvax.github.io/datacache/integration/).
+
+<a id="choose-the-right-api"></a><a id="guarantees-and-limits"></a>Also see
+[choose an interface](https://openvax.github.io/datacache/reference/choosing/),
+the [API reference](https://openvax.github.io/datacache/api/) and the
+[release notes](https://github.com/openvax/datacache/blob/master/CHANGELOG.md).
 
 ## Dependencies and progress display
 
@@ -72,7 +93,8 @@ current releases on supported Python versions.
 
 ```sh
 python -m pip install -e ".[test]"
-./lint-and-test.sh
+./lint.sh   # ruff
+./test.sh   # pytest with coverage
 python -m examples.basic_usage
 ```
 
@@ -80,8 +102,10 @@ Tests use local files, mocked responses, and local HTTP servers. They do not
 depend on external dataset servers. See CI for the Python, dependency, and
 operating-system combinations exercised.
 
-Build the site with `python -m pip install -r requirements-docs.txt` and `./docs.sh`.
+Build the site with `python -m pip install -r requirements-docs.txt` and
+`./docs.sh`. See the
+[release procedure](https://github.com/openvax/datacache/blob/master/RELEASING.md).
 
 ## License
 
-Apache 2.0; see [LICENSE](LICENSE).
+[Apache License 2.0](https://github.com/openvax/datacache/blob/master/LICENSE)

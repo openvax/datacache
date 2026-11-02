@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.29.5
+
+- Documentation only. The README follows the shared OpenVax layout: Install,
+  Quick start with its checked output, Documentation with six guides in
+  reading order on the published site, Development and License. Older README
+  anchors still resolve. Guides that lacked one now open with what they cover
+  and name their placeholder values. Release notes move to the Contributing
+  section of the site navigation.
+
 ## 1.29.3
 
 - Allow explicit SQLite `overwrite=True` to recover corrupt or non-SQLite

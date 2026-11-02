@@ -1,5 +1,9 @@
 # Building downstream libraries on DataCache
 
+This page is for maintainers of libraries built on DataCache, such as
+PyEnsembl: which interfaces to depend on, the shared OpenVax cache and the
+compatibility promises.
+
 See the [API reference](api.md) for signatures, defaults, return values, and errors.
 
 Use the public `Cache`, `fetch_file`, inspection, registry and database APIs
@@ -54,6 +58,8 @@ is downloaded once for all of them. Select its root with `get_cache_root`,
 listing the package's own variable before the shared one:
 
 ```python
+import datacache
+
 root = datacache.get_cache_root("openvax", "OSTEOSARC_CACHE", "OPENVAX_DATA_CACHE")
 ```
 

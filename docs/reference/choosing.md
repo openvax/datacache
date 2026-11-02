@@ -1,5 +1,8 @@
 # Choose an interface and understand guarantees
 
+Pick the DataCache interface that fits your data, and see what each one
+guarantees about publication, reuse and offline use.
+
 ## Choose the right API
 
 The [complete API reference](../api.md)

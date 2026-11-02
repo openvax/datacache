@@ -1,5 +1,10 @@
 # Shared caches
 
+This page is for packages and sites that keep data in one directory for
+several users or tools: choosing the cache root, sharing it safely and
+fixing permissions on older files. `url` and `data_dir_option` in the
+examples stand for your own values.
+
 See the [API reference](api.md) for signatures, defaults, return values, and errors.
 
 ## Choosing where data lives

@@ -1,5 +1,9 @@
 # Progress and logging
 
+This page shows how to display download and build progress, receive it in
+your own callback, and control DataCache's log messages. Replace the
+`example.org` URLs with your own.
+
 See the [API reference](api.md) for signatures, defaults, return values, and errors.
 
 Set `show_progress=True` on `fetch_file`, `Cache.fetch`, or the CSV and database
