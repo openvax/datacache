@@ -236,8 +236,14 @@ def _fit_name(filename):
 
 
 def normalize_filename(filename):
-    """
-    Remove special characters and shorten if name is too long
+    """Make filename safe to use as one cache file name.
+
+    The characters / \\ ; : ? and = become underscores. A result longer than
+    150 characters is replaced by an MD5 digest of it followed by its last 140
+    characters. build_local_filename applies this and then also limits the
+    name's UTF-8 byte length, so use that for real cache keys.
+
+    Returns the normalized name; does not touch the filesystem.
     """
     # if the url pointed to a directory then just replace all the special chars
     filename = re.sub(r"/|\\|;|:|\?|=", "_", filename)
@@ -249,10 +255,20 @@ def normalize_filename(filename):
     return filename
 
 def build_local_filename(download_url=None, filename=None, decompress=False):
-    """
-    Determine which local filename to use based on the file's source URL,
-    an optional desired filename, and whether a compression suffix needs
-    to be removed
+    """Choose the cache file name for a download, from its URL or an explicit name.
+
+    An explicit filename takes precedence; otherwise the name is an MD5 digest
+    of the full URL followed by the URL's text. Special characters are replaced
+    and long names shortened (see normalize_filename), and any name over 255
+    UTF-8 bytes keeps a digest plus as much of its end as fits. With
+    decompress=True a final .gz or .zip suffix is removed; an inferred name for
+    an archive endpoint without such a suffix (for example, one naming its file
+    in the query string) gets ".decompressed" instead, so compressed and
+    decompressed copies never share a key. No filesystem or network access
+    occurs.
+
+    Returns the file name, not a path. Raises ValueError if neither
+    download_url nor filename is given.
     """
     if not (download_url or filename):
         raise ValueError("Either filename or URL must be specified")

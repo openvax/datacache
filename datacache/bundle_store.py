@@ -341,6 +341,7 @@ class HashedFile:
 
     @property
     def size(self):
+        """Size in bytes of the file that was read, from its open-file stat."""
         return self.info.st_size
 
     @property

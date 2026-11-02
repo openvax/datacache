@@ -55,6 +55,17 @@ def _contains_tls_error(error):
 
 
 def is_retryable_http_error(error):
+    """Whether a failed HTTP attempt is transient and worth retrying.
+
+    Retryable failures are HTTP responses with a status in
+    RETRYABLE_HTTP_STATUSES (408, 429, 500, 502, 503 and 504) and Requests
+    connection errors, timeouts and truncated chunked bodies. TLS failures
+    wrapped in a connection error are not retried, since repeating the
+    handshake will not fix a certificate or protocol problem. Pair with
+    retry_delay to choose how long to wait.
+
+    Returns True or False; never raises for an unrelated exception type.
+    """
     import requests
     if isinstance(error, requests.HTTPError):
         return error.response is not None and error.response.status_code in RETRYABLE_HTTP_STATUSES

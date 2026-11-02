@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.29.4
+
+- Write docstrings for public functions and methods that had none or only a
+  vague one-liner:
+  `build_local_filename`, `normalize_filename`, `Cache.exists`,
+  `Cache.local_filename`, `Cache.local_path`, `is_retryable_http_error`,
+  `validate_resume`, `download_resumable`, the registries' `resolve_version`,
+  `VersionedDatasetRegistry.inspect`, `VersionedFileRegistry.is_cached`,
+  `HashedFile.size` and `Database.execute_sql`. No behavior changes.
+- Remove the unused private `VersionedFileRegistry._manifest_path`.
+
 ## 1.29.3
 
 - Allow explicit SQLite `overwrite=True` to recover corrupt or non-SQLite
