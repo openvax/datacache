@@ -138,7 +138,8 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
     This is the engine behind fetch_file(resume=True); call fetch_file rather
     than this function. Partial bytes and their HTTP validator live in a
     private, owner-only directory next to destination and are reused only
-    when the URL, expected size and digest, and server ETag still match.
+    when the URL, expected size and digest, HTTP representation and the
+    server's validator (a strong ETag when no digest is given) still match.
     Completed bytes are validated against expected_sha256/expected_size and
     then published to destination; the partial state is removed. Unless
     force is True, a destination already present once the resume lock is
