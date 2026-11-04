@@ -143,7 +143,11 @@ class Database:
             self.connection.commit()
 
     def execute_sql(self, sql, commit=False):
-        """Log and then execute a SQL query"""
+        """Log sql at INFO level, execute it on this connection, and optionally commit.
+
+        Returns None; use the connection directly when you need query results.
+        sqlite3 errors propagate.
+        """
         logger.info("Running sqlite query: \"%s\"", sql)
         self.connection.execute(sql)
         if commit:

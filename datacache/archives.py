@@ -675,6 +675,11 @@ class VersionedArchiveRegistry:
         validate_distinct_paths(list(self._archives))
 
     def resolve_version(self, name, version=None):
+        """Return the concrete version label for name, applying its pinned default.
+
+        version=None selects the archive's default_version. Raises ValueError
+        for an unknown archive name or a version that isn't pinned.
+        """
         if name not in self._archives:
             raise ValueError(
                 "unknown archive %r; known: %s" % (
