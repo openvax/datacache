@@ -6,6 +6,7 @@ import hashlib
 import io
 import os
 from pathlib import Path
+import urllib.request
 
 import pandas as pd
 import pytest
@@ -51,7 +52,7 @@ def read_only(monkeypatch):
             patch.setattr(os, operation, reject)
         patch.setattr(download, "_stream_to_file", reject)
         patch.setattr(download.requests, "get", reject)
-        patch.setattr(download.urllib.request, "urlopen", reject)
+        patch.setattr(urllib.request, "urlopen", reject)
         yield
 
 

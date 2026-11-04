@@ -34,8 +34,6 @@ import stat
 from typing import Optional
 import unicodedata
 
-from filelock import FileLock
-
 from ._filesystem import file_lock, open_regular, path_present, read_json, write_json
 from .download import normal_creation_mode
 from .inspection import FileInspection
@@ -87,6 +85,7 @@ class BundleStore:
         """The lock installs into this store take turns on."""
         if os.name == 'posix':
             return file_lock(self.lock_path)
+        from filelock import FileLock
         return FileLock(str(self.lock_path))
 
     def can_reuse(self, inspection, *, force):

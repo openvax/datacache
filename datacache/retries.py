@@ -1,10 +1,8 @@
 """Bounded retry policy for idempotent HTTP downloads."""
 
 from datetime import timezone
-from email.utils import parsedate_to_datetime
 import math
 from numbers import Real
-import ssl
 import time
 
 
@@ -35,6 +33,7 @@ def validate_retry_options(max_retries, retry_backoff, retry_max_delay):
 
 def _contains_tls_error(error):
     """Follow active causes and Requests/urllib3 wrappers, guarding cycles."""
+    import ssl
     import requests
     from urllib3.exceptions import SSLError as Urllib3SSLError
     pending, seen = [error], set()
@@ -84,6 +83,7 @@ def retry_delay(error, backoff, max_delay):
                     return None
                 retry_after = int(digits)
             else:
+                from email.utils import parsedate_to_datetime
                 date = parsedate_to_datetime(header)
                 if date.tzinfo is None:
                     date = date.replace(tzinfo=timezone.utc)

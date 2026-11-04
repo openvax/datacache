@@ -20,6 +20,7 @@ from urllib.parse import parse_qsl, urlsplit
 from shutil import rmtree
 import platformdirs
 from platformdirs.macos import MacOS
+from platformdirs.unix import Unix
 
 from .version import __version__
 
@@ -86,17 +87,21 @@ def _platform_cache_dir(name):
     - macOS always uses ~/Library/Caches, as appdirs did before DataCache 1.25.0,
       so existing caches stay put. platformdirs 4.6 and later honour
       XDG_CACHE_HOME there instead.
-    - XDG_CACHE_HOME is read as platformdirs 4.11.8 and later read it: padding is
-      stripped, and a relative value falls back to ~/.cache. Earlier versions
-      kept the padding (before 4.6) and used a relative value as given, so the
-      cache followed the working directory.
+    - On Linux and other Unix systems DataCache reads XDG_CACHE_HOME itself:
+      padding is stripped, and a value that is then not an absolute path falls
+      back to ~/.cache, as the XDG specification says. platformdirs has changed
+      this more than once: before 4.6 it kept the padding, before 4.11.8 it
+      used a relative value as given (so the cache followed the working
+      directory), and 4.14 ignores a padded absolute value (#138).
     """
     if issubclass(platformdirs.PlatformDirs, MacOS):
         return join(os.path.expanduser("~/Library/Caches"), name)
-    path = platformdirs.user_cache_dir(name)
-    if not os.path.isabs(path):
+    if issubclass(platformdirs.PlatformDirs, Unix):
         xdg = environ.get("XDG_CACHE_HOME", "").strip()
         return join(xdg if os.path.isabs(xdg) else os.path.expanduser("~/.cache"), name)
+    path = platformdirs.user_cache_dir(name)
+    if not os.path.isabs(path):
+        return join(os.path.expanduser("~/.cache"), name)
     return path
 
 
