@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.30.0
+
+- Import the package lazily (PEP 562): `import datacache` now loads only
+  `datacache.version`, and each public name or submodule is imported the first
+  time it is used. `from datacache import fetch_file`, `datacache.fetch_file`
+  and `datacache.download` work as before, `__all__` is unchanged, and
+  `dir(datacache)` lists every public name. `import datacache` drops from about
+  72 ms to under 3 ms, and `datacache.get_cache_root` no longer loads
+  `urllib.request`, `http.client`, `ssl`, `sqlite3` or `filelock` (#142).
+- Import `urllib.request` only for file and FTP downloads and `file:`
+  materialization sources, `filelock` only for non-POSIX bundle locks and
+  file-registry downloads, `ssl` only to classify a failed HTTP request,
+  `email.utils` only to parse a dated `Retry-After`, and the SQLite helpers
+  only when `Cache.db_from_dataframe` runs. `fetch_file`, `Cache`, the
+  registries and `materialize` no longer load them at import.
+- Private submodules such as `datacache._filesystem` now need an explicit
+  import; public submodules still resolve after a bare `import datacache`.
+
 ## 1.29.6
 
 - On Linux and other Unix systems, read `XDG_CACHE_HOME` in DataCache instead of

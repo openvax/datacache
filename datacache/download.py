@@ -25,7 +25,6 @@ from tempfile import gettempdir, TemporaryDirectory
 from uuid import uuid4
 import zipfile
 import urllib.parse
-import urllib.request
 
 from . import common, provenance
 from .common import _source_suffix, build_local_filename
@@ -205,8 +204,11 @@ def _stream_to_file(
                 bytes_downloaded += len(chunk)
                 report(total_bytes)
     else:
-        req = urllib.request.Request(download_url)
-        with urllib.request.urlopen(req, data=None, timeout=timeout) as response:
+        # Only file and FTP URLs need urllib.request (which loads http.client,
+        # email and ssl), so importing this module doesn't load it.
+        from urllib.request import Request, urlopen
+        req = Request(download_url)
+        with urlopen(req, data=None, timeout=timeout) as response:
             total_bytes = _content_length(response.headers.get("Content-Length"))
             refuse_if_over(total_bytes or 0, max_bytes)
             while True:

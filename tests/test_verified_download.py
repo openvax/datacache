@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import tempfile
 import threading
+import urllib.request
 import zipfile
 
 import pandas as pd
@@ -31,14 +32,14 @@ def no_network(monkeypatch):
     def reject(*args, **kwargs):
         pytest.fail("unexpected network request")
 
-    urlopen = download.urllib.request.urlopen
+    urlopen = urllib.request.urlopen
 
     def local_only(request, *args, **kwargs):
         assert request.full_url.startswith("file://")
         return urlopen(request, *args, **kwargs)
 
     monkeypatch.setattr(download.requests, "get", reject)
-    monkeypatch.setattr(download.urllib.request, "urlopen", local_only)
+    monkeypatch.setattr(urllib.request, "urlopen", local_only)
 
 
 @pytest.fixture
