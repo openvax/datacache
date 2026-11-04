@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 from urllib.parse import urlsplit
-from urllib.request import url2pathname
 from uuid import uuid4
 
 from ._filesystem import open_regular, path_present, read_json, write_json
@@ -81,6 +80,8 @@ def _definition(sources, transform, outputs):
             if parts.scheme == 'file':
                 if parts.netloc not in ('', 'localhost') or parts.query or parts.fragment:
                     raise ValueError('local file URLs cannot have remote hosts, queries or fragments')
+                # Imported here: urllib.request loads http.client, email and ssl.
+                from urllib.request import url2pathname
                 acquisition[name] = ('path', str(Path(url2pathname(parts.path)).absolute()))
             else:
                 acquisition[name] = ('url', origin)

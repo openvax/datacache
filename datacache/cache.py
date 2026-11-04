@@ -18,7 +18,6 @@ from . import common
 from . import download
 from . import provenance
 from .download import expected_path
-from .database_helpers import db_from_dataframe
 from .inspection import inspect_file, path_exists
 from .permissions import make_file_readable
 
@@ -240,6 +239,9 @@ class Cache:
             # Prefix the cwd without abspath's lexical removal of symlink/..
             # components; the filesystem must determine their destination.
             db_path = join(getcwd(), db_path)
+        # Imported here so that importing or building a Cache (pepdata builds
+        # one at import time) doesn't load sqlite3.
+        from .database_helpers import db_from_dataframe
         return db_from_dataframe(
             db_filename=db_path,
             table_name=table_name,

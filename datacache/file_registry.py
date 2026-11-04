@@ -11,8 +11,6 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from filelock import FileLock
-
 from ._filesystem import write_json
 from .download import fetch_file
 
@@ -124,6 +122,7 @@ class VersionedFileRegistry:
         if reuse():
             return dest
         root.mkdir(parents=True, exist_ok=True)
+        from filelock import FileLock
         with FileLock(str(root / '.datacache-file-registry.lock')):
             if reuse():
                 return dest
