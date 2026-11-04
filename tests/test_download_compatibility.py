@@ -6,6 +6,7 @@ import io
 import os
 from pathlib import Path
 import stat
+import urllib.request
 from uuid import UUID
 import zipfile
 
@@ -26,7 +27,7 @@ def offline_cache(tmp_path, monkeypatch):
         pytest.fail("unexpected network access")
 
     monkeypatch.setattr(download.requests, "get", reject_network)
-    monkeypatch.setattr(download.urllib.request, "urlopen", reject_network)
+    monkeypatch.setattr(urllib.request, "urlopen", reject_network)
 
 
 def serve(monkeypatch, contents):
