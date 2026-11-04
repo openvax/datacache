@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.29.6
+
+- On Linux and other Unix systems, read `XDG_CACHE_HOME` in DataCache instead of
+  relying on platformdirs: strip padding, use the value when it is then an
+  absolute path, and otherwise fall back to `~/.cache`. platformdirs 4.14
+  ignores a padded absolute value (`" /tmp/xdg \t"`), so the cache moved to
+  `~/.cache` depending on which platformdirs version another package installed
+  (#138). macOS still uses `~/Library/Caches` and Windows is unchanged.
+
 ## 1.29.3
 
 - Allow explicit SQLite `overwrite=True` to recover corrupt or non-SQLite
