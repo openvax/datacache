@@ -67,9 +67,6 @@ class VersionedFileRegistry:
 
     # -- cache paths / manifest --
 
-    def _manifest_path(self) -> Path:
-        return Path(self._cache_dir()) / "manifest.json"
-
     @staticmethod
     def _read_manifest_at(path: Path) -> dict:
         try:
@@ -85,6 +82,11 @@ class VersionedFileRegistry:
         return Path(self._cache_dir()) / name / version / spec["filename"]
 
     def is_cached(self, name: str, version: str | None = None) -> bool:
+        """Whether name/version's file is present at local_path.
+
+        Checks presence only, not integrity: nothing is hashed, downloaded or
+        written. Raises error_cls for an unknown dataset or version.
+        """
         return self.local_path(name, version).exists()
 
     # -- fetch --

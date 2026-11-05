@@ -39,6 +39,14 @@ def can_resume(download_url, expected_sha256, expected_size):
 
 
 def validate_resume(download_url, expected_sha256, expected_size):
+    """Raise unless resume=True can be used with these arguments.
+
+    A resumable download needs an expected_size, an HTTP or HTTPS URL and a
+    POSIX filesystem; expected_sha256, when given, must be a SHA-256 hex
+    digest. Nothing is downloaded or written. Raises ValueError for unusable
+    arguments and NotImplementedError on platforms without POSIX files. Use
+    can_resume for the same check as a boolean.
+    """
     _validate_expectations(expected_sha256, expected_size)
     if expected_size is None:
         raise ValueError('resume=True requires expected_size')
@@ -125,6 +133,25 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
                        timeout, chunk_size, progress_callback, show_progress,
                        max_retries, retry_backoff, retry_max_delay, record_provenance,
                        force, http_representation="decoded"):
+    """Download download_url to destination, continuing an earlier partial transfer.
+
+    This is the engine behind fetch_file(resume=True); call fetch_file rather
+    than this function. Partial bytes and their HTTP validator live in a
+    private, owner-only directory next to destination and are reused only
+    when the URL, expected size and digest, HTTP representation and the
+    server's validator (a strong ETag when no digest is given) still match.
+    Completed bytes are validated against expected_sha256/expected_size and
+    then published to destination; the partial state is removed. Unless
+    force is True, a destination already present once the resume lock is
+    held (for example, one another process just finished) is checked and
+    kept without a request. The remaining keyword arguments have
+    fetch_file's meanings.
+
+    Returns None. Raises CannotResume when the server or filesystem can't
+    support a resumable transfer (fetch_file(resume="auto") then downloads
+    in full), FileValidationError for a destination or download that fails
+    validation, and the final transport error when retries are exhausted.
+    """
     from . import download, provenance
     import requests
 

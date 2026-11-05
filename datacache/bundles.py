@@ -362,6 +362,11 @@ class VersionedDatasetRegistry:
         validate_distinct_paths(list(self._datasets))
 
     def resolve_version(self, name, version=None):
+        """Return the concrete version label for name, applying its pinned default.
+
+        version=None selects the dataset's default_version. Raises ValueError
+        for an unknown dataset name or a version that isn't pinned.
+        """
         if name not in self._datasets:
             raise ValueError('unknown dataset %r; known: %s' % (name, ', '.join(sorted(self._datasets))))
         spec = self._datasets[name]
@@ -404,6 +409,12 @@ class VersionedDatasetRegistry:
         return stores
 
     def inspect(self, name, version=None, *, verify_files=True):
+        """Report the current bundle of name/version as a BundleInspection, offline.
+
+        Reads only: nothing is downloaded, written or repaired. Assets are
+        hashed by default; verify_files=False checks metadata and sizes only.
+        Raises ValueError for an unknown dataset or version.
+        """
         version = self.resolve_version(name, version)
         return inspect_bundle(self.store_path(name, version), self._datasets[name]['versions'][version],
                               verify_files=verify_files)

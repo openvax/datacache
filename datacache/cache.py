@@ -84,8 +84,11 @@ class Cache:
         self._local_paths.clear()
 
     def exists(self, url=None, filename=None, decompress=False):
-        """
-        Check presence without writes or network. Permission errors propagate.
+        """Whether the cache path for these arguments exists, as file_exists checks it.
+
+        No download, repair, write or directory creation. Directories count
+        as present and dangling symlinks as absent. Returns a bool; naming
+        errors and permission errors propagate.
         """
         return path_exists(self.local_path(url, filename, decompress))
 
@@ -193,15 +196,22 @@ class Cache:
             url=None,
             filename=None,
             decompress=False):
-        """
-        What local filename will we use within the cache directory
-        for the given URL/filename/decompress options.
+        """Return the cache file name for these arguments, as build_local_filename does.
+
+        The result is a name within this cache, without the root directory.
+        No filesystem access. Raises ValueError if neither url nor filename is
+        given.
         """
         return common.build_local_filename(url, filename, decompress)
 
     def local_path(self, url=None, filename=None, decompress=False, download=False):
-        """
-        What will the full local path be if we download the given file?
+        """Return the full path of the cached copy for these arguments, under this root.
+
+        With download=False (the default) the path is only computed, as
+        expected_path does. With download=True the file is fetched first using
+        fetch's defaults; call fetch directly for timeouts, integrity checks or
+        other options. Returns a path string. Raises naming errors, plus
+        fetch's errors when download=True.
         """
         if download:
             return self.fetch(url=url, filename=filename, decompress=decompress)
