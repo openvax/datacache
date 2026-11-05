@@ -6,6 +6,9 @@ PyEnsembl can keep its FASTA parsing and biological validation in a builder
 while DataCache owns reference-DNA download, retry, receipts and publication.
 Existing `fetch_and_transform` keeps its compatible single-file behavior.
 
+Names such as `compressed_dna_url` and `parse_and_validate_dna` in the
+example stand for your own values and builder.
+
 ```python
 from datacache import materialize, inspect_materialization
 

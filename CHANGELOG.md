@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.30.2
+
+- Documentation only. The README follows the shared OpenVax layout: Install,
+  Quick start with its checked output, Documentation with six guides in
+  reading order on the published site, Development and License. Older README
+  anchors still resolve. Guides that lacked one now open with what they cover
+  and name their placeholder values. Release notes move to the Contributing
+  section of the site navigation.
+
 ## 1.30.1
 
 - Write docstrings for public functions and methods that had none or only a

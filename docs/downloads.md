@@ -1,5 +1,10 @@
 # Download and cache reference
 
+This page covers single-file downloads in depth: exact destinations, integrity
+checks, provenance, retries, size limits, freshness, offline inspection and
+resumable transfers. Names such as `url`, `cache` and `release_metadata` in
+the examples stand for your own values.
+
 See the [API reference](api.md) for signatures, defaults, return values, and errors.
 
 ## Verified downloads

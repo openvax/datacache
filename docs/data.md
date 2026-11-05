@@ -1,5 +1,10 @@
 # SQLite caches and custom transformations
 
+This page turns downloaded tables into pandas DataFrames and SQLite caches,
+and builds a cached file from a custom transformation of a download. Names
+such as `source_csv` and `artifact_store` in the examples stand for your own
+values.
+
 See the [API reference](api.md) for signatures, defaults, return values, and errors.
 
 ## DataFrames to SQLite
