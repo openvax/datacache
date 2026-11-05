@@ -809,8 +809,6 @@
       
         
       
-        
-      
     
     
     
@@ -937,34 +935,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="https://github.com/openvax/datacache/blob/master/CHANGELOG.md" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Release notes
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -980,6 +950,8 @@
   
     
     
+      
+        
       
         
       
@@ -1040,6 +1012,34 @@
     
   
     Documentation style
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/openvax/datacache/blob/master/CHANGELOG.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release notes
   
 
     
@@ -1190,6 +1190,10 @@
 
 
 <h1 id="sqlite-caches-and-custom-transformations">SQLite caches and custom transformations<a class="headerlink" href="#sqlite-caches-and-custom-transformations" title="Permanent link">&para;</a></h1>
+<p>This page turns downloaded tables into pandas DataFrames and SQLite caches,
+and builds a cached file from a custom transformation of a download. Names
+such as <code>source_csv</code> and <code>artifact_store</code> in the examples stand for your own
+values.</p>
 <p>See the <a href="../api/">API reference</a> for signatures, defaults, return values, and errors.</p>
 <h2 id="dataframes-to-sqlite">DataFrames to SQLite<a class="headerlink" href="#dataframes-to-sqlite" title="Permanent link">&para;</a></h2>
 <p>Database helpers return open <code>sqlite3.Connection</code> objects, not file paths.

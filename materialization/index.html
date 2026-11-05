@@ -770,8 +770,6 @@
       
         
       
-        
-      
     
     
     
@@ -898,34 +896,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="https://github.com/openvax/datacache/blob/master/CHANGELOG.md" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Release notes
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -941,6 +911,8 @@
   
     
     
+      
+        
       
         
       
@@ -1001,6 +973,34 @@
     
   
     Documentation style
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/openvax/datacache/blob/master/CHANGELOG.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release notes
   
 
     
@@ -1117,6 +1117,8 @@ more derived files, validate them, and publish them together. For example,
 PyEnsembl can keep its FASTA parsing and biological validation in a builder
 while DataCache owns reference-DNA download, retry, receipts and publication.
 Existing <code>fetch_and_transform</code> keeps its compatible single-file behavior.</p>
+<p>Names such as <code>compressed_dna_url</code> and <code>parse_and_validate_dna</code> in the
+example stand for your own values and builder.</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">datacache</span><span class="w"> </span><span class="kn">import</span> <span class="n">materialize</span><span class="p">,</span> <span class="n">inspect_materialization</span>
 
 <span class="n">sources</span> <span class="o">=</span> <span class="p">{</span>

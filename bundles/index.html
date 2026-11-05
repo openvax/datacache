@@ -820,8 +820,6 @@
       
         
       
-        
-      
     
     
     
@@ -948,34 +946,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="https://github.com/openvax/datacache/blob/master/CHANGELOG.md" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Release notes
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -991,6 +961,8 @@
   
     
     
+      
+        
       
         
       
@@ -1051,6 +1023,34 @@
     
   
     Documentation style
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/openvax/datacache/blob/master/CHANGELOG.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release notes
   
 
     
@@ -1217,6 +1217,8 @@ versions, install their files together, and inspect them offline. Dataset names,
 versions, URLs, and biological interpretation belong to the caller. DataCache
 owns the transfer, verification, and publication. Existing <code>Cache</code> and database
 APIs work independently; adopting a registry is optional.</p>
+<p>Names such as <code>source_directory</code>, <code>datasets</code> and the <code>trusted_*</code> checksums in
+the examples stand for your own values.</p>
 <p>A dataset can contain one file, a records/manifest pair, or many source files:</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">datacache</span><span class="w"> </span><span class="kn">import</span> <span class="n">VersionedDatasetRegistry</span><span class="p">,</span> <span class="n">get_cache_root</span>

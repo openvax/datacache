@@ -792,8 +792,6 @@
       
         
       
-        
-      
     
     
     
@@ -920,34 +918,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="https://github.com/openvax/datacache/blob/master/CHANGELOG.md" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Release notes
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -963,6 +933,8 @@
   
     
     
+      
+        
       
         
       
@@ -1023,6 +995,34 @@
     
   
     Documentation style
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/openvax/datacache/blob/master/CHANGELOG.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release notes
   
 
     
@@ -1161,6 +1161,8 @@ for applications such as MHCflurry whose released weights and datasets already
 have nested paths inside <code>.tar.bz2</code> files. DataCache owns transfer, extraction,
 integrity receipts, concurrency and publication; the caller continues to own
 catalogue versions and domain-specific validation.</p>
+<p>Names such as <code>cache_root</code>, <code>release_directory</code> and the <code>trusted_*</code> checksums
+in the examples stand for your own values.</p>
 <p>For a reusable catalogue, wrap it in <code>VersionedArchiveRegistry</code>; the lower-level
 functions remain useful when a downstream library already owns version lookup.</p>
 <h2 id="one-archive">One archive<a class="headerlink" href="#one-archive" title="Permanent link">&para;</a></h2>

@@ -781,8 +781,6 @@
       
         
       
-        
-      
     
     
     
@@ -909,34 +907,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="https://github.com/openvax/datacache/blob/master/CHANGELOG.md" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Release notes
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -952,6 +922,8 @@
   
     
     
+      
+        
       
         
       
@@ -1012,6 +984,34 @@
     
   
     Documentation style
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/openvax/datacache/blob/master/CHANGELOG.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release notes
   
 
     
@@ -1134,6 +1134,9 @@
 
 
 <h1 id="building-downstream-libraries-on-datacache">Building downstream libraries on DataCache<a class="headerlink" href="#building-downstream-libraries-on-datacache" title="Permanent link">&para;</a></h1>
+<p>This page is for maintainers of libraries built on DataCache, such as
+PyEnsembl: which interfaces to depend on, the shared OpenVax cache and the
+compatibility promises.</p>
 <p>See the <a href="../api/">API reference</a> for signatures, defaults, return values, and errors.</p>
 <p>Use the public <code>Cache</code>, <code>fetch_file</code>, inspection, registry and database APIs
 for new integrations. Private helpers can change between releases, except the
@@ -1200,7 +1203,9 @@ network or extraction implementations.</p>
 <p>OpenVax packages share one cache so that published data, such as test datasets,
 is downloaded once for all of them. Select its root with <code>get_cache_root</code>,
 listing the package's own variable before the shared one:</p>
-<div class="highlight"><pre><span></span><code><span class="n">root</span> <span class="o">=</span> <span class="n">datacache</span><span class="o">.</span><span class="n">get_cache_root</span><span class="p">(</span><span class="s2">"openvax"</span><span class="p">,</span> <span class="s2">"OSTEOSARC_CACHE"</span><span class="p">,</span> <span class="s2">"OPENVAX_DATA_CACHE"</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">datacache</span>
+
+<span class="n">root</span> <span class="o">=</span> <span class="n">datacache</span><span class="o">.</span><span class="n">get_cache_root</span><span class="p">(</span><span class="s2">"openvax"</span><span class="p">,</span> <span class="s2">"OSTEOSARC_CACHE"</span><span class="p">,</span> <span class="s2">"OPENVAX_DATA_CACHE"</span><span class="p">)</span>
 </code></pre></div>
 <p><code>OPENVAX_DATA_CACHE</code>, when set, is the root itself; otherwise the platform cache
 directory named <code>openvax</code> is used. Store content-addressed files under
