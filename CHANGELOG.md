@@ -6,6 +6,8 @@
   errors. Run pip, Ruff and pytest through the selected Python interpreter
   (`PYTHON`, default `python`); forward test selection arguments through
   `test.sh` and `lint-and-test.sh`. Development installs include test tools.
+- Run feature-branch test matrices once per PR; default-branch pushes retain
+  their full checks.
 
 ## 1.30.3
 
