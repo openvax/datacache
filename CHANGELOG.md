@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.30.4
+
+- Make development wrappers directly executable with a shebang and fail on
+  errors. Run pip, Ruff and pytest through the selected Python interpreter
+  (`PYTHON`, default `python`); forward test selection arguments through
+  `test.sh` and `lint-and-test.sh`. Development installs include test tools.
+- Run feature-branch test matrices once per PR; default-branch pushes retain
+  their full checks.
+
 ## 1.30.3
 
 - Remove completed task specifications and stale release checklists. Current

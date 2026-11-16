@@ -98,6 +98,10 @@ python -m pip install -e ".[test]"
 python -m examples.basic_usage
 ```
 
+The development wrappers use `python` from your active environment. Set
+`PYTHON=/path/to/python` to select another interpreter. Pass pytest arguments
+through `./test.sh -k test_name` or `./lint-and-test.sh -k test_name`.
+
 Tests use local files, mocked responses, and local HTTP servers. They do not
 depend on external dataset servers. See CI for the Python, dependency, and
 operating-system combinations exercised.

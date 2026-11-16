@@ -1,6 +1,4 @@
-#!/bin/bash
-set -o errexit
+#!/usr/bin/env bash
+set -euo pipefail
 
-ruff check datacache/ tests/ examples/
-
-echo 'Passes ruff check'
+"${PYTHON:-python}" -m ruff check datacache/ tests/ examples/ "$@"
