@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.30.3
+
+- Remove completed task specifications and stale release checklists. Current
+  behavior remains documented in the guides and release history.
+
 ## 1.30.2
 
 - Documentation only. The README follows the shared OpenVax layout: Install,
