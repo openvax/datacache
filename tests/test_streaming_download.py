@@ -28,7 +28,9 @@ from datacache.download import (
 
 
 def _make_temp_file(contents=b""):
-    with NamedTemporaryFile(delete=False) as f:
+    # The legacy private downloader infers compression from a bare URL ending
+    # in gz/zip. Random temporary names can accidentally end that way.
+    with NamedTemporaryFile(suffix=".bin", delete=False) as f:
         f.write(contents)
         return f.name
 
