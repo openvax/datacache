@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.30.5
+
+- Give streaming-download fixtures an explicit raw-file suffix so randomly
+  generated names cannot accidentally trigger legacy gzip/ZIP inference.
+
 ## 1.30.4
 
 - Make development wrappers directly executable with a shebang and fail on
