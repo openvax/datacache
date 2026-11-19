@@ -1236,31 +1236,33 @@ def fetch_and_transform(
     Failed transformations preserve previous output and remove their partial
     files.
 
-    decompress=True hands the transformer the decompressed contents of a
-    .gz or .zip source; decompress=False hands it the downloaded bytes. It
-    may instead be set in download_options, but not to a different value in
-    both places. When it is set in neither, the source is not decompressed,
-    except that a nonempty subdir still enables decompression and emits a
-    DeprecationWarning: a future major release will stop decompressing there,
-    so pass decompress explicitly.
+    decompress=True requests the decompressed contents of a .gz or .zip
+    source for the transformer; decompress=False requests the source as
+    downloaded. As with fetch_file, a source_filename lacking the URL's
+    compression suffix still implies decompression unless download_options
+    sets raw=True. decompress may instead be set in download_options, but not
+    to a different truth value in both places. When it is set in neither,
+    decompression is not requested, except that a nonempty subdir still
+    requests it and emits a DeprecationWarning (on cache hits too): a future
+    major release will drop that exception, so pass decompress explicitly.
     """
     options = dict(download_options or {})
     if decompress is None:
         if "decompress" not in options and subdir:
             warnings.warn(
-                "fetch_and_transform decompresses its source because subdir=%r was "
-                "given and decompress was not. This coupling is deprecated and a "
-                "future major release will not decompress by default; pass "
-                "decompress=True to keep the current behavior or decompress=False "
-                "to receive the downloaded bytes." % (subdir,),
+                "fetch_and_transform requests source decompression because "
+                "subdir=%r was given and decompress was not. This coupling is "
+                "deprecated and a future major release will not request it by "
+                "default; pass decompress=True to keep the current behavior or "
+                "decompress=False to keep the source as downloaded." % (subdir,),
                 DeprecationWarning,
                 stacklevel=2)
         decompress = options.get("decompress", bool(subdir))
-    elif options.get("decompress", decompress) != decompress:
+    elif bool(options.get("decompress", decompress)) != bool(decompress):
         raise ValueError(
             "decompress=%r conflicts with download_options['decompress']=%r" % (
                 decompress, options["decompress"]))
-    options["decompress"] = decompress
+    options["decompress"] = bool(decompress)
     transformed_path = common.resolve_path(transformed_filename, subdir, cache_root=cache_root)
     try:
         if force:

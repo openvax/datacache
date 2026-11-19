@@ -9,9 +9,12 @@
   neither left it off. The coupling dates from releases that accidentally
   passed `subdir` positionally as `fetch_file`'s `decompress`. It still applies
   when `decompress` is given neither as an argument nor in `download_options`,
-  but such calls with a `subdir` now emit a `DeprecationWarning`; a future
-  major release will not decompress by default. Passing different values as
-  the argument and in `download_options` raises `ValueError`.
+  but such calls with a `subdir` now emit a `DeprecationWarning`, on cache hits
+  as well as builds; a future major release will not decompress by default.
+  Passing opposite values as the argument and in `download_options` raises
+  `ValueError`, also on cache hits. `fetch_file`'s existing rule that a source
+  filename lacking the URL's compression suffix implies decompression is
+  unchanged.
 
 ## 1.30.5
 

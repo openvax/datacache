@@ -241,7 +241,8 @@ and the default source root.
 at the supplied, initially absent path. Its basename and extension match the
 final output, but it lives in a private staging directory. The result is
 published only after successful validation. `loader(final_path)` loads an
-existing readable output. A hit calls only the loader, ignoring source options.
+existing readable output. A hit calls only the loader and ignores source
+options, apart from the `decompress` checks described below.
 
 `force=True` rebuilds the output while reusing the source; also pass
 `download_options={"force": True}` to refresh the source. The optional options
@@ -252,13 +253,16 @@ this dictionary validate the downloaded source, not the transformed output.
 has no automatic bar. Inner options can override source `cache_root` and
 `show_progress`.
 
-`decompress=True` hands the transformer the decompressed contents of a `.gz`
-or `.zip` source; `decompress=False` hands it the downloaded bytes. The same
-setting is accepted as `download_options["decompress"]`; giving two different
-values raises `ValueError`. With neither, the source is not decompressed,
-except that a nonempty `subdir` still enables decompression and emits a
-`DeprecationWarning`. A future major release will remove that exception, so
-pass `decompress` explicitly whenever you pass `subdir`.
+`decompress=True` requests the decompressed contents of a `.gz` or `.zip`
+source for the transformer; `decompress=False` requests the source as
+downloaded. It is passed to [`fetch_file`](#fetch_file), so a `source_filename`
+lacking the URL's compression suffix still implies decompression unless
+`download_options` sets `raw=True`. The same setting is accepted as
+`download_options["decompress"]`; giving opposite values raises `ValueError`.
+With neither, decompression is not requested, except that a nonempty `subdir`
+still requests it and emits a `DeprecationWarning`, on cache hits as well. A
+future major release will remove that exception, so pass `decompress`
+explicitly whenever you pass `subdir`.
 
 Without an explicit root, sources misplaced in the default
 cache by older releases can be reused without moving or changing them. See

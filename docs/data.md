@@ -267,8 +267,9 @@ text = fetch_and_transform(
 )
 ```
 
-Pass `decompress=True` to hand the transformer the decompressed contents of a
-`.gz` or `.zip` source, or `decompress=False` to hand it the downloaded bytes.
+Pass `decompress=True` to request the decompressed contents of a `.gz` or
+`.zip` source for the transformer, or `decompress=False` to keep the source as
+downloaded; [`fetch_file`'s naming rules](downloads.md) apply to `source_filename`.
 
 The transformer receives an absent output path inside a private temporary
 directory on the destination filesystem. Its basename and extension match the
