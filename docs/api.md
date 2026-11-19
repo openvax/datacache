@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.30.5. Import these names from `datacache`.
+public `Cache` method in DataCache 1.31.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -227,7 +227,8 @@ assert loaded["id"].tolist() == [1, 2]
 ```text
 fetch_and_transform(
     transformed_filename, transformer, loader, source_filename, source_url, subdir=None,
-    *, force=False, cache_root=None, download_options=None, show_progress=False
+    *, force=False, cache_root=None, download_options=None, show_progress=False,
+    decompress=None
 )
 ```
 
@@ -248,12 +249,18 @@ dictionary is copied and passed to `fetch_file`; do not duplicate its supplied
 `download_url`, `filename`, or `subdir` arguments. Integrity expectations in
 this dictionary validate the downloaded source, not the transformed output.
 `show_progress` sets the source-download default; arbitrary transformer work
-has no automatic bar. Inner options can override source `cache_root`,
-`show_progress`, and `decompress`.
+has no automatic bar. Inner options can override source `cache_root` and
+`show_progress`.
 
-For compatibility, a nonempty `subdir` defaults source decompression to `True`;
-otherwise it defaults to `False`. An explicit `download_options["decompress"]`
-overrides this. Without an explicit root, sources misplaced in the default
+`decompress=True` hands the transformer the decompressed contents of a `.gz`
+or `.zip` source; `decompress=False` hands it the downloaded bytes. The same
+setting is accepted as `download_options["decompress"]`; giving two different
+values raises `ValueError`. With neither, the source is not decompressed,
+except that a nonempty `subdir` still enables decompression and emits a
+`DeprecationWarning`. A future major release will remove that exception, so
+pass `decompress` explicitly whenever you pass `subdir`.
+
+Without an explicit root, sources misplaced in the default
 cache by older releases can be reused without moving or changing them. See
 the [transformation guide](data.md#custom-single-file-transformations).
 
@@ -262,7 +269,8 @@ on reuse. A transformer returning its output path directly as a string or
 `Path` receives the final path back. Paths nested inside other objects are not
 rewritten; prefer in-memory results and close files before returning.
 
-**Raises:** [fetch_file errors](#fetch_file), `RuntimeError` if the transformer
+**Raises:** [fetch_file errors](#fetch_file), `ValueError` for conflicting
+`decompress` settings, `RuntimeError` if the transformer
 does not create its output, `FileValidationError` for invalid output, and any
 transformer/loader exception. Failures preserve the previous transformed file.
 

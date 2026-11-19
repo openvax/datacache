@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.31.0
+
+- `fetch_and_transform` accepts a keyword-only `decompress` argument that says
+  whether the transformer receives the decompressed contents of a `.gz`/`.zip`
+  source or the downloaded bytes. Until now this depended on the cache
+  location: a nonempty `subdir` turned decompression on, while `cache_root` or
+  neither left it off. The coupling dates from releases that accidentally
+  passed `subdir` positionally as `fetch_file`'s `decompress`. It still applies
+  when `decompress` is given neither as an argument nor in `download_options`,
+  but such calls with a `subdir` now emit a `DeprecationWarning`; a future
+  major release will not decompress by default. Passing different values as
+  the argument and in `download_options` raises `ValueError`.
+
 ## 1.30.5
 
 - Give streaming-download fixtures an explicit raw-file suffix so randomly

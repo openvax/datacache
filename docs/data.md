@@ -263,8 +263,12 @@ text = fetch_and_transform(
     source_filename="source.txt",
     source_url="https://example.org/source.txt",
     subdir="my-library",
+    decompress=False,
 )
 ```
+
+Pass `decompress=True` to hand the transformer the decompressed contents of a
+`.gz` or `.zip` source, or `decompress=False` to hand it the downloaded bytes.
 
 The transformer receives an absent output path inside a private temporary
 directory on the destination filesystem. Its basename and extension match the
@@ -283,9 +287,7 @@ Older versions accidentally stored the source in the default cache when a
 `subdir` was supplied. Without an explicit `cache_root`, the helper reuses that
 exact legacy source if the requested directory has no source of its own.
 It validates supplied integrity expectations and does not move or chmod the
-old file. New downloads go into the requested directory. For compatibility,
-a nonempty `subdir` continues to default source decompression to enabled;
-set `download_options={"decompress": False}` to override it explicitly.
+old file. New downloads go into the requested directory.
 
 Return in-memory results from the transformer and loader. A transformer that
 returns its output path directly receives the final path back; embedded paths

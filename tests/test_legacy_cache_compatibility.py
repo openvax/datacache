@@ -176,8 +176,10 @@ def test_transform_reuses_misplaced_legacy_source_without_moving_it(tmp_path, mo
         Path(output_path).write_text(text.upper())
         return text.upper()
 
-    result = fetch_and_transform("output.txt", transform, lambda p: Path(p).read_text(),
-                                 "source.txt.gz", "https://offline.invalid/source.txt.gz", subdir="project")
+    # A legacy call: decompression implied by subdir, now with a warning.
+    with pytest.warns(DeprecationWarning, match="pass decompress=True"):
+        result = fetch_and_transform("output.txt", transform, lambda p: Path(p).read_text(),
+                                     "source.txt.gz", "https://offline.invalid/source.txt.gz", subdir="project")
     assert result == ("NEW SOURCE" if new_source else "OLD SOURCE")
     assert legacy.read_text() == "old source"
     assert legacy.stat().st_ino == before.st_ino

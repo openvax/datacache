@@ -47,7 +47,8 @@ def test_failed_transform_preserves_cache_and_cleans_up(source, tmp_path, failur
 
     with pytest.raises(failure):
         fetch_and_transform("result.txt", transformer, lambda p: Path(p).read_text(),
-                            "download.txt", source.as_uri(), subdir="project", force=existing)
+                            "download.txt", source.as_uri(), subdir="project", force=existing,
+                            decompress=False)
     if existing:
         assert destination.read_text() == "old contents"
         assert stat.S_IMODE(destination.stat().st_mode) == 0o640
@@ -85,6 +86,65 @@ def test_noop_transform_does_not_cache_empty_placeholder(source, tmp_path):
                             "input.txt", source.as_uri(), cache_root=tmp_path / "cache")
     assert not (tmp_path / "cache" / "result.txt").exists()
     assert not list((tmp_path / "cache").glob(".datacache-*"))
+
+
+@pytest.fixture
+def gzip_source(source):
+    """A gzip source whose transformer reports the bytes it was handed."""
+    compressed = source.with_name("source.txt.gz")
+    compressed.write_bytes(gzip.compress(b"complete data"))
+
+    def fetch(**location):
+        return fetch_and_transform(
+            "result.bin", lambda source_path, output_path: Path(output_path).write_bytes(
+                Path(source_path).read_bytes()) and Path(source_path).read_bytes(),
+            lambda p: Path(p).read_bytes(), "source.txt.gz", compressed.as_uri(), **location)
+
+    fetch.compressed = compressed.read_bytes()
+    return fetch
+
+
+@pytest.mark.parametrize("location", ["subdir", "cache_root", "default"])
+@pytest.mark.parametrize("decompress", [False, True])
+@pytest.mark.parametrize("through_options", [False, True])
+def test_explicit_decompress_does_not_depend_on_cache_location(
+        gzip_source, tmp_path, recwarn, location, decompress, through_options):
+    arguments = {"subdir": {"subdir": "project"}, "cache_root": {"cache_root": tmp_path / "cache"},
+                 "default": {}}[location]
+    if through_options:
+        arguments["download_options"] = {"decompress": decompress}
+    else:
+        arguments["decompress"] = decompress
+    assert gzip_source(**arguments) == (b"complete data" if decompress else gzip_source.compressed)
+    assert not [w for w in recwarn if issubclass(w.category, DeprecationWarning)]
+
+
+@pytest.mark.parametrize("location", ["cache_root", "default"])
+def test_unspecified_decompress_defaults_to_raw_source_without_subdir(
+        gzip_source, tmp_path, recwarn, location):
+    arguments = {"cache_root": tmp_path / "cache"} if location == "cache_root" else {}
+    assert gzip_source(**arguments) == gzip_source.compressed
+    assert not [w for w in recwarn if issubclass(w.category, DeprecationWarning)]
+
+
+def test_unspecified_decompress_with_subdir_is_deprecated_but_unchanged(gzip_source):
+    with pytest.warns(DeprecationWarning, match="pass decompress=True") as caught:
+        assert gzip_source(subdir="project") == b"complete data"
+    assert caught[0].filename == __file__
+    # Cache hits warn too, so a warm cache does not hide the pending change.
+    with pytest.warns(DeprecationWarning, match="subdir='project'"):
+        assert gzip_source(subdir="project") == b"complete data"
+
+
+@pytest.mark.parametrize("decompress", [False, True])
+def test_conflicting_decompress_settings_are_rejected(gzip_source, tmp_path, decompress):
+    with pytest.raises(ValueError, match="conflicts with download_options"):
+        gzip_source(cache_root=tmp_path / "cache", decompress=decompress,
+                    download_options={"decompress": not decompress})
+    assert not (tmp_path / "cache").exists()
+    assert gzip_source(cache_root=tmp_path / "cache", decompress=decompress,
+                       download_options={"decompress": decompress}) == (
+        b"complete data" if decompress else gzip_source.compressed)
 
 
 @pytest.mark.parametrize("explicit_csv", [False, True])
