@@ -1217,7 +1217,8 @@ def fetch_and_transform(
         force=False,
         cache_root=None,
         download_options=None,
-        show_progress=False):
+        show_progress=False,
+        decompress=None):
     """
     Download a source and cache a successful single-file transformation.
 
@@ -1230,22 +1231,46 @@ def fetch_and_transform(
     force rebuilds the transformed output while reusing the source. Set
     download_options={"force": True} to refresh the source too. Other fetch_file
     settings (timeouts, retries, hashes, callbacks) go in download_options.
-    cache_root selects the root for both artifacts. For legacy compatibility,
-    a nonempty subdir also defaults source decompression to True; override it
-    explicitly in download_options. Existing sources misplaced in the default
-    cache by older versions can be reused without moving them. Failed
-    transformations preserve previous output and remove their partial files.
+    cache_root selects the root for both artifacts. Existing sources misplaced
+    in the default cache by older versions can be reused without moving them.
+    Failed transformations preserve previous output and remove their partial
+    files.
+
+    decompress=True requests the decompressed contents of a .gz or .zip
+    source for the transformer; decompress=False requests the source as
+    downloaded. As with fetch_file, a source_filename lacking the URL's
+    compression suffix still implies decompression unless download_options
+    sets raw=True. decompress may instead be set in download_options, but not
+    to a different truth value in both places. When it is set in neither,
+    decompression is not requested, except that a nonempty subdir still
+    requests it and emits a DeprecationWarning (on cache hits too): a future
+    major release will drop that exception, so pass decompress explicitly.
     """
+    options = dict(download_options or {})
+    if decompress is None:
+        if "decompress" not in options and subdir:
+            warnings.warn(
+                "fetch_and_transform requests source decompression because "
+                "subdir=%r was given and decompress was not. This coupling is "
+                "deprecated and a future major release will not request it by "
+                "default; pass decompress=True to keep the current behavior or "
+                "decompress=False to keep the source as downloaded." % (subdir,),
+                DeprecationWarning,
+                stacklevel=2)
+        decompress = options.get("decompress", bool(subdir))
+    elif bool(options.get("decompress", decompress)) != bool(decompress):
+        raise ValueError(
+            "decompress=%r conflicts with download_options['decompress']=%r" % (
+                decompress, options["decompress"]))
+    options["decompress"] = bool(decompress)
     transformed_path = common.resolve_path(transformed_filename, subdir, cache_root=cache_root)
     try:
         if force:
             raise FileNotFoundError(transformed_path)
         validate_file(transformed_path)
     except FileNotFoundError:
-        options = dict(download_options or {})
         options.setdefault("cache_root", cache_root)
         options.setdefault("show_progress", show_progress)
-        options.setdefault("decompress", bool(subdir))
         source_path = None
         # Older versions accidentally passed subdir as decompress and cached
         # the source in the default root. Check only that exact legacy path,
