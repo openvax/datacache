@@ -2697,7 +2697,7 @@
 
 <h1 id="public-api-reference">Public API reference<a class="headerlink" href="#public-api-reference" title="Permanent link">&para;</a></h1>
 <p>This reference covers every name exported in <code>datacache.__all__</code> and every
-public <code>Cache</code> method in DataCache 1.30.5. Import these names from <code>datacache</code>.
+public <code>Cache</code> method in DataCache 1.31.0. Import these names from <code>datacache</code>.
 Signatures below show all defaults; arguments after <code>*</code> are keyword-only.
 Method signatures omit <code>self</code> and are called on a <code>Cache</code> instance.</p>
 <p>Start with the <a href="../#cache-and-verify-a-file">quickstart</a> for a first download.
@@ -3033,7 +3033,8 @@ and <code>TypeError</code> for duplicated or unsupported keyword arguments.</p>
 <h3 id="fetch_and_transform"><code>fetch_and_transform</code><a class="headerlink" href="#fetch_and_transform" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>fetch_and_transform(
     transformed_filename, transformer, loader, source_filename, source_url, subdir=None,
-    *, force=False, cache_root=None, download_options=None, show_progress=False
+    *, force=False, cache_root=None, download_options=None, show_progress=False,
+    decompress=None
 )
 </code></pre></div>
 <p>Cache one transformed file. <code>transformed_filename</code> is resolved with
@@ -3044,25 +3045,35 @@ and the default source root.</p>
 at the supplied, initially absent path. Its basename and extension match the
 final output, but it lives in a private staging directory. The result is
 published only after successful validation. <code>loader(final_path)</code> loads an
-existing readable output. A hit calls only the loader, ignoring source options.</p>
+existing readable output. A hit calls only the loader and ignores source
+options, apart from the <code>decompress</code> checks described below.</p>
 <p><code>force=True</code> rebuilds the output while reusing the source; also pass
 <code>download_options={"force": True}</code> to refresh the source. The optional options
 dictionary is copied and passed to <code>fetch_file</code>; do not duplicate its supplied
 <code>download_url</code>, <code>filename</code>, or <code>subdir</code> arguments. Integrity expectations in
 this dictionary validate the downloaded source, not the transformed output.
 <code>show_progress</code> sets the source-download default; arbitrary transformer work
-has no automatic bar. Inner options can override source <code>cache_root</code>,
-<code>show_progress</code>, and <code>decompress</code>.</p>
-<p>For compatibility, a nonempty <code>subdir</code> defaults source decompression to <code>True</code>;
-otherwise it defaults to <code>False</code>. An explicit <code>download_options["decompress"]</code>
-overrides this. Without an explicit root, sources misplaced in the default
+has no automatic bar. Inner options can override source <code>cache_root</code> and
+<code>show_progress</code>.</p>
+<p><code>decompress=True</code> requests the decompressed contents of a <code>.gz</code> or <code>.zip</code>
+source for the transformer; <code>decompress=False</code> requests the source as
+downloaded. It is passed to <a href="#fetch_file"><code>fetch_file</code></a>, so a <code>source_filename</code>
+lacking the URL's compression suffix still implies decompression unless
+<code>download_options</code> sets <code>raw=True</code>. The same setting is accepted as
+<code>download_options["decompress"]</code>; giving opposite values raises <code>ValueError</code>.
+With neither, decompression is not requested, except that a nonempty <code>subdir</code>
+still requests it and emits a <code>DeprecationWarning</code>, on cache hits as well. A
+future major release will remove that exception, so pass <code>decompress</code>
+explicitly whenever you pass <code>subdir</code>.</p>
+<p>Without an explicit root, sources misplaced in the default
 cache by older releases can be reused without moving or changing them. See
 the <a href="../data/#custom-single-file-transformations">transformation guide</a>.</p>
 <p><strong>Returns:</strong> the transformer's result after a build, or the loader's result
 on reuse. A transformer returning its output path directly as a string or
 <code>Path</code> receives the final path back. Paths nested inside other objects are not
 rewritten; prefer in-memory results and close files before returning.</p>
-<p><strong>Raises:</strong> <a href="#fetch_file">fetch_file errors</a>, <code>RuntimeError</code> if the transformer
+<p><strong>Raises:</strong> <a href="#fetch_file">fetch_file errors</a>, <code>ValueError</code> for conflicting
+<code>decompress</code> settings, <code>RuntimeError</code> if the transformer
 does not create its output, <code>FileValidationError</code> for invalid output, and any
 transformer/loader exception. Failures preserve the previous transformed file.</p>
 <div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">double_values</span><span class="p">(</span><span class="n">source_path</span><span class="p">,</span> <span class="n">output_path</span><span class="p">):</span>

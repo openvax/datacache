@@ -1417,8 +1417,12 @@ below retains its compatible single-file behavior.</p>
     <span class="n">source_filename</span><span class="o">=</span><span class="s2">"source.txt"</span><span class="p">,</span>
     <span class="n">source_url</span><span class="o">=</span><span class="s2">"https://example.org/source.txt"</span><span class="p">,</span>
     <span class="n">subdir</span><span class="o">=</span><span class="s2">"my-library"</span><span class="p">,</span>
+    <span class="n">decompress</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
 <span class="p">)</span>
 </code></pre></div>
+<p>Pass <code>decompress=True</code> to request the decompressed contents of a <code>.gz</code> or
+<code>.zip</code> source for the transformer, or <code>decompress=False</code> to keep the source as
+downloaded; <a href="../downloads/"><code>fetch_file</code>'s naming rules</a> apply to <code>source_filename</code>.</p>
 <p>The transformer receives an absent output path inside a private temporary
 directory on the destination filesystem. Its basename and extension match the
 final output. It must write and close one regular file at that path. A no-op
@@ -1434,9 +1438,7 @@ passed through <code>download_options</code> without changing parser/transformer
 <code>subdir</code> was supplied. Without an explicit <code>cache_root</code>, the helper reuses that
 exact legacy source if the requested directory has no source of its own.
 It validates supplied integrity expectations and does not move or chmod the
-old file. New downloads go into the requested directory. For compatibility,
-a nonempty <code>subdir</code> continues to default source decompression to enabled;
-set <code>download_options={"decompress": False}</code> to override it explicitly.</p>
+old file. New downloads go into the requested directory.</p>
 <p>Return in-memory results from the transformer and loader. A transformer that
 returns its output path directly receives the final path back; embedded paths
 inside arbitrary objects cannot be rewritten. This contract covers one file,
