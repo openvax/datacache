@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.32.0
+
+- Strip unused public APIs verified to have zero callers across OpenVax/PIRL
+  repositories (`VersionedArchiveRegistry`, `list_bundles`, `prune_bundles`,
+  `file_exists`, `resolve_path`, `make_file_readable`, `fetch_csv_dataframe`,
+  `fetch_csv_db`, `db_from_dataframe`, `db_from_dataframes`,
+  `Cache.db_from_dataframe`, `recover_cached_database`, `restore_database`) and
+  remove the ctypes `sqlite_recovery` module.
+- Consolidate internal SHA-256 streaming (`sha256_stream`), file locking
+  (`filelock.FileLock`), and JSON reading (`read_json`), and re-enable ruff
+  `F821`.
+
 ## 1.31.0
 
 - `fetch_and_transform` accepts a keyword-only `decompress` argument that says
