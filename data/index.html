@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -807,8 +807,6 @@
       
         
       
-        
-      
     
     
     
@@ -894,34 +892,6 @@
     
   
     API reference
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../sqlite-recovery/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    SQLite recovery APIs
   
 
     
@@ -1287,13 +1257,6 @@ runtime must allow child processes. On Python 3.11, it also needs an available
 SQLite library exposing the database-reset APIs; if these are unavailable,
 recovery fails without replacing the cache. Healthy database rebuilds continue
 to use the normal SQLite transaction in the calling process.</p>
-<p>Applications can also call the public
-<a href="../api/#recover_cached_database"><code>recover_cached_database</code></a> and
-<a href="../api/#restore_database"><code>restore_database</code></a> APIs directly. The
-<a href="../sqlite-recovery/"><code>datacache.sqlite_recovery</code> reference</a> documents worker
-and file-copy APIs for integrations. File snapshots and rollback use bounded
-memory mappings so Windows databases larger than 1 GiB can cross SQLite's
-mandatory lock-byte range while the exclusive lock remains held.</p>
 <p>New databases are built in private sibling files, closed, and published using
 an atomic operation that cannot overwrite a concurrent creator. DataCache
 tries a hard link first. If hard links are unsupported, it tries an atomic

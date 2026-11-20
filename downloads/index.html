@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.2">
     
     
       
@@ -851,8 +851,6 @@
       
         
       
-        
-      
     
     
     
@@ -938,34 +936,6 @@
     
   
     API reference
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../sqlite-recovery/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    SQLite recovery APIs
   
 
     
@@ -1568,9 +1538,9 @@ refreshed periodically. <code>expire_after</code> is named as in requests-cache,
     <span class="s2">"manifest.json"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"expected_sha256"</span><span class="p">:</span> <span class="n">release_metadata</span><span class="p">[</span><span class="s2">"manifest_sha256"</span><span class="p">]},</span>
 <span class="p">})</span>
 </code></pre></div>
-<p><code>expected_path</code>, <code>resolve_path</code>, and <code>Cache.local_path(download=False)</code> only
-compute paths, with no filesystem access. <code>file_exists</code> and <code>Cache.exists</code>
-check presence without requiring a readable regular file: directories count as
+<p><code>expected_path</code> and <code>Cache.local_path(download=False)</code> only
+compute paths, with no filesystem access. <code>Cache.exists</code>
+checks presence without requiring a readable regular file: directories count as
 present, broken symlinks count as absent, and permission errors propagate.
 None of these operations creates a directory or a lock file.</p>
 <p><code>inspect_file</code>, <code>inspect_files</code>, and <code>Cache.inspect</code> return results with <code>path</code>,
@@ -1627,10 +1597,10 @@ multi-file installation and inspection of one complete bundle.</p>
 <p><code>cache_root</code> accepts a string or <code>pathlib.Path</code> and names the actual directory
 containing cached files, overriding the platform location selected by <code>subdir</code>.
 Relative roots remain relative to the current working directory. It is
-supported by <code>fetch_file</code>, <code>expected_path</code>, <code>file_exists</code>, <code>resolve_path</code>,
+supported by <code>fetch_file</code>, <code>expected_path</code>,
 <code>build_path</code>, and <code>Cache</code>. An exact <code>destination</code> is mutually exclusive with
 <code>cache_root</code>. Default cache locations and filename normalization remain the
-same. <code>build_path</code> still creates parents; use <code>resolve_path</code> for pure lookup.</p>
+same. <code>build_path</code> creates parents; use <code>expected_path</code> for pure lookup.</p>
 <p>Creation and repair remain explicit operations: use <code>fetch_file</code> or
 <code>Cache.fetch</code>, supplying integrity metadata and <code>force=True</code> for replacement.
 <code>Cache.fetch</code> validates every reuse and respects different filenames for the
