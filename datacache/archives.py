@@ -25,12 +25,12 @@ from uuid import uuid4
 from ._filesystem import open_regular, read_json, write_json
 from .bundle_store import (
     CHUNK_SIZE, INVALID_STORE_ERRORS, MANIFEST, BundleStore, check_tree, discard_private_directory,
-    hash_file, list_tree, local_file_identity, private_directory, prune_bundles, source_fingerprint,
+    hash_file, list_tree, local_file_identity, private_directory, source_fingerprint,
     validate_distinct_paths,
-    validate_file_record, validate_path_component, validate_relative_name,
+    validate_file_record, validate_relative_name,
 )
 from .download import _run_validator, normal_creation_mode, validate_download_options, validate_limit, validate_size_within_limit
-from .integrity import FileValidationError, _validate_expectations
+from .integrity import FileValidationError, _validate_expectations, sha256_stream
 from .provenance import redact_url
 
 
@@ -447,15 +447,10 @@ def _assemble_archive(working, definition, options, keep_parts):
                     expected_sha256=expected_sha256, expected_size=expected_size,
                     **options)
                 handle = _open_local_source(temporary)
-            digest, size = hashlib.sha256(), 0
             with handle:
-                for chunk in iter(lambda: handle.read(CHUNK_SIZE), b""):
-                    assembled.write(chunk)
-                    aggregate.update(chunk)
-                    digest.update(chunk)
-                    size += len(chunk)
-                    aggregate_size += len(chunk)
-            actual = digest.hexdigest()
+                actual, size = sha256_stream(
+                    handle, chunk_size=CHUNK_SIZE, writer=assembled, extra_digest=aggregate)
+            aggregate_size += size
             if expected_size is not None and size != expected_size:
                 raise FileValidationError(source["path"] or source["url"], "archive part size mismatch")
             if expected_sha256 is not None and actual != expected_sha256:
@@ -593,213 +588,3 @@ def install_archive(
         finally:
             if published or not resumable:
                 discard_private_directory(working)
-
-
-class VersionedArchiveRegistry:
-    """Versioned catalogue of complete archive-tree downloads.
-
-    Each item has ``default_version`` and a ``versions`` mapping. A version is
-    one source, an ordered source sequence, or a mapping containing ``sources``
-    plus archive expectations, consumer ``extra_files``, and extraction limits.
-    ``cache_root`` uses ``<root>/<name>/<version>`` stores; ``store_path`` can
-    instead preserve a consumer's established ``(name, version)`` layout.
-    Construction validates definitions without touching the filesystem.
-    """
-
-    def __init__(
-            self, archives, *, cache_root=None, store_path=None, verified=True):
-        if (cache_root is None) == (store_path is None):
-            raise ValueError("provide exactly one of cache_root or store_path")
-        if store_path is not None and not callable(store_path):
-            raise ValueError("store_path must be callable")
-        if not isinstance(verified, bool):
-            raise ValueError("verified must be a boolean")
-        if not isinstance(archives, dict) or not archives:
-            raise ValueError("archives must be a nonempty mapping")
-        self.verified = verified
-        self._path = (store_path if store_path is not None else
-                      lambda name, version: Path(cache_root) / name / version)
-        self._archives = {}
-        version_options = {
-            "sources", "expected_sha256", "expected_size", "extra_files",
-            "max_members", "max_extracted_size",
-        }
-        for name, archive in archives.items():
-            validate_path_component(name)
-            if not isinstance(archive, dict):
-                raise ValueError("archive definitions must be mappings")
-            unknown = set(archive) - {"default_version", "versions", "description"}
-            if unknown:
-                raise ValueError("unknown archive definition options: %s" % sorted(unknown))
-            versions = archive.get("versions")
-            if not isinstance(versions, dict) or not versions:
-                raise ValueError("each archive requires a nonempty versions mapping")
-            normalized_versions = {}
-            for version, value in versions.items():
-                validate_path_component(version)
-                if isinstance(value, dict) and "sources" in value:
-                    options = dict(value)
-                    unknown = set(options) - version_options
-                    if unknown:
-                        raise ValueError("unknown archive version options: %s" % sorted(unknown))
-                else:
-                    options = {"sources": value}
-                validate_limit("max_members", options.get("max_members"))
-                validate_limit("max_extracted_size", options.get("max_extracted_size"))
-                definition = _definition(
-                    options["sources"], options.get("expected_sha256"),
-                    options.get("expected_size"), options.get("extra_files"),
-                    require_verified=verified)
-                normalized_versions[version] = {
-                    "sources": tuple({key: source[key] for key in
-                                      ("url", "path", "sha256", "size")
-                                      if source[key] is not None}
-                                     for source in definition["sources"]),
-                    "expected_sha256": definition["expected_sha256"],
-                    "expected_size": definition["expected_size"],
-                    "extra_files": definition["extra_files"],
-                    "max_members": options.get("max_members"),
-                    "max_extracted_size": options.get("max_extracted_size"),
-                }
-            default = archive.get("default_version")
-            if default not in normalized_versions:
-                raise ValueError("default_version must name a concrete archive version")
-            # Versions are directories: case-insensitive filesystems would give
-            # two that differ only by case one store.
-            validate_distinct_paths(list(normalized_versions))
-            self._archives[name] = {
-                "default_version": default,
-                "versions": normalized_versions,
-                "description": archive.get("description", ""),
-            }
-        validate_distinct_paths(list(self._archives))
-
-    def resolve_version(self, name, version=None):
-        """Return the concrete version label for name, applying its pinned default.
-
-        version=None selects the archive's default_version. Raises ValueError
-        for an unknown archive name or a version that isn't pinned.
-        """
-        if name not in self._archives:
-            raise ValueError(
-                "unknown archive %r; known: %s" % (
-                    name, ", ".join(sorted(self._archives))))
-        definition = self._archives[name]
-        version = definition["default_version"] if version is None else version
-        if version not in definition["versions"]:
-            raise ValueError("unknown version %r for %s" % (version, name))
-        return version
-
-    def store_path(self, name, version=None):
-        """Return the managed store path without creating or inspecting it."""
-        version = self.resolve_version(name, version)
-        return Path(self._path(name, version))
-
-    def _version(self, name, version):
-        version = self.resolve_version(name, version)
-        return version, self._archives[name]["versions"][version]
-
-    @staticmethod
-    def _local_sources(sources, source_paths):
-        if source_paths is None:
-            return sources
-        if isinstance(source_paths, (str, os.PathLike)):
-            source_paths = [source_paths]
-        elif not isinstance(source_paths, (list, tuple)):
-            raise ValueError("source_paths must be a path or ordered sequence")
-        if len(source_paths) != len(sources):
-            raise ValueError("source_paths must have one path for every archive part")
-        result = []
-        for source, path in zip(sources, source_paths):
-            item = dict(source)
-            if "url" not in item:
-                item["url"] = local_file_identity(item["path"])
-            item["path"] = Path(path)
-            result.append(item)
-        return tuple(result)
-
-    def inspect(self, name, version=None, *, verify_files=True):
-        """Inspect one version offline; no destination or lock is created."""
-        version, definition = self._version(name, version)
-        return inspect_archive(
-            self.store_path(name, version), definition["sources"],
-            expected_sha256=definition["expected_sha256"],
-            expected_size=definition["expected_size"],
-            extra_files=definition["extra_files"], verify_files=verify_files)
-
-    def download(
-            self, name, version=None, *, force=False, source_paths=None,
-            **download_options):
-        """Install/reuse one version and return its current bundle, the extracted tree."""
-        version, definition = self._version(name, version)
-        sources = self._local_sources(definition["sources"], source_paths)
-        return install_archive(
-            self.store_path(name, version), sources,
-            expected_sha256=definition["expected_sha256"],
-            expected_size=definition["expected_size"],
-            extra_files=definition["extra_files"], force=force,
-            verified=self.verified, download_options=download_options,
-            max_members=definition["max_members"],
-            max_extracted_size=definition["max_extracted_size"])
-
-    def prune(self, name, version=None, *, keep=1):
-        """Delete all but the newest keep bundles of one version; see prune_bundles."""
-        return prune_bundles(self.store_path(name, version), keep=keep)
-
-    def local_path(self, name, version=None, *, verify_files=False):
-        """Return the current bundle without downloading or repairing."""
-        inspected = self.inspect(name, version, verify_files=verify_files)
-        if inspected.status == "missing":
-            raise FileNotFoundError(inspected.path)
-        if inspected.status == "inaccessible":
-            raise inspected.error
-        if inspected.status != "available":
-            raise FileValidationError(
-                inspected.path, "archive installation is %s" % inspected.status)
-        return Path(inspected.bundle)
-
-    def ensure(self, name, version=None, **download_options):
-        """Install if needed, then return the current bundle's path."""
-        return self.download(name, version, **download_options)
-
-    def is_cached(self, name, version=None, *, verify_files=False):
-        """Whether one version has an available current bundle."""
-        return self.inspect(
-            name, version, verify_files=verify_files).status == "available"
-
-    def status(self, name=None, *, verify_files=False):
-        """Return one offline status row per concrete archive version.
-
-        Rows check publication and source metadata without reading payloads;
-        verify_files=True hashes every file as inspect does by default.
-        """
-        if name is not None:
-            self.resolve_version(name)
-            names = [name]
-        else:
-            names = sorted(self._archives)
-        rows = []
-        for archive_name in names:
-            archive = self._archives[archive_name]
-            for version, definition in archive["versions"].items():
-                inspection = self.inspect(
-                    archive_name, version, verify_files=verify_files)
-                identities = [source.get("url") or local_file_identity(source["path"])
-                              for source in definition["sources"]]
-                rows.append({
-                    "name": archive_name,
-                    "version": version,
-                    "default": version == archive["default_version"],
-                    "description": archive["description"],
-                    "sources": [redact_url(identity) for identity in identities],
-                    "downloaded_sources": list(inspection.source_urls),
-                    "path": str(self.store_path(archive_name, version)),
-                    "bundle": inspection.bundle,
-                    "status": inspection.status,
-                    "cached": inspection.status == "available",
-                    "fetched_at": inspection.fetched_at,
-                    "archive_size": inspection.archive_size,
-                    "recorded_sha256": inspection.recorded_sha256,
-                    "inspection": inspection,
-                })
-        return rows

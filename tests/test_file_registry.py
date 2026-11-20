@@ -75,7 +75,7 @@ def test_legacy_reuse_is_offline_without_hash_or_manifest_rewrite(registry, tmp_
     before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in (path, manifest)}
     source.unlink()
     monkeypatch.setattr(file_registry, 'fetch_file', lambda *a, **k: pytest.fail('fetch'))
-    monkeypatch.setattr(file_registry.hashlib, 'sha256', lambda *a: pytest.fail('hash'))
+    monkeypatch.setattr(file_registry, 'sha256_stream', lambda *a, **k: pytest.fail('hash'))
     assert reg.download('thing') == path
     assert reg.ensure('thing') == path
     assert reg.is_cached('thing')

@@ -5,7 +5,8 @@ import stat
 
 import pytest
 
-from datacache import Cache, FileValidationError, make_file_readable
+from datacache import Cache, FileValidationError
+from datacache.permissions import make_file_readable
 
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="POSIX sharing permissions")

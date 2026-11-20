@@ -705,12 +705,13 @@ def test_explicitly_empty_input_and_output(tmp_path):
 
 
 def test_progress_defaults_on_and_existing_hits_stay_quiet(tmp_path, sources, outputs, monkeypatch):
+    from datacache import integrity as integrity_module
     enabled = []
-    original = module.Progress
+    original = integrity_module.Progress
     def progress(enabled_flag, *args, **options):
         enabled.append(enabled_flag)
         return original(False, *args, **options)
-    monkeypatch.setattr(module, 'Progress', progress)
+    monkeypatch.setattr(integrity_module, 'Progress', progress)
     store = tmp_path / 'dna'
     paths = install(store, sources, outputs, download_options={})
     assert any(enabled)

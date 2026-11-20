@@ -7,7 +7,8 @@ import stat
 import pandas as pd
 import pytest
 
-from datacache import connect_if_correct_version, db_from_dataframe, db_from_dataframes_with_absolute_path
+from datacache import connect_if_correct_version, db_from_dataframes_with_absolute_path
+from ._db_helpers import db_from_dataframe
 from datacache.database import Database, quote_identifier
 
 

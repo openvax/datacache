@@ -340,9 +340,9 @@ installation = inspect_files(root, {
 })
 ```
 
-`expected_path`, `resolve_path`, and `Cache.local_path(download=False)` only
-compute paths, with no filesystem access. `file_exists` and `Cache.exists`
-check presence without requiring a readable regular file: directories count as
+`expected_path` and `Cache.local_path(download=False)` only
+compute paths, with no filesystem access. `Cache.exists`
+checks presence without requiring a readable regular file: directories count as
 present, broken symlinks count as absent, and permission errors propagate.
 None of these operations creates a directory or a lock file.
 
@@ -379,10 +379,10 @@ multi-file installation and inspection of one complete bundle.
 `cache_root` accepts a string or `pathlib.Path` and names the actual directory
 containing cached files, overriding the platform location selected by `subdir`.
 Relative roots remain relative to the current working directory. It is
-supported by `fetch_file`, `expected_path`, `file_exists`, `resolve_path`,
+supported by `fetch_file`, `expected_path`,
 `build_path`, and `Cache`. An exact `destination` is mutually exclusive with
 `cache_root`. Default cache locations and filename normalization remain the
-same. `build_path` still creates parents; use `resolve_path` for pure lookup.
+same. `build_path` creates parents; use `expected_path` for pure lookup.
 
 Creation and repair remain explicit operations: use `fetch_file` or
 `Cache.fetch`, supplying integrity metadata and `force=True` for replacement.

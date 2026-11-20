@@ -24,16 +24,14 @@ import errno
 import json
 import os
 import re
-import stat
 from urllib.parse import urlsplit, urlunsplit
+
+from ._filesystem import read_json
 
 SUFFIX = ".datacache.json"
 FORMAT = 1
 # A record is a few hundred bytes; anything much larger is not one of ours.
 _MAX_RECORD_BYTES = 64 * 1024
-# Never block on a FIFO or follow a link planted at a record's name.
-_OPEN_FLAGS = (os.O_RDONLY | getattr(os, "O_BINARY", 0) |
-               getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0))
 
 
 def sidecar_path(path):
@@ -120,26 +118,9 @@ def read(path, info):
     blocks; any problem with the record means no recorded provenance.
     """
     try:
-        descriptor = os.open(sidecar_path(path), _OPEN_FLAGS)
-    except OSError:
-        return None
-    try:
-        # Check the opened object itself, so it cannot be swapped after a check.
-        record_info = os.fstat(descriptor)
-        if not stat.S_ISREG(record_info.st_mode) or record_info.st_size > _MAX_RECORD_BYTES:
-            return None
-        chunks, remaining = [], _MAX_RECORD_BYTES + 1
-        while remaining > 0:
-            chunk = os.read(descriptor, remaining)
-            if not chunk:
-                break
-            chunks.append(chunk)
-            remaining -= len(chunk)
-        record = json.loads(b"".join(chunks))
+        record = read_json(sidecar_path(path), limit=_MAX_RECORD_BYTES)
     except (OSError, ValueError, RecursionError):
         return None
-    finally:
-        os.close(descriptor)
     if not _valid(record) or record["size"] != info.st_size or record["mtime_ns"] != info.st_mtime_ns:
         return None
     return record

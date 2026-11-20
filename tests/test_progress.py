@@ -14,7 +14,8 @@ import pytest
 import requests
 import tqdm.auto
 
-from datacache import Cache, db_from_dataframe, download, fetch_file
+from datacache import Cache, download, fetch_file
+from ._db_helpers import db_from_dataframe
 
 
 @pytest.fixture

@@ -13,8 +13,9 @@ import threading
 import pandas as pd
 import pytest
 
-from datacache import (connect_if_correct_version, db_from_dataframe,
-                       inspect_materialization, materialize)
+from datacache import (connect_if_correct_version, inspect_materialization,
+                       materialize)
+from ._db_helpers import db_from_dataframe
 from datacache import _filesystem
 from datacache.database_helpers import _create_cached_db
 from datacache.database_table import DatabaseTable

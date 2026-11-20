@@ -11,7 +11,8 @@ import threading
 import pandas as pd
 import pytest
 
-from datacache import connect_if_correct_version, db_from_dataframe, db_from_dataframes
+from datacache import connect_if_correct_version
+from ._db_helpers import db_from_dataframe, db_from_dataframes
 from datacache.database import Database, fold_identifier, quote_identifier
 from datacache import database_helpers
 from datacache.database_helpers import _create_cached_db, db_from_dataframes_with_absolute_path

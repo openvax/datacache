@@ -1,6 +1,6 @@
 import pandas as pd
 from tempfile import NamedTemporaryFile
-from datacache import db_from_dataframes, db_from_dataframe
+from ._db_helpers import db_from_dataframe, db_from_dataframes
 
 dfA = pd.DataFrame({"numbers": [1, 2, 3], "strings": ["a", "b", "c"]})
 dfB = pd.DataFrame({"wuzzles": ["nuzzle", "ruzzle"]})

@@ -10,8 +10,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from os.path import isabs, join, realpath
-from os import fspath, getcwd, remove, scandir, stat
+from os.path import realpath
+from os import fspath, remove, scandir, stat
 from shutil import rmtree
 
 from . import common
@@ -84,7 +84,7 @@ class Cache:
         self._local_paths.clear()
 
     def exists(self, url=None, filename=None, decompress=False):
-        """Whether the cache path for these arguments exists, as file_exists checks it.
+        """Whether the cache path for these arguments exists.
 
         No download, repair, write or directory creation. Directories count
         as present and dangling symlinks as absent. Returns a bool; naming
@@ -218,36 +218,3 @@ class Cache:
         else:
             return expected_path(
                 url, filename, decompress, cache_root=self.cache_directory_path)
-
-    def db_from_dataframe(
-            self,
-            db_filename,
-            table_name,
-            df,
-            key_column_name=None,
-            *,
-            overwrite=False,
-            version=1,
-            show_progress=False):
-        """Build or reuse a database in this cache and return its connection.
-
-        The caller must close the connection. Change version or set overwrite
-        to rebuild; failed rebuilds preserve the previous database.
-        """
-        db_path = join(self.cache_directory_path, db_filename)
-        if not isabs(db_path):
-            # Prefix the cwd without abspath's lexical removal of symlink/..
-            # components; the filesystem must determine their destination.
-            db_path = join(getcwd(), db_path)
-        # Imported here so that importing or building a Cache (pepdata builds
-        # one at import time) doesn't load sqlite3.
-        from .database_helpers import db_from_dataframe
-        return db_from_dataframe(
-            db_filename=db_path,
-            table_name=table_name,
-            df=df,
-            primary_key=key_column_name,
-            subdir=self.subdir,
-            overwrite=overwrite,
-            version=version,
-            show_progress=show_progress)

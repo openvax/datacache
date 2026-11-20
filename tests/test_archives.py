@@ -27,7 +27,7 @@ import threading
 import pytest
 
 from datacache import (
-    FileValidationError, VersionedArchiveRegistry, inspect_archive,
+    FileValidationError, inspect_archive,
     install_archive,
 )
 from datacache import archives, bundle_store, download
@@ -669,82 +669,6 @@ def test_resumable_split_downloads_require_part_integrity(tmp_path, archive_file
             expected_sha256=digest, expected_size=len(data),
             download_options={"resume": True})
 
-
-def test_versioned_archive_registry_supports_consumer_layout_and_status(
-        tmp_path, archive_file):
-    source, data, digest = archive_file
-    url = "https://example.test/models.tar.bz2"
-    receipt = "url\n%s\n" % url
-    paths = []
-
-    def consumer_path(name, version):
-        paths.append((name, version))
-        return tmp_path / "releases" / version / name
-
-    registry = VersionedArchiveRegistry({
-        "models": {
-            "default_version": "2.3.0",
-            "description": "Presentation models",
-            "versions": {
-                "2.3.0": {
-                    "sources": url,
-                    "expected_sha256": digest,
-                    "expected_size": len(data),
-                    "extra_files": {"DOWNLOAD_INFO.csv": receipt},
-                },
-                "2.2.0": {
-                    "sources": "https://example.test/older.tar.bz2",
-                    "expected_sha256": digest,
-                    "expected_size": len(data),
-                },
-            },
-        },
-    }, store_path=consumer_path)
-
-    assert registry.resolve_version("models") == "2.3.0"
-    assert registry.store_path("models") == tmp_path / "releases/2.3.0/models"
-    assert not (tmp_path / "releases").exists()
-    rows = registry.status()
-    assert [(row["version"], row["status"]) for row in rows] == [
-        ("2.3.0", "missing"), ("2.2.0", "missing")]
-    assert rows[0]["default"] and rows[0]["sources"] == [url]
-    assert rows[0]["downloaded_sources"] == []
-
-    bundle = registry.download("models", source_paths=source)
-    assert (bundle / "models/a/model.json").is_file()
-    assert registry.is_cached("models")
-    assert registry.local_path("models") == bundle
-    assert registry.inspect("models").verified
-    assert not registry.is_cached("models", "2.2.0")
-    installed = registry.status("models")[0]
-    assert installed["bundle"] == str(bundle)
-    assert installed["archive_size"] == len(data)
-    assert installed["downloaded_sources"] == [url]
-    assert ("models", "2.3.0") in paths
-
-    source.unlink()
-    assert registry.local_path("models") == bundle
-    with pytest.raises(FileNotFoundError):
-        registry.local_path("models", "2.2.0")
-    with pytest.raises(ValueError, match="unknown archive"):
-        registry.resolve_version("unknown")
-
-
-def test_versioned_archive_registry_default_layout_and_unverified_history(
-        tmp_path, archive_file):
-    source, _, _ = archive_file
-    registry = VersionedArchiveRegistry({
-        "data": {
-            "default_version": "historical",
-            "versions": {"historical": source},
-        },
-    }, cache_root=tmp_path / "cache", verified=False)
-
-    assert registry.store_path("data") == tmp_path / "cache/data/historical"
-    bundle = registry.ensure("data")
-    assert bundle.is_dir()
-    assert registry.inspect("data").status == "available"
-    assert not registry.inspect("data").verified
 
 
 @pytest.mark.parametrize('warm', [False, True])

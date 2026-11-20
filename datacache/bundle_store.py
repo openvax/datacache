@@ -37,8 +37,7 @@ import unicodedata
 from ._filesystem import file_lock, open_regular, path_present, read_json, write_json
 from .download import normal_creation_mode
 from .inspection import FileInspection
-from .integrity import FileValidationError, _validate_expectations
-from .progress import Progress
+from .integrity import FileValidationError, _validate_expectations, sha256_stream
 from .provenance import sidecar_path
 
 FORMAT = 2
@@ -83,10 +82,7 @@ class BundleStore:
 
     def lock(self):
         """The lock installs into this store take turns on."""
-        if os.name == 'posix':
-            return file_lock(self.lock_path)
-        from filelock import FileLock
-        return FileLock(str(self.lock_path))
+        return file_lock(self.lock_path)
 
     def can_reuse(self, inspection, *, force):
         """Whether an install can return the bundle it just inspected.
@@ -368,15 +364,10 @@ def hash_file(path, expected=None, *, hash_contents=True, show_progress=False):
         info = os.fstat(handle.fileno())
         sha256 = None
         if hash_contents:
-            digest, size = hashlib.sha256(), 0
-            with Progress(show_progress, 'Verifying', info.st_size) as progress:
-                for chunk in iter(lambda: handle.read(CHUNK_SIZE), b''):
-                    digest.update(chunk)
-                    size += len(chunk)
-                    progress(size, info.st_size)
+            sha256, size = sha256_stream(
+                handle, total=info.st_size, show_progress=show_progress, chunk_size=CHUNK_SIZE)
             if size != info.st_size or os.fstat(handle.fileno()).st_mtime_ns != info.st_mtime_ns:
                 raise FileValidationError(path, 'file changed while it was being read')
-            sha256 = digest.hexdigest()
     hashed = HashedFile(os.fspath(path), sha256, info)
     if expected is not None:
         check_expected(path, hashed.record, expected)

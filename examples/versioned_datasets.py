@@ -4,7 +4,11 @@ from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from datacache import VersionedDatasetRegistry, db_from_dataframe, inspect_bundle
+from datacache import (
+    VersionedDatasetRegistry,
+    db_from_dataframes_with_absolute_path,
+    inspect_bundle,
+)
 
 
 def main():
@@ -39,8 +43,9 @@ def main():
         generated = root / 'generated'
         generated.mkdir()
         table = pd.read_csv(registry.local_path('pair', asset='records.csv'))
-        connection = db_from_dataframe(str(generated / 'sequences.db'), 'sequences', table,
-                                       primary_key='id')
+        connection = db_from_dataframes_with_absolute_path(
+            str(generated / 'sequences.db'), {'sequences': table},
+            table_names_to_primary_keys={'sequences': 'id'})
         try:
             assert connection.execute('SELECT sequence FROM sequences WHERE id=1').fetchone() == ('ACGT',)
         finally:
