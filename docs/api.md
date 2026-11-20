@@ -198,8 +198,8 @@ fetch_and_transform(
 )
 ```
 
-Cache one transformed file. `transformed_filename` is resolved with
-[`resolve_path`](#resolve_path); `source_filename` is a download cache key and
+Cache one transformed file. `transformed_filename` is resolved under the cache
+directory (`build_path`); `source_filename` is a download cache key and
 `source_url` is the source URL. `subdir` and `cache_root` select the output root
 and the default source root.
 
@@ -405,11 +405,11 @@ print(dc.get_cache_root("example"))  # Platform cache directory for example.
 build_path(filename, subdir=None, *, cache_root=None)
 ```
 
-Resolve a path with the same parameters as and
+Resolve a cache path for `filename` under `subdir` or `cache_root` and
 create its parent directories if needed. Does not create or validate the file.
-Use `resolve_path` for lookup without writes.
+Use `expected_path` or `Cache.local_path(download=False)` for lookup without writes.
 
-**Returns:** path string. **Raises:** `resolve_path` errors and `OSError`
+**Returns:** path string. **Raises:** `ValueError` for invalid paths and `OSError`
 subclasses from directory creation, including permission or path-type errors.
 
 ```python
