@@ -6,13 +6,13 @@ The caller owns trusted dataset definitions; writers serialize per root. Use bun
 
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ._filesystem import write_json
+from ._filesystem import file_lock, write_json
 from .download import fetch_file
+from .integrity import sha256_stream
 
 
 class VersionedFileRegistry:
@@ -122,20 +122,17 @@ class VersionedFileRegistry:
         if reuse():
             return dest
         root.mkdir(parents=True, exist_ok=True)
-        from filelock import FileLock
-        with FileLock(str(root / '.datacache-file-registry.lock')):
+        with file_lock(root / '.datacache-file-registry.lock'):
             if reuse():
                 return dest
             acquire()
-            digest = hashlib.sha256()
             with dest.open("rb") as handle:
-                for chunk in iter(lambda: handle.read(2 ** 20), b""):
-                    digest.update(chunk)
+                digest, _ = sha256_stream(handle)
             manifest_path = root / 'manifest.json'
             manifest = self._read_manifest_at(manifest_path)
             manifest[name] = {
                 "version": version, "url": url, "path": str(dest),
-                "bytes": dest.stat().st_size, "sha256": digest.hexdigest(),
+                "bytes": dest.stat().st_size, "sha256": digest,
                 "downloaded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             }
             write_json(manifest_path, manifest)

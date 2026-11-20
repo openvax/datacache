@@ -14,7 +14,8 @@ import zlib
 import pytest
 from urllib3.exceptions import ProtocolError
 
-from datacache import FileValidationError, install_zip_member, list_bundles
+from datacache import FileValidationError, install_zip_member
+from datacache.bundle_store import list_bundles
 
 
 PAYLOAD = b"peptide\tintensity\nEXAMPLE\t25\n" * 10000

@@ -745,24 +745,6 @@ def expected_path(
     return common.resolve_path(filename, subdir, cache_root=cache_root)
 
 
-def file_exists(
-        download_url=None,
-        filename=None,
-        decompress=False,
-        subdir=None,
-        *,
-        destination=None,
-        cache_root=None):
-    """Check presence without writes/network; permission errors propagate.
-
-    This does not check file type, readability, or integrity. Use inspect_file
-    or validate_file on expected_path(...) for those checks.
-    """
-    return path_exists(expected_path(
-        download_url, filename, decompress, subdir,
-        destination=destination, cache_root=cache_root))
-
-
 DOWNLOAD_OPTIONS = frozenset((
     "timeout", "chunk_size", "progress_callback", "show_progress",
     "max_retries", "retry_backoff", "retry_max_delay", "resume", "max_bytes"))
@@ -1308,32 +1290,3 @@ def fetch_and_transform(
         logger.info("Cached data file: %s", transformed_path)
         result = loader(transformed_path)
     return result
-
-
-def fetch_csv_dataframe(
-        download_url,
-        filename=None,
-        subdir=None,
-        *,
-        download_options=None,
-        show_progress=False,
-        **pandas_kwargs):
-    """
-    Download `download_url` (cached under the key `filename`, if given) and
-    load it with pandas.read_csv, passing extra keyword arguments such as sep='\t'.
-
-    Archives are decompressed before parsing. Pass fetch_file settings such as
-    cache_root, timeout, expected_sha256, and progress_callback in a separate
-    download_options dictionary. show_progress enables optional tqdm displays.
-    The remaining keyword arguments are passed only to pandas.read_csv.
-    """
-    options = dict(download_options or {})
-    options.setdefault("show_progress", show_progress)
-    path = fetch_file(
-        download_url=download_url,
-        filename=filename,
-        decompress=True,
-        subdir=subdir,
-        **options)
-    import pandas as pd
-    return pd.read_csv(path, **pandas_kwargs)

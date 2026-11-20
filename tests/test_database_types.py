@@ -2,7 +2,7 @@ from contextlib import closing
 
 import numpy as np
 import pandas as pd
-from datacache import db_from_dataframe
+from ._db_helpers import db_from_dataframe
 from datacache.database_types import db_type
 
 def test_db_types():

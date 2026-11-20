@@ -84,7 +84,8 @@ def test_database_paths_follow_symlinks_before_parent_components(
     expected = target.parent / "records.db"
     wrong = cache_directory / "records.db"
 
-    connection = cache.db_from_dataframe(filename, "records", pd.DataFrame({"value": ["correct location"]}))
+    from ._db_helpers import db_from_dataframe
+    connection = db_from_dataframe(filename, "records", pd.DataFrame({"value": ["correct location"]}), subdir=cache.subdir, cache_root=cache.cache_directory_path)
     try:
         assert connection.execute("select value from records").fetchall() == [("correct location",)]
         assert expected.is_file()

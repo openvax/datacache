@@ -14,14 +14,14 @@ explain the longer workflows and compatibility guarantees.
 
 | Area | APIs |
 | --- | --- |
-| Downloading | [fetch_file](#fetch_file), [fetch_bytes](#fetch_bytes), [fetch_csv_dataframe](#fetch_csv_dataframe), [fetch_and_transform](#fetch_and_transform), [discard_partial](#discard_partial) |
-| Paths and presence | [expected_path](#expected_path), [file_exists](#file_exists), [build_local_filename](#build_local_filename), [get_data_dir](#get_data_dir), [get_cache_root](#get_cache_root), [resolve_path](#resolve_path), [build_path](#build_path), [ensure_dir](#ensure_dir), [clear_cache](#clear_cache) |
-| Integrity and permissions | [validate_file](#validate_file), [inspect_file](#inspect_file), [inspect_files](#inspect_files), [make_file_readable](#make_file_readable) |
+| Downloading | [fetch_file](#fetch_file), [fetch_bytes](#fetch_bytes), [fetch_and_transform](#fetch_and_transform), [discard_partial](#discard_partial) |
+| Paths and presence | [expected_path](#expected_path), [build_local_filename](#build_local_filename), [get_data_dir](#get_data_dir), [get_cache_root](#get_cache_root), [build_path](#build_path), [ensure_dir](#ensure_dir), [clear_cache](#clear_cache) |
+| Integrity and permissions | [validate_file](#validate_file), [inspect_file](#inspect_file), [inspect_files](#inspect_files) |
 | Results and exceptions | [FileInspection](#fileinspection), [CacheInspection](#cacheinspection), [FileValidationError](#filevalidationerror), [CannotResume](#cannotresume) |
-| SQLite | [db_from_dataframe](#db_from_dataframe), [db_from_dataframes](#db_from_dataframes), [db_from_dataframes_with_absolute_path](#db_from_dataframes_with_absolute_path), [fetch_csv_db](#fetch_csv_db), [connect_if_correct_version](#connect_if_correct_version) |
-| Cache object | [Cache](#cache), [fetch](#cachefetch), [local_filename](#cachelocal_filename), [local_path](#cachelocal_path), [exists](#cacheexists), [inspect](#cacheinspect), [make_readable](#cachemake_readable), [db_from_dataframe](#cachedb_from_dataframe), [delete_url](#cachedelete_url), [delete_all](#cachedelete_all) |
-| Complete archive trees | [install_archive](#install_archive), [inspect_archive](#inspect_archive), [ArchiveInspection](#archiveinspection), [VersionedArchiveRegistry](#versionedarchiveregistry) |
-| Versioned file bundles | [install_bundle](#install_bundle), [inspect_bundle](#inspect_bundle), [BundleInspection](#bundleinspection), [list_bundles](#list_bundles), [prune_bundles](#prune_bundles), [VersionedDatasetRegistry](#versioneddatasetregistry) |
+| SQLite | [db_from_dataframes_with_absolute_path](#db_from_dataframes_with_absolute_path), [connect_if_correct_version](#connect_if_correct_version) |
+| Cache object | [Cache](#cache), [fetch](#cachefetch), [local_filename](#cachelocal_filename), [local_path](#cachelocal_path), [exists](#cacheexists), [inspect](#cacheinspect), [make_readable](#cachemake_readable), [delete_url](#cachedelete_url), [delete_all](#cachedelete_all) |
+| Complete archive trees | [install_archive](#install_archive), [inspect_archive](#inspect_archive), [ArchiveInspection](#archiveinspection) |
+| Versioned file bundles | [install_bundle](#install_bundle), [inspect_bundle](#inspect_bundle), [BundleInspection](#bundleinspection), [VersionedDatasetRegistry](#versioneddatasetregistry) |
 | Derived artifacts | [materialize](#materialize), [inspect_materialization](#inspect_materialization), [MaterializationInspection](#materializationinspection) |
 | Fixed-path file registry | [VersionedFileRegistry](#versionedfileregistry) |
 | Package version | [`__version__`](#__version__) |
@@ -188,40 +188,6 @@ body, or a body larger than `max_bytes`; Requests exceptions for HTTP failures, 
 assert dc.fetch_bytes(url, timeout=30) == contents
 ```
 
-### `fetch_csv_dataframe`
-
-```text
-fetch_csv_dataframe(
-    download_url, filename=None, subdir=None, *, download_options=None,
-    show_progress=False, **pandas_kwargs
-)
-```
-
-Fetch and decompress the source, then call `pandas.read_csv` on its local path.
-`download_url`, `filename`, and `subdir` have the meanings above. Pass parser
-arguments such as `sep`, `dtype`, and `usecols` through `**pandas_kwargs`.
-`download_options` is an optional dictionary of other `fetch_file` arguments
-(for example `cache_root`, `timeout`, `force`, retry settings, and expectations).
-It is copied, not mutated. Keep `download_url`, `filename`, `subdir`, and
-`decompress` out of this dictionary: the helper supplies them itself, with
-`decompress=True`. Exact destinations still obey `fetch_file`'s exclusions.
-An inner `show_progress` overrides the outer setting for the download.
-
-**Returns:** a pandas `DataFrame` normally; a pandas `TextFileReader` when
-`chunksize` or `iterator=True` is supplied. Close a reader when finished.
-
-**Raises:** [fetch_file errors](#fetch_file), pandas parser errors such as
-`pandas.errors.ParserError` and `pandas.errors.EmptyDataError`, decoding errors,
-and `TypeError` for duplicated or unsupported keyword arguments.
-
-```python
-loaded = dc.fetch_csv_dataframe(
-    url, filename="records.csv", dtype={"id": "int64"},
-    download_options={"cache_root": cache_root, "expected_sha256": sha256},
-)
-assert loaded["id"].tolist() == [1, 2]
-```
-
 ### `fetch_and_transform`
 
 ```text
@@ -324,27 +290,6 @@ URL/filename, an empty destination, or mutually exclusive path arguments.
 
 ```python
 assert dc.expected_path(filename="records.csv", cache_root=cache_root) == path
-```
-
-### `file_exists`
-
-```text
-file_exists(
-    download_url=None, filename=None, decompress=False, subdir=None, *,
-    destination=None, cache_root=None
-)
-```
-
-Check the presence of the path selected by [expected_path](#expected_path),
-with the same parameters. Follows symlinks. Directories count as present and
-dangling symlinks as absent. Does not validate readability or integrity.
-
-**Returns:** `bool`. **Raises:** `expected_path` argument errors and filesystem
-errors other than `FileNotFoundError`, such as `PermissionError`. No directories
-are created, even when the cache root is absent.
-
-```python
-assert dc.file_exists(filename="records.csv", cache_root=cache_root)
 ```
 
 ### `build_local_filename`
@@ -454,34 +399,13 @@ del os.environ["EXAMPLE_SHARED"]
 print(dc.get_cache_root("example"))  # Platform cache directory for example.
 ```
 
-### `resolve_path`
-
-```text
-resolve_path(filename, subdir=None, *, cache_root=None)
-```
-
-Join a filename/path with `cache_root`, or with `get_data_dir(subdir)` if no
-root is supplied. Accepts string or `Path` values for `filename` and
-`cache_root`. Relative roots remain relative. Unlike `expected_path`, does not
-normalize filenames; nested components and absolute filenames are supported.
-An absolute filename overrides the root. This is ordinary path joining, not
-confinement to a cache directory. Performs no filesystem access.
-
-**Returns:** path string. **Raises:** path argument `TypeError` for unsupported
-types, or platform lookup errors from `get_data_dir`.
-
-```python
-nested_path = dc.resolve_path("nested/records.csv", cache_root=cache_root)
-assert nested_path == str(cache_root / "nested" / "records.csv")
-```
-
 ### `build_path`
 
 ```text
 build_path(filename, subdir=None, *, cache_root=None)
 ```
 
-Resolve a path with the same parameters as [resolve_path](#resolve_path), and
+Resolve a path with the same parameters as and
 create its parent directories if needed. Does not create or validate the file.
 Use `resolve_path` for lookup without writes.
 
@@ -722,31 +646,6 @@ inconsistently or with an unexpected status, or the destination's filesystem
 can't keep private resume state or locks. `resume="auto"` catches it and
 downloads the file in full instead. The installed file is unchanged.
 
-### `make_file_readable`
-
-```text
-make_file_readable(path, *, group=True, others=False)
-```
-
-Explicitly add group read permission (`group=True`) and/or other-user read
-permission (`others=True`) to one existing regular file, identified by a string
-or `Path`. Both flags must be booleans. Adds no write/execute bits, removes no
-permissions, and changes no contents. A `False` flag leaves that class's
-existing access unchanged. The file's provenance record, if any, gets the same
-access, best effort. Requires POSIX file-descriptor support. The caller must be
-able to open the file and change its mode; parent directories and group
-ownership must already allow the intended readers to reach it.
-
-**Returns:** path string. **Raises:** `ValueError` for non-boolean flags,
-`NotImplementedError` on unsupported platforms, `FileValidationError` for a
-symlink or non-regular file, and `OSError` subclasses for missing files or
-open/chmod failures. This is never called automatically on cache reuse.
-
-```python
-if hasattr(os, "fchmod") and hasattr(os, "O_NOFOLLOW"):
-    dc.make_file_readable(path, group=True, others=False)
-```
-
 ## SQLite
 
 ### Shared database behavior
@@ -798,59 +697,6 @@ for binding, database, schema, or locking failures; `OSError` subclasses for
 filesystem/publication failures; and `ImportError` for missing tqdm when a
 progress bar is needed. Existing malformed databases are not silently repaired.
 
-### `db_from_dataframe`
-
-```text
-db_from_dataframe(
-    db_filename, table_name, df, primary_key=None, subdir=None, overwrite=False,
-    indices=(), version=1, *, cache_root=None, show_progress=False
-)
-```
-
-Build or reuse one table named `table_name` from pandas DataFrame `df`.
-`db_filename`, `subdir`, and `cache_root` are resolved with `resolve_path`;
-parents are created if a build is needed. `primary_key=None` means no primary
-key; `indices=()` means no extra indexes. `overwrite`, `version`, column naming,
-and progress follow [shared database behavior](#shared-database-behavior).
-
-**Returns:** open `sqlite3.Connection`. **Raises:** the shared database errors.
-
-```python
-with closing(dc.db_from_dataframe(
-    "records.db", "records", frame, primary_key="id", indices=[("value",)],
-    cache_root=cache_root, version=1,
-)) as connection:
-    assert connection.execute("SELECT value FROM records ORDER BY id").fetchall() == [(10,), (20,)]
-```
-
-### `db_from_dataframes`
-
-```text
-db_from_dataframes(
-    db_filename, dataframes, primary_keys=None, indices=None, subdir=None,
-    overwrite=False, version=1, *, cache_root=None, show_progress=False
-)
-```
-
-Build or reuse a database containing the tables in the nonempty mapping
-`dataframes`, from table names to pandas DataFrames. `primary_keys` optionally
-maps table names to a primary-key column; omitted entries have no primary key.
-`indices` optionally maps table names to index specifications; omitted entries
-have no extra indexes. `db_filename`, `subdir`, and `cache_root` select the path
-as in `db_from_dataframe`, creating parents when needed. `overwrite`, `version`,
-and `show_progress` follow the shared behavior above.
-
-**Returns:** open `sqlite3.Connection`. **Raises:** the shared database errors.
-
-```python
-with closing(dc.db_from_dataframes(
-    "multiple.db", {"records": frame, "other_records": frame},
-    primary_keys={"records": "id"}, indices={"records": [("value",)]},
-    cache_root=cache_root,
-)) as connection:
-    assert connection.execute("SELECT COUNT(*) FROM other_records").fetchone() == (2,)
-```
-
 ### `db_from_dataframes_with_absolute_path`
 
 ```text
@@ -881,55 +727,6 @@ with closing(dc.db_from_dataframes_with_absolute_path(
     assert connection.execute("SELECT COUNT(*) FROM records").fetchone() == (2,)
 ```
 
-### `fetch_csv_db`
-
-```text
-fetch_csv_db(
-    table_name, download_url, csv_filename=None, db_filename=None, subdir=None,
-    version=1, *, download_options=None, show_progress=False, **pandas_kwargs
-)
-```
-
-Download/parse a CSV and build or reuse `table_name` in SQLite. `download_url`,
-`csv_filename`, `subdir`, `download_options`, and `**pandas_kwargs` follow
-`fetch_csv_dataframe`. `csv_filename=None` infers a download key from the URL;
-`db_filename=None` infers a database name from the CSV name, row count, column
-names, and dtypes. That name is spelled out only when every character is allowed
-in file names on all supported platforms (no `/`, `\`, `:`, `*`, `?`, `"`, `<`,
-`>`, `|`, or control characters) and the name leaves room for SQLite's
-`-journal` file within 255 UTF-8 bytes, measured the same way on every platform.
-Otherwise the schema is named by a digest, forbidden characters from the CSV
-filename become `_`, and a very long CSV filename is shortened, so column names
-never add directories or leave the cache directory; directories in an explicit
-`csv_filename` are kept. A matching database an older release stored under the
-historical name is still reused in place. A new `version` rebuilds it under the
-new name and leaves the older copy alone, since another process may still have
-it open, logging a warning that names it. An explicit `db_filename` works
-independently of `csv_filename`. A `cache_root` inside `download_options`
-applies to both files. Parser options must produce a DataFrame with non-empty
-string column names: do not pass `chunksize` or `iterator`, and pair
-`header=None` with `names=`.
-
-With an explicit database filename, matching tables/version can be reused
-without downloading or parsing the source. Supplying `force`, `expected_sha256`,
-or `expected_size` in `download_options` requests source work even on such a
-hit. Refreshing a source alone does not replace a matching database: increment
-`version` when its data or schema changes. There is no `overwrite` parameter.
-`show_progress` enables both download and insertion displays; an inner setting
-overrides only the download display.
-
-**Returns:** open `sqlite3.Connection`. **Raises:** `fetch_csv_dataframe` errors
-and the shared database errors. Incompatible parser return types can raise
-`AttributeError` or `TypeError` during database construction.
-
-```python
-with closing(dc.fetch_csv_db(
-    "records", url, csv_filename="records.csv", db_filename="from-csv.db",
-    download_options={"cache_root": cache_root}, version=1,
-)) as connection:
-    assert connection.execute("SELECT SUM(value) FROM records").fetchone() == (30,)
-```
-
 ### `connect_if_correct_version`
 
 ```text
@@ -950,59 +747,12 @@ metadata tables, and conversion errors such as `ValueError` for malformed
 stored versions.
 
 ```python
-connection = dc.connect_if_correct_version(cache_root / "records.db", 1, read_only=True)
+connection = dc.connect_if_correct_version(root / "direct.db", 1, read_only=True)
 assert connection is not None
 with closing(connection):
     assert connection.execute("SELECT COUNT(*) FROM records").fetchone() == (2,)
 assert dc.connect_if_correct_version(root / "absent.db", 1) is None
 ```
-
-### `recover_cached_database`
-
-```text
-recover_cached_database(db_path, tables, version=1, *, page_size=None, show_progress=False)
-```
-
-Explicitly replace an existing cache from an iterable of
-`datacache.database_table.DatabaseTable` objects. The target and its parent
-must already exist. The target may be healthy or corrupt; **all existing
-tables are replaced**. Input rows are consumed once into a temporary sibling
-database, which is validated before publication. `version` is an integer;
-optional `page_size` is a power of two from 512 through 65536. `None` uses
-SQLite's default. `show_progress=True` reports row counts.
-
-**Returns:** an open caller-owned `sqlite3.Connection` after successful
-publication. **Raises:** validation errors for invalid inputs, `sqlite3.Error`
-or `OSError` for build/publication failures, and `RuntimeError` when the recovery
-runtime is unavailable. Failed builds leave the previous cache untouched.
-See [SQLite recovery APIs](sqlite-recovery.md) for locking and rollback details.
-
-### `restore_database`
-
-```text
-restore_database(source, destination, *, timeout=5.0)
-```
-
-Replace an existing cache from a completed DataCache database at `source`.
-Both arguments are existing file paths and must refer to different files.
-Keep the source closed to writers throughout the call. The source's integrity
-and version record are checked before changing the destination. Ordinary
-tables, rows, constraints, indexes, AUTOINCREMENT high-water marks, and cache version are copied; unsupported
-source views, triggers, and virtual tables raise `ValueError` instead of being
-silently omitted. The destination may be healthy or corrupt.
-Recovery preserves a readable destination text encoding, converting the source
-when necessary; otherwise it uses the source encoding. The rebuilt destination
-passes `integrity_check` before commit.
-
-**Returns:** `None` after committing. **Raises:** `sqlite3.Error`, `OSError`,
-`ValueError`, or `RuntimeError` for an unavailable recovery runtime. `timeout`
-is SQLite's lock-wait time in seconds, not a limit on total copy time.
-Publication preserves the destination inode, permissions, and ACLs. It runs
-in an isolated process; cancellation waits for publication or rollback.
-Handled failures before commit restore the previous bytes; errors after commit
-leave the complete replacement installed. Open WAL connections can prevent the
-required exclusive lock even between read transactions.
-See [SQLite recovery APIs](sqlite-recovery.md) for the public worker interfaces.
 
 ## Cache object
 
@@ -1096,7 +846,7 @@ Cache.exists(url=None, filename=None, decompress=False)
 ```
 
 Check presence at `Cache.local_path(url, filename, decompress)`, using the
-[file_exists](#file_exists) contract: no download, repair, or directory creation;
+ contract: no download, repair, or directory creation;
 directories count as present and dangling symlinks as absent.
 
 **Returns:** `bool`. **Raises:** naming/path argument errors and filesystem
@@ -1134,7 +884,7 @@ Cache.make_readable(
 )
 ```
 
-Call [make_file_readable](#make_file_readable) on the path selected by `url`,
+Call  on the path selected by `url`,
 `filename`, and `decompress`. `group` and `others` have that function's meanings.
 Explicit POSIX maintenance only: does not download or recurse into directories.
 
@@ -1144,32 +894,6 @@ errors documented for `make_file_readable`.
 ```python
 if hasattr(os, "fchmod") and hasattr(os, "O_NOFOLLOW"):
     cache.make_readable(filename="records.csv", group=True)
-```
-
-### `Cache.db_from_dataframe`
-
-```text
-Cache.db_from_dataframe(
-    db_filename, table_name, df, key_column_name=None, *, overwrite=False, version=1,
-    show_progress=False
-)
-```
-
-Build or reuse `table_name` from `df` at `db_filename` under this cache's root.
-An absolute filename overrides the root. `key_column_name` is the primary-key
-column, equivalent to `primary_key` in the top-level builder. `overwrite`,
-`version`, and `show_progress` follow [db_from_dataframe](#db_from_dataframe).
-This method has no index specification argument; use the top-level function
-with `cache_root=cache.cache_directory_path` to request indexes.
-
-**Returns:** open caller-owned `sqlite3.Connection`. **Raises:** the
-[shared database errors](#shared-database-behavior).
-
-```python
-with closing(cache.db_from_dataframe(
-    "records.db", "records", frame, key_column_name="id",
-)) as connection:
-    assert connection.execute("SELECT COUNT(*) FROM records").fetchone() == (2,)
 ```
 
 ### `Cache.delete_url`
@@ -1315,38 +1039,6 @@ extracted tree applications should use;
 is `verified` only when a hash the caller supplied vouched for it. Source URLs
 are redacted for display. The recorded digest is observed receipt data, not trusted verification.
 
-### `VersionedArchiveRegistry`
-
-```text
-VersionedArchiveRegistry(
-    archives, *, cache_root=None, store_path=None, verified=True
-)
-```
-
-Reusable version catalogue for archive-tree consumers. Each named archive has a
-`default_version`, optional description, and `versions` mapping. A concrete
-version may be one source, an ordered source sequence, or a mapping containing
-`sources`, `expected_sha256`, `expected_size`, `extra_files`, `max_members`, and
-`max_extracted_size`. Definitions are validated without filesystem access.
-
-Select exactly one destination strategy. `cache_root` stores versions at
-`<root>/<name>/<version>`. A two-argument `store_path(name, version)` callback
-lets an adapter retain an established layout such as
-`<MHCFLURRY_DATA>/<release>/<download>` without putting layout policy in
-DataCache. `verified=False` explicitly enables historical unpinned catalogues.
-
-| Method | Result |
-| --- | --- |
-| `resolve_version(name, version=None)` | Concrete version, applying the pinned default. |
-| `store_path(name, version=None)` | Store `Path`, without creating or inspecting it. |
-| `inspect(name, version=None, *, verify_files=True)` | Offline `ArchiveInspection`. |
-| `download(name, version=None, *, force=False, source_paths=None, **download_options)` | Install/reuse and return the current bundle's `Path`; `source_paths` overlays ordered local files while retaining catalogue identities. |
-| `local_path(name, version=None, *, verify_files=False)` | Resolve the current bundle without network, writes, or repair. |
-| `ensure(name, version=None, **download_options)` | Install if needed and return the current bundle. |
-| `is_cached(name, version=None, *, verify_files=False)` | Whether the current bundle is available; full verification is optional. |
-| `status(name=None, *, verify_files=False)` | One read-only row per concrete version, including catalogue and downloaded source URLs, store and bundle paths, default flag, status, fetch time, observed archive size/hash and inspection. Metadata-only by default; `verify_files=True` hashes every file. |
-| `prune(name, version=None, *, keep=1)` | Delete all but the newest `keep` bundles of one version, as [prune_bundles](#prune_bundles) does. |
-
 ## Versioned file bundles
 
 ### `install_bundle`
@@ -1399,30 +1091,6 @@ is the current bundle's directory, and `files` maps asset names to
 `FileInspection` values from it. Paths remain usable across refreshes until
 explicitly removed.
 
-### `list_bundles`
-
-```text
-list_bundles(destination)
-```
-
-Every bundle in a bundle, archive or materialization store, as `Path`s ordered
-oldest first; the last is the current bundle. Read-only. A store with nothing
-installed, or no directory at all, has none. A directory that isn't a datacache
-store raises `FileValidationError`.
-
-### `prune_bundles`
-
-```text
-prune_bundles(destination, *, keep=1)
-```
-
-Delete all but the newest `keep` bundles from a bundle, archive or
-materialization store, and return the deleted `Path`s, oldest first. The newest
-bundle is the current one, so it is always kept: `keep` must be a positive
-integer. Paths into deleted bundles stop working, so prune only when no running
-program still uses them. Pruning holds the store's lock, so it never races an
-install. See [removing old bundles](bundles.md#removing-old-bundles).
-
 ### `VersionedDatasetRegistry`
 
 ```text
@@ -1448,7 +1116,7 @@ The [bundle guide](bundles.md) includes an example; notes for specific libraries
 | `ensure(name, version=None, **download_options)` | Download/reuse, then return what `local_path` would, from the paths the download validated. `verify_files=False` among the options skips hashing on reuse. |
 | `is_cached(name, version=None, *, verify_files=True)` | Whether inspection reports `available`; `verify_files=False` skips hashing. |
 | `status(*, verify_files=True)` | One row per pinned default: name, version, description, available_versions and inspection. `verify_files=False` skips hashing. |
-| `prune(name, version=None, *, keep=1)` | Delete all but the newest `keep` bundles of one version, as [prune_bundles](#prune_bundles) does. |
+| `prune(name, version=None, *, keep=1)` | Delete all but the newest `keep` bundles of one version, as  does. |
 
 ## Derived artifacts
 

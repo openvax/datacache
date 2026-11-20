@@ -6,7 +6,9 @@ import hashlib
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from datacache import Cache, fetch_and_transform, fetch_csv_db
+import pandas as pd
+
+from datacache import Cache, db_from_dataframes_with_absolute_path, fetch_and_transform
 
 
 def main():
@@ -27,9 +29,9 @@ def main():
                                expected_size=len(archive))
         assert Path(raw_path).read_bytes() == archive
 
-        with closing(fetch_csv_db(
-                "records", source.as_uri(), csv_filename="records.csv",
-                download_options={"cache_root": root / "cache", "expected_sha256": digest})) as connection:
+        frame = pd.read_csv(path)
+        with closing(db_from_dataframes_with_absolute_path(
+                str(root / "cache" / "records.db"), {"records": frame})) as connection:
             assert connection.execute("SELECT * FROM records").fetchall() == [(1, "case"), (2, "control")]
 
         def transform(source_path, output_path):

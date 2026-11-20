@@ -51,6 +51,41 @@ def validate_file(path, expected_sha256=None, expected_size=None, *, show_progre
     return _validate_file(path, expected_sha256, expected_size, show_progress=show_progress)[0]
 
 
+def sha256_stream(
+        handle,
+        *,
+        total=None,
+        show_progress=False,
+        label="Verifying",
+        chunk_size=2 ** 20,
+        writer=None,
+        extra_digest=None,
+        progress_callback=None):
+    """Hash ``handle`` to EOF with SHA-256 and return ``(hex_digest, bytes_read)``.
+
+    Uses ``hashlib.file_digest`` when no progress reporting, output mirroring,
+    or secondary digest is requested.
+    """
+    if not (show_progress or writer is not None or extra_digest is not None or progress_callback is not None):
+        start = handle.tell()
+        digest = hashlib.file_digest(handle, "sha256").hexdigest()
+        return digest, handle.tell() - start
+    digest = hashlib.sha256()
+    size = 0
+    with Progress(show_progress, label, total) as progress:
+        for chunk in iter(lambda: handle.read(chunk_size), b""):
+            if writer is not None:
+                writer.write(chunk)
+            if extra_digest is not None:
+                extra_digest.update(chunk)
+            digest.update(chunk)
+            size += len(chunk)
+            progress(size, total)
+            if progress_callback is not None:
+                progress_callback(size, total)
+    return digest.hexdigest(), size
+
+
 def _validate_file(path, expected_sha256=None, expected_size=None, *, show_progress=False):
     """validate_file, also returning the stat of the bytes that were checked.
 
@@ -70,14 +105,7 @@ def _validate_file(path, expected_sha256=None, expected_size=None, *, show_progr
                 path, "size mismatch: expected %d bytes, found %d" % (
                     expected_size, info.st_size))
         if expected_sha256 is not None:
-            digest = hashlib.sha256()
-            with Progress(show_progress, "Verifying", info.st_size) as progress:
-                completed = 0
-                for chunk in iter(lambda: source.read(2 ** 20), b""):
-                    digest.update(chunk)
-                    completed += len(chunk)
-                    progress(completed, info.st_size)
-            actual_sha256 = digest.hexdigest()
+            actual_sha256, _ = sha256_stream(source, total=info.st_size, show_progress=show_progress)
             if actual_sha256 != expected_sha256.lower():
                 raise FileValidationError(
                     path, "SHA-256 mismatch: expected %s, found %s" % (

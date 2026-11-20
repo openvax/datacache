@@ -9,7 +9,8 @@ import stat
 import pandas as pd
 import pytest
 
-from datacache import connect_if_correct_version, db_from_dataframe
+from datacache import connect_if_correct_version
+from ._db_helpers import db_from_dataframe
 
 
 @pytest.mark.parametrize("target_kind", ["relative", "absolute", "chain", "parent"])

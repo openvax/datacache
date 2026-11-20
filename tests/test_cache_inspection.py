@@ -13,7 +13,7 @@ import pytest
 
 from datacache import (
     Cache, FileValidationError, common, download, expected_path, fetch_file,
-    file_exists, inspect_file, inspect_files, resolve_path,
+    inspect_file, inspect_files,
 )
 
 
@@ -65,9 +65,6 @@ def test_absent_paths_do_not_create_cache_or_lock(tmp_path, monkeypatch):
             assert not cache.exists(filename="records")
             assert cache.inspect(filename="records", **METADATA).status == "missing"
         assert expected_path(filename="records") == str(root / "records")
-        assert not file_exists(filename="records")
-        assert not file_exists(destination=root / "records")
-        assert not file_exists(filename="records", cache_root=root)
         assert inspect_files(root, {"records": METADATA}).status == "missing"
     assert list(tmp_path.iterdir()) == []
 
@@ -79,7 +76,6 @@ def test_resolution_does_not_access_filesystem(tmp_path, monkeypatch):
     with monkeypatch.context() as patch:
         patch.setattr(os, "stat", reject)
         patch.setattr(os, "lstat", reject)
-        assert resolve_path("file", cache_root=tmp_path) == str(tmp_path / "file")
         assert expected_path(filename="file", cache_root=tmp_path) == str(tmp_path / "file")
         assert expected_path(destination=tmp_path / "file") == str(tmp_path / "file")
         assert Cache(cache_root=tmp_path).local_path(filename="file") == str(tmp_path / "file")
@@ -152,7 +148,6 @@ def test_required_file_inventory(tmp_path, monkeypatch, condition):
             assert result.files["records"].verified
         elif condition == "unreadable":
             assert isinstance(result.error, PermissionError)
-            assert file_exists(destination=records)  # Presence does not imply readability.
     assert set(p.name for p in tmp_path.iterdir()) == (
         {"records"} if condition == "missing-manifest" else {"records", "manifest.json"})
 
@@ -161,7 +156,6 @@ def test_presence_readability_and_verified_integrity_are_distinct(tmp_path, monk
     path = tmp_path / "file"
     path.write_bytes(DATA)
     with read_only(monkeypatch):
-        assert file_exists(destination=tmp_path)  # Directories are present.
         assert inspect_file(tmp_path).status == "corrupt"
         assert inspect_files(path, {"records": METADATA}).status == "corrupt"
         assert inspect_file(path).status == "available"
@@ -180,8 +174,6 @@ def test_permission_errors_are_never_missing(tmp_path, monkeypatch):
 
     with read_only(monkeypatch), monkeypatch.context() as patch:
         patch.setattr(os, "stat", denied)
-        with pytest.raises(PermissionError):
-            file_exists(destination=tmp_path / "records")
         with pytest.raises(PermissionError):
             Cache(cache_root=tmp_path).exists(filename="records")
         assert inspect_file(tmp_path / "records").status == "inaccessible"
@@ -224,7 +216,8 @@ def test_explicit_root_is_used_for_fetch_inspection_and_deletion(tmp_path, monke
     cache.delete_url(url)
     assert list(root.iterdir()) == []
     cache.delete_url(url)  # Already absent is harmless.
-    connection = cache.db_from_dataframe("table.db", "records", pd.DataFrame({"id": ["example"]}))
+    from ._db_helpers import db_from_dataframe
+    connection = db_from_dataframe("table.db", "records", pd.DataFrame({"id": ["example"]}), subdir=cache.subdir, cache_root=cache.cache_directory_path)
     try:
         assert connection.execute("select id from records").fetchall() == [("example",)]
         assert (root / "table.db").is_file()

@@ -18,8 +18,7 @@ from .bundle_store import (
     validate_no_sidecar_collisions, validate_relative_name,
 )
 from .download import normal_creation_mode, validate_download_options, validate_size_within_limit
-from .integrity import FileValidationError, _validate_expectations
-from .progress import Progress
+from .integrity import FileValidationError, _validate_expectations, sha256_stream
 from . import provenance
 
 INPUTS = '.datacache-inputs.json'
@@ -307,19 +306,18 @@ def _acquire_inputs(directory, definition, acquisition, options, *, force=False)
             temporary = directory / ('.copy-' + uuid4().hex)
             try:
                 with os.fdopen(open_regular(source), 'rb') as handle, temporary.open('xb') as output:
-                    digest = hashlib.sha256()
-                    with Progress(options['show_progress'], 'Copying', os.fstat(handle.fileno()).st_size) as progress:
-                        size = 0
-                        for chunk in iter(lambda: handle.read(options.get('chunk_size', CHUNK_SIZE)), b''):
-                            output.write(chunk)
-                            digest.update(chunk)  # Hash while copying: one read.
-                            size += len(chunk)
-                            progress(size, progress.total)
-                            if options.get('progress_callback') is not None:
-                                options['progress_callback'](size, progress.total)
+                    digest, size = sha256_stream(
+                        handle,
+                        total=os.fstat(handle.fileno()).st_size,
+                        show_progress=options['show_progress'],
+                        label='Copying',
+                        chunk_size=options.get('chunk_size', CHUNK_SIZE),
+                        writer=output,
+                        progress_callback=options.get('progress_callback'),
+                    )
                     output.flush()
                     os.fsync(output.fileno())
-                copied = dict(sha256=digest.hexdigest(), size=size)
+                copied = dict(sha256=digest, size=size)
                 check_expected(temporary, copied, spec)
                 os.replace(temporary, target)
             finally:

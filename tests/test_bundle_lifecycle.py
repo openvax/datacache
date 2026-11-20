@@ -8,9 +8,10 @@ import tarfile
 
 import pytest
 
+from datacache.bundle_store import list_bundles, prune_bundles
 from datacache import (
-    FileValidationError, VersionedArchiveRegistry, VersionedDatasetRegistry, inspect_bundle, install_archive,
-    install_bundle, list_bundles, materialize, prune_bundles,
+    FileValidationError, VersionedDatasetRegistry, inspect_bundle, install_archive,
+    install_bundle, materialize,
 )
 from datacache import download
 
@@ -67,12 +68,11 @@ def test_every_kind_of_store_can_be_pruned(tmp_path, local_file):
         tar.addfile(info, io.BytesIO(b"hello"))
     tar_path = tmp_path / "data.tar"
     tar_path.write_bytes(archive.getvalue())
-    registry = VersionedArchiveRegistry(
-        {"data": {"default_version": "v1", "versions": {"v1": {"path": tar_path, **describe(tar_path.read_bytes())}}}},
-        cache_root=tmp_path / "archives")
-    old = registry.download("data")
-    new = registry.download("data", force=True)
-    assert registry.prune("data") == [old] and list_bundles(registry.store_path("data")) == [new]
+    archive_store = tmp_path / "archives" / "data" / "v1"
+    source_spec = {"path": tar_path, **describe(tar_path.read_bytes())}
+    old = install_archive(archive_store, source_spec)
+    new = install_archive(archive_store, source_spec, force=True)
+    assert prune_bundles(archive_store) == [old] and list_bundles(archive_store) == [new]
 
     options = dict(sources={"in": {"path": local_file}}, transform={"version": "1"}, outputs={"out": {}},
                    builder=lambda inputs, outputs: Path(outputs["out"]).write_bytes(b"x"),

@@ -112,17 +112,16 @@ def open_regular(path, flags=os.O_RDONLY, mode=0o600, *, private=False):
 
 @contextmanager
 def file_lock(path, *, private=False):
-    """Permanent inode, advisory POSIX lock; never unlink a live lock file."""
-    if os.name != 'posix':
-        raise NotImplementedError('Resumable and bundle installs require a POSIX local filesystem')
-    import fcntl
-    fd = open_regular(path, os.O_RDWR | os.O_CREAT, 0o600 if private else 0o666,
-                      private=private)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+    """Advisory cross-platform file lock; never unlink a live lock file."""
+    if private:
+        if os.name != 'posix':
+            raise NotImplementedError('Resumable installs require a POSIX local filesystem')
+        # Ensure an existing or newly created lock file is a private, single-link regular file.
+        os.close(open_regular(path, os.O_RDWR | os.O_CREAT, 0o600, private=True))
+    from filelock import FileLock
+    lock = FileLock(str(path), mode=0o600) if private else FileLock(str(path))
+    with lock:
         yield
-    finally:
-        os.close(fd)
 
 
 def _unique_json_keys(pairs):
@@ -136,7 +135,8 @@ def _unique_json_keys(pairs):
 
 def read_json(path, limit=1024 * 1024, *, unique_keys=False):
     """Read a regular JSON file; ``limit=None`` permits growing tree manifests."""
-    with os.fdopen(open_regular(path), 'rb') as handle:
+    flags = os.O_RDONLY | getattr(os, 'O_BINARY', 0)
+    with os.fdopen(open_regular(path, flags), 'rb') as handle:
         data = handle.read() if limit is None else handle.read(limit + 1)
     if limit is not None and len(data) > limit:
         raise ValueError('JSON record is too large')

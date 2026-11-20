@@ -11,7 +11,8 @@ from types import SimpleNamespace
 import pytest
 
 from datacache import (
-    Cache, download, fetch_file, inspect_file, inspect_files, make_file_readable, provenance)
+    Cache, download, fetch_file, inspect_file, inspect_files, provenance)
+from datacache.permissions import make_file_readable
 from datacache.integrity import _validate_file
 
 

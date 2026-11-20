@@ -12,12 +12,13 @@ import pandas as pd
 import pytest
 
 from datacache import (
-    Cache, build_local_filename, connect_if_correct_version,
-    db_from_dataframe, db_from_dataframes_with_absolute_path,
-    fetch_and_transform, fetch_csv_db, fetch_file,
+    build_local_filename, connect_if_correct_version,
+    db_from_dataframes_with_absolute_path,
+    fetch_and_transform, fetch_file,
 )
 from datacache import database_helpers, database_table, download
 from datacache import common
+from ._db_helpers import db_from_dataframe
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -34,7 +35,7 @@ def reject(*args, **kwargs):
     pytest.fail("a legacy cache hit attempted a write, download, or rebuild")
 
 
-@pytest.mark.parametrize("api", ["dataframe", "absolute", "cache", "version", "csv"])
+@pytest.mark.parametrize("api", ["dataframe", "absolute", "version"])
 def test_legacy_database_reuse_is_read_only_and_keeps_schema(tmp_path, monkeypatch, api):
     path = legacy_database(tmp_path / "records.db")
     before = path.read_bytes()
@@ -43,23 +44,15 @@ def test_legacy_database_reuse_is_read_only_and_keeps_schema(tmp_path, monkeypat
     # new-build constraints or reconstruct a frame just to open the database.
     path.chmod(0o444)
     tmp_path.chmod(0o555)
-    cache = Cache(cache_root=tmp_path)
     try:
         with monkeypatch.context() as guard:
             guard.setattr(database_helpers, "build_tables", reject)
-            guard.setattr(database_helpers, "fetch_csv_dataframe", reject)
             guard.setattr(os, "makedirs", reject)
             guard.setattr(download, "_download_to_temp_file", reject)
             if api == "dataframe":
                 connection = db_from_dataframe(path, "records", None, primary_key="sample id", version=7)
             elif api == "absolute":
                 connection = db_from_dataframes_with_absolute_path(path, {"records": None}, version=7)
-            elif api == "cache":
-                connection = cache.db_from_dataframe("records.db", "records", None, version=7)
-            elif api == "csv":
-                connection = fetch_csv_db("records", "https://offline.invalid/source.csv",
-                                          db_filename="records.db", version=7,
-                                          download_options={"cache_root": tmp_path})
             else:
                 connection = connect_if_correct_version(path, 7, read_only=True)
             with closing(connection):
@@ -86,27 +79,6 @@ def test_legacy_blob_values_are_not_guessed_or_migrated(tmp_path):
     with closing(db_from_dataframe(path, "records", None, version=7)) as connection:
         assert connection.execute("SELECT sample_id FROM records WHERE label = 'case'").fetchone() == (blob,)
     assert path.read_bytes() == before
-
-
-def test_legacy_csv_database_filename_is_preserved(tmp_path, monkeypatch):
-    name = NAMES["csv_database_filename"]
-    path = tmp_path / name
-    with closing(sqlite3.connect(path)) as connection:
-        connection.executescript("CREATE TABLE records (id INT, label TEXT);"
-                                 "INSERT INTO records VALUES (42, 'legacy');"
-                                 "CREATE TABLE _datacache_metadata (version INT);"
-                                 "INSERT INTO _datacache_metadata VALUES (1);")
-    # Source has the same schema/count used to generate the old key. Contents
-    # differ so rebuilding or looking under a new key is observable.
-    (tmp_path / "records.csv").write_text("id,label\n1,case\n2,control\n")
-    before = path.read_bytes()
-    monkeypatch.setattr(download, "_download_to_temp_file", reject)
-    with closing(fetch_csv_db("records", "https://offline.invalid/records.csv.gz",
-                               csv_filename="records.csv.gz",
-                               download_options={"cache_root": tmp_path})) as connection:
-        assert connection.execute("SELECT * FROM records").fetchall() == [(42, "legacy")]
-    assert path.read_bytes() == before
-    assert list(tmp_path.glob("*.db")) == [path]
 
 
 @pytest.mark.parametrize("case", NAMES["filenames"])
@@ -184,14 +156,3 @@ def test_transform_reuses_misplaced_legacy_source_without_moving_it(tmp_path, mo
     assert legacy.read_text() == "old source"
     assert legacy.stat().st_ino == before.st_ino
     assert stat.S_IMODE(legacy.stat().st_mode) == 0o600
-
-
-def test_explicit_csv_database_still_honors_source_integrity(tmp_path):
-    path = legacy_database(tmp_path / "records.db")
-    source = tmp_path / "source.csv"
-    source.write_text("sample id,label\n1,case\n2,control\n")
-    before = path.read_bytes()
-    with pytest.raises(download.FileValidationError, match="SHA-256"):
-        fetch_csv_db("records", source.as_uri(), db_filename="records.db", version=7,
-                     download_options={"cache_root": tmp_path, "expected_sha256": "0" * 64})
-    assert path.read_bytes() == before
