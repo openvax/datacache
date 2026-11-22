@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 from ._filesystem import file_lock, open_regular, path_present, read_json, write_json
 from .common import USER_AGENT
 from .integrity import FileValidationError, _validate_expectations, validate_file
+from .offline import require_online
 from .progress import Progress
 from .retries import error_description, is_retryable_http_error, retry_delay
 
@@ -132,7 +133,7 @@ def _validator(headers):
 def download_resumable(download_url, destination, *, expected_sha256, expected_size,
                        timeout, chunk_size, progress_callback, show_progress,
                        max_retries, retry_backoff, retry_max_delay, record_provenance,
-                       force, http_representation="decoded"):
+                       force, http_representation="decoded", offline=None):
     """Download download_url to destination, continuing an earlier partial transfer.
 
     This is the engine behind fetch_file(resume=True); call fetch_file rather
@@ -224,6 +225,7 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
                     try:
                         # One protocol restart per attempt, independent of retries.
                         for restart in range(2):
+                            require_online(download_url, offline=offline)
                             headers = {'Accept-Encoding': 'identity', 'User-Agent': USER_AGENT}
                             validator = metadata.get('validator')
                             if offset:

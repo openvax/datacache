@@ -30,7 +30,8 @@ from . import common, provenance
 from .common import _source_suffix, build_local_filename
 from .integrity import FileValidationError, _validate_expectations, validate_file
 from .inspection import path_exists
-from .progress import Progress
+from .offline import offline_source, require_online
+from .progress import Progress, should_show_progress
 from .retries import (
     DEFAULT_MAX_RETRIES, DEFAULT_RETRY_BACKOFF, DEFAULT_RETRY_MAX_DELAY,
     error_description, is_retryable_http_error, retry_delay, validate_retry_options,
@@ -146,7 +147,8 @@ def _stream_to_file(
         chunk_size=DEFAULT_CHUNK_SIZE,
         progress_callback=None,
         max_bytes=None,
-        http_representation="decoded"):
+        http_representation="decoded",
+        offline=None):
     """
     Stream the contents of `download_url` into an already-open binary file
     handle, one chunk at a time, so the entire payload never has to be held in
@@ -167,6 +169,7 @@ def _stream_to_file(
 
     Returns the total number of bytes written.
     """
+    require_online(download_url, offline=offline)
     bytes_downloaded = 0
     if max_bytes is not None:
         file_handle = LimitedWriter(file_handle, max_bytes)
@@ -276,7 +279,8 @@ def _download_to_temp_file(
         show_progress=False,
         allow_empty=True,
         max_bytes=None,
-        http_representation="decoded"):
+        http_representation="decoded",
+        offline=None):
 
     retry_backoff, retry_max_delay = validate_retry_options(max_retries, retry_backoff, retry_max_delay)
     if not download_url:
@@ -308,9 +312,10 @@ def _download_to_temp_file(
                     tmp,
                     timeout=timeout,
                     chunk_size=chunk_size,
-                    progress_callback=report if progress_callback is not None or show_progress else None,
+                    progress_callback=report if progress_callback is not None or progress.enabled else None,
                     max_bytes=max_bytes,
-                    http_representation=http_representation)
+                    http_representation=http_representation,
+                    offline=offline)
                 if count == 0:
                     progress(0, 0)
                     if not allow_empty:
@@ -334,7 +339,8 @@ def fetch_bytes(
         retry_backoff=DEFAULT_RETRY_BACKOFF,
         retry_max_delay=DEFAULT_RETRY_MAX_DELAY,
         allow_empty=False,
-        max_bytes=None):
+        max_bytes=None,
+        offline=None):
     """
     Return a remote resource's bytes in memory, transferred and retried
     exactly as fetch_file downloads are. Nothing is written to disk.
@@ -363,10 +369,16 @@ def fetch_bytes(
         past it, and the body is read in chunks no larger than the limit. A
         larger body raises ValueError without retrying. Default None: no limit.
 
+    offline : bool, optional
+        Explicitly forbid (``True``) or allow (``False``) remote network
+        transfers. Default ``None`` honors ``DATACACHE_OFFLINE`` and
+        ``OPENVAX_OFFLINE``. Remote URLs raise :class:`OfflineError` when
+        offline; ``file://`` URLs are always allowed.
+
     Raises ValueError for invalid options, an empty body or one larger than
-    max_bytes; Requests
-    exceptions for HTTP failures, preserved after retry exhaustion; and
-    urllib.error.URLError for file and FTP failures.
+    max_bytes; OfflineError when offline mode forbids a remote transfer;
+    Requests exceptions for HTTP failures, preserved after retry exhaustion;
+    and urllib.error.URLError for file and FTP failures.
     """
     retry_backoff, retry_max_delay = validate_retry_options(max_retries, retry_backoff, retry_max_delay)
     if not isinstance(download_url, str) or not download_url:
@@ -376,10 +388,11 @@ def fetch_bytes(
     validate_limit("max_bytes", max_bytes)
     if max_bytes == 0 and not allow_empty:
         raise ValueError("max_bytes=0 allows only an empty body; pass allow_empty=True")
+    offline_source(offline)
 
     def attempt():
         buffer = io.BytesIO()
-        _stream_to_file(download_url, buffer, timeout=timeout, max_bytes=max_bytes)
+        _stream_to_file(download_url, buffer, timeout=timeout, max_bytes=max_bytes, offline=offline)
         if not buffer.getbuffer().nbytes and not allow_empty:
             raise EmptyResponse("the transfer delivered no bytes")
         return buffer.getvalue()
@@ -496,9 +509,9 @@ def _publish_file(staged_path, full_path, record=None):
 def _copy_with_progress(source, destination, show_progress, total=None, max_bytes=None):
     if max_bytes is not None:
         destination = LimitedWriter(destination, max_bytes)
-    if not show_progress:
+    if not should_show_progress(show_progress):
         return copyfileobj(source, destination)
-    with Progress(True, "Decompressing", total) as progress:
+    with Progress(show_progress, "Decompressing", total) as progress:
         completed = 0
         while True:
             chunk = source.read(DEFAULT_CHUNK_SIZE)
@@ -555,7 +568,8 @@ def _download_and_decompress_if_necessary(
         allow_empty=False,
         validator=None,
         max_bytes=None,
-        http_representation="decoded"):
+        http_representation="decoded",
+        offline=None):
     """
     Download, transform and validate in sibling staging files, then publish
     with one atomic replace. Expectations always describe installed bytes.
@@ -604,7 +618,8 @@ def _download_and_decompress_if_necessary(
             show_progress=show_progress,
             allow_empty=not reject_empty,
             max_bytes=max_bytes,
-            http_representation=http_representation)
+            http_representation=http_representation,
+            offline=offline)
     except EmptyResponse as error:
         raise FileValidationError(full_path, "downloaded file is empty; pass allow_empty=True if an empty file is expected") from error
     except MaxBytesExceeded as error:
@@ -636,8 +651,8 @@ def _download_and_decompress_if_necessary(
             if reject_empty and os.path.getsize(staged_path) == 0:
                 raise FileValidationError(full_path, "installed file is empty; pass allow_empty=True if an empty file is expected")
         try:
-            if show_progress:
-                validate_file(staged_path, expected_sha256, expected_size, show_progress=True)
+            if should_show_progress(show_progress):
+                validate_file(staged_path, expected_sha256, expected_size, show_progress=show_progress)
             else:
                 validate_file(staged_path, expected_sha256, expected_size)
         except FileValidationError as error:
@@ -747,7 +762,8 @@ def expected_path(
 
 DOWNLOAD_OPTIONS = frozenset((
     "timeout", "chunk_size", "progress_callback", "show_progress",
-    "max_retries", "retry_backoff", "retry_max_delay", "resume", "max_bytes"))
+    "max_retries", "retry_backoff", "retry_max_delay", "resume", "max_bytes",
+    "offline"))
 
 
 def validate_download_options(options, kind):
@@ -773,19 +789,23 @@ def validate_download_options(options, kind):
         max_retries=options.get("max_retries", DEFAULT_MAX_RETRIES),
         retry_backoff=options.get("retry_backoff", DEFAULT_RETRY_BACKOFF),
         retry_max_delay=options.get("retry_max_delay", DEFAULT_RETRY_MAX_DELAY),
-        max_bytes=options.get("max_bytes"))
+        max_bytes=options.get("max_bytes"),
+        offline=options.get("offline"))
     return options
 
 
 def validate_transfer_settings(
         *, chunk_size, progress_callback, show_progress, resume,
-        max_retries, retry_backoff, retry_max_delay, max_bytes=None):
+        max_retries, retry_backoff, retry_max_delay, max_bytes=None,
+        offline=None):
     """Check fetch_file's transfer settings; return the retry delays as floats."""
     validate_limit("max_bytes", max_bytes)
+    if offline is not None and not isinstance(offline, bool):
+        raise ValueError("offline must be a boolean or None")
     if not isinstance(resume, bool) and resume != "auto":
         raise ValueError('resume must be True, False or "auto"')
-    if not isinstance(show_progress, bool):
-        raise ValueError("show_progress must be a boolean")
+    if not isinstance(show_progress, bool) and show_progress != "auto":
+        raise ValueError('show_progress must be a boolean or "auto"')
     if progress_callback is not None and not callable(progress_callback):
         raise ValueError("progress_callback must be callable")
     if not isinstance(chunk_size, int) or isinstance(chunk_size, bool) or chunk_size <= 0:
@@ -836,7 +856,8 @@ def fetch_file(
         http_representation="decoded",
         expire_after=None,
         return_stale_on_error=False,
-        validator=None):
+        validator=None,
+        offline=None):
     """
     Download a remote file and store it locally in a cache directory. Don't
     download it again if it's already present (unless `force` is True, or the
@@ -1026,7 +1047,7 @@ def fetch_file(
     retry_backoff, retry_max_delay = validate_transfer_settings(
         chunk_size=chunk_size, progress_callback=progress_callback, show_progress=show_progress,
         resume=resume, max_retries=max_retries, retry_backoff=retry_backoff,
-        retry_max_delay=retry_max_delay, max_bytes=max_bytes)
+        retry_max_delay=retry_max_delay, max_bytes=max_bytes, offline=offline)
     # "auto" is decided once the download's shape is known, below.
     resume_if_possible = resume == "auto"
     if resume_if_possible:
@@ -1125,6 +1146,7 @@ def fetch_file(
                 callback_errors.append(error)
                 raise
     try:
+        require_online(download_url, offline=offline)
         os.makedirs(os.path.dirname(full_path) or ".", exist_ok=True)
         logger.info("Fetching %s from URL %s", full_path, download_url)
         def download_in_full():
@@ -1147,7 +1169,8 @@ def fetch_file(
                 allow_empty=allow_empty,
                 validator=validator,
                 max_bytes=max_bytes,
-                http_representation=http_representation)
+                http_representation=http_representation,
+                offline=offline)
 
         if resume:
             from .resume import CannotResume, discard_partial, download_resumable
@@ -1158,7 +1181,8 @@ def fetch_file(
                     progress_callback=progress_callback, show_progress=show_progress,
                     max_retries=max_retries, retry_backoff=retry_backoff,
                     retry_max_delay=retry_max_delay, record_provenance=record_provenance,
-                    force=refresh, http_representation=http_representation)
+                    force=refresh, http_representation=http_representation,
+                    offline=offline)
             except CannotResume as error:
                 if not resume_if_possible:
                     raise

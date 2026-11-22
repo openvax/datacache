@@ -47,6 +47,34 @@ is downloaded.
 Pass the root to `fetch_file`, `Cache` or a registry as `cache_root`;
 `fetch_file`'s `subdir` alone reads no environment variables.
 
+To also honor a shared OpenVax root (`OPENVAX_DATA_CACHE`) and report *why* a
+directory was chosen (for example in a CLI `dirs` command), use
+`resolve_cache_dir`:
+
+```python
+from datacache import resolve_cache_dir
+
+loc = resolve_cache_dir("pyensembl", "PYENSEMBL_CACHE_DIR", append_package_to_env=True)
+print(loc.path, loc.origin, loc.detail)
+```
+
+For quick terminal inspection and cleanup across local caches, run:
+
+```sh
+datacache dirs          # Show all OpenVax/datacache caches, origins, and sizes
+datacache path orfdata  # Print the resolved cache directory for one package
+datacache scan          # Report datacache bundle stores and reclaimable bytes
+datacache prune --yes   # Remove stale bundle generations (dry-run without --yes)
+```
+
+## Offline mode
+
+Set `OPENVAX_OFFLINE=1` (or `DATACACHE_OFFLINE=1`) to forbid remote HTTP(S)/FTP
+transfers across every DataCache consumer while continuing to serve valid cache
+hits and `file://` URLs. Remote cache misses raise `OfflineError` before
+creating directories or retrying; refreshes with `return_stale_on_error=True`
+fall back cleanly to the cached copy.
+
 ## Sharing one root
 
 Select a common root explicitly:

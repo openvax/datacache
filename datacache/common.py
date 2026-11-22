@@ -10,6 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from dataclasses import dataclass
 import hashlib
 import os
 from os import makedirs, environ
@@ -34,6 +35,45 @@ USER_AGENT = "datacache/%s (+https://github.com/openvax/datacache)" % __version_
 # Longest file name ext4 accepts, in UTF-8 bytes. APFS and NTFS instead limit
 # characters or UTF-16 units, which a UTF-8 byte count never undercounts.
 MAX_NAME_BYTES = 255
+
+# Shared root environment variable honored by all OpenVax/PIRL packages when
+# a package-specific override is not set.
+SHARED_CACHE_ENV_KEY = "OPENVAX_DATA_CACHE"
+
+
+@dataclass(frozen=True)
+class CacheLocation:
+    """Resolved cache directory along with why that location was chosen.
+
+    Attributes
+    ----------
+    path : str
+        Expanded path to the package's cache directory (not created on disk).
+    origin : str
+        Machine-readable provenance: one of ``"override"``, ``"env"``,
+        ``"shared_env"``, ``"platform"``, ``"legacy"``, or ``"default"``.
+    detail : str
+        Human-readable label suitable for CLI tables (for example the winning
+        environment variable name or ``"legacy cache"``).
+    """
+
+    path: str
+    origin: str
+    detail: str
+
+
+def format_bytes(num_bytes):
+    """Format a non-negative byte count for human-readable CLI output."""
+    if isinstance(num_bytes, bool) or not isinstance(num_bytes, (int, float)) or num_bytes < 0:
+        raise ValueError("num_bytes must be a non-negative number")
+    value = float(num_bytes)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if value < 1024.0 or unit == "TiB":
+            if unit == "B":
+                return "%d B" % int(round(value))
+            return "%.1f %s" % (value, unit)
+        value /= 1024.0
+    return "%.1f TiB" % value
 
 
 def _source_suffix(download_url):
@@ -149,6 +189,82 @@ def get_cache_root(name, *envkeys, override=None, legacy=()):
             if _holds_data(path):
                 return path
     return platform
+
+
+def resolve_cache_dir(
+        name,
+        *envkeys,
+        override=None,
+        legacy=(),
+        shared_envkey=SHARED_CACHE_ENV_KEY,
+        shared_subdir="openvax",
+        append_package_to_env=False):
+    """Resolve a package's cache directory and explain why it was chosen.
+
+    Precedence (with ``~`` expanded, creating nothing on disk):
+
+    1. ``override``, when not ``None`` (for example a CLI ``--cache-root`` flag).
+    2. The first non-blank environment variable in ``envkeys``. When
+       ``append_package_to_env`` is True (legacy ``get_data_dir`` semantics,
+       e.g. ``PYENSEMBL_CACHE_DIR``), ``name`` is joined under the value.
+    3. ``shared_envkey`` (default ``OPENVAX_DATA_CACHE``), when set and
+       non-blank: ``<shared_env>/<name>``. Pass ``shared_envkey=None`` to
+       disable shared-root fallback.
+    4. The default platform directory (``<platform_cache(shared_subdir)>/<name>``
+       when ``shared_subdir`` is set, otherwise ``_platform_cache_dir(name)``),
+       when it already holds data.
+    5. The first absolute path in ``legacy`` that already holds data, so
+       existing caches stay put without forced re-downloads.
+    6. The default platform directory.
+
+    Returns a :class:`CacheLocation` with ``path``, ``origin`` and ``detail``.
+    """
+    if not isinstance(name, str) or not name:
+        raise ValueError("name must be a non-empty string")
+    if not all(isinstance(envkey, str) and envkey for envkey in envkeys):
+        raise ValueError("environment variable names must be non-empty strings")
+    if shared_envkey is not None and (not isinstance(shared_envkey, str) or not shared_envkey):
+        raise ValueError("shared_envkey must be a non-empty string or None")
+    if shared_subdir is not None and (not isinstance(shared_subdir, str) or not shared_subdir):
+        raise ValueError("shared_subdir must be a non-empty string or None")
+    if not isinstance(append_package_to_env, bool):
+        raise ValueError("append_package_to_env must be a boolean")
+    if legacy is None:
+        legacy = ()
+    elif isinstance(legacy, (str, os.PathLike)):
+        legacy = (legacy,)
+    legacy = [_path_text(path, "legacy") for path in legacy]
+    if any(not os.path.isabs(path) for path in legacy):
+        raise ValueError("legacy locations must be absolute paths")
+
+    if override is not None:
+        return CacheLocation(_path_text(override, "override"), "override", "explicit override")
+
+    for envkey in envkeys:
+        value = environ.get(envkey, "").strip()
+        if value:
+            expanded = os.path.expanduser(value)
+            path = join(expanded, name) if append_package_to_env else expanded
+            return CacheLocation(path, "env", envkey)
+
+    if shared_envkey:
+        shared_val = environ.get(shared_envkey, "").strip()
+        if shared_val:
+            return CacheLocation(join(os.path.expanduser(shared_val), name), "shared_env", shared_envkey)
+
+    default_path = (
+        join(_platform_cache_dir(shared_subdir), name)
+        if shared_subdir else _platform_cache_dir(name)
+    )
+    if _holds_data(default_path):
+        detail = "shared platform cache" if shared_subdir else "platform cache"
+        return CacheLocation(default_path, "platform", detail)
+
+    for path in legacy:
+        if _holds_data(path):
+            return CacheLocation(path, "legacy", "legacy cache")
+
+    return CacheLocation(default_path, "default", "default")
 
 
 def _path_text(value, what):

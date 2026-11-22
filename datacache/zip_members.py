@@ -30,6 +30,7 @@ from .bundle_store import (
 from .bundles import BundleInspection
 from .download import normal_creation_mode
 from .integrity import _validate_expectations
+from .offline import offline_source, require_online
 from .provenance import redact_url
 from .resume import _strong_etag
 
@@ -43,7 +44,8 @@ def _positive(value, name):
 class _HTTPFile(io.RawIOBase):
     """Seekable metadata reads; data transfers explicitly stream one range."""
 
-    def __init__(self, url, timeout, max_metadata_bytes):
+    def __init__(self, url, timeout, max_metadata_bytes, *, offline=None):
+        require_online(url, offline=offline)
         import requests
 
         self.url = url
@@ -285,6 +287,7 @@ def install_zip_member(
     max_metadata_bytes=8 * 2**20,
     timeout=60,
     force=False,
+    offline=None,
 ):
     """Fetch one named HTTP ZIP member into a shared, atomic bundle.
 
@@ -312,6 +315,7 @@ def install_zip_member(
         _positive(value, name)
     if not isinstance(force, bool):
         raise ValueError("force must be a boolean")
+    offline_source(offline)
     if expected_size is not None and expected_size > max_bytes:
         raise ValueError("expected_size exceeds max_bytes")
     destination = Path(destination).absolute()
@@ -326,6 +330,7 @@ def install_zip_member(
     existing = reuse()
     if existing:
         return existing
+    require_online(url, offline=offline)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with store.lock():
         store.create()
@@ -340,7 +345,7 @@ def install_zip_member(
         }
         try:
             with (
-                _HTTPFile(url, timeout, max_metadata_bytes) as remote,
+                _HTTPFile(url, timeout, max_metadata_bytes, offline=offline) as remote,
                 zipfile.ZipFile(remote) as archive,
             ):
                 matches = [

@@ -15,7 +15,7 @@ import os
 import re
 import stat
 
-from .progress import Progress
+from .progress import Progress, should_show_progress
 
 
 class FileValidationError(ValueError):
@@ -66,7 +66,7 @@ def sha256_stream(
     Uses ``hashlib.file_digest`` when no progress reporting, output mirroring,
     or secondary digest is requested.
     """
-    if not (show_progress or writer is not None or extra_digest is not None or progress_callback is not None):
+    if not (should_show_progress(show_progress) or writer is not None or extra_digest is not None or progress_callback is not None):
         start = handle.tell()
         digest = hashlib.file_digest(handle, "sha256").hexdigest()
         return digest, handle.tell() - start

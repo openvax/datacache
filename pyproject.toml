@@ -29,6 +29,9 @@ progress = []
 html = ["lxml>=4.9"]
 test = ["pytest>=7", "pytest-cov>=7", "ruff", "lxml>=4.9"]
 
+[project.scripts]
+datacache = "datacache.cli:run"
+
 [tool.setuptools.dynamic]
 version = {attr = "datacache.version.__version__"}
 dependencies = {file = ["requirements.txt"]}
