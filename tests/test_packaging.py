@@ -5,6 +5,18 @@ from importlib.metadata import metadata, requires
 from packaging.requirements import Requirement
 
 
+def test_pandas_three_is_an_unconditional_runtime_dependency():
+    dependencies = [Requirement(value) for value in requires("datacache")]
+    pandas_dependencies = [item for item in dependencies if item.name == "pandas"]
+    assert len(pandas_dependencies) == 1
+    dependency = pandas_dependencies[0]
+    assert dependency.marker is None
+    assert "2.3.3" not in dependency.specifier
+    for version in ("3.0.0", "3.1.0", "3.99.0"):
+        assert version in dependency.specifier
+    assert "4.0.0" not in dependency.specifier
+
+
 def test_tqdm_is_an_unconditional_runtime_dependency():
     dependencies = [Requirement(value) for value in requires("datacache")]
     tqdm_dependencies = [item for item in dependencies if item.name == "tqdm"]

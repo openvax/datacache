@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.33.0
+
+- Require `pandas>=3,<4`, replacing the historical pandas minimum. Test current
+  pandas 3.x across Python 3.11–3.14 and pandas 3.0.0 on Python 3.11. Remove
+  obsolete scalar and row-iteration compatibility workarounds while preserving
+  existing SQLite caches and lossless DataFrame conversion (#131).
+
 ## 1.32.0
 
 - Strip unused public APIs verified to have zero callers across OpenVax/PIRL
