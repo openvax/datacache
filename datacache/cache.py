@@ -133,7 +133,8 @@ class Cache:
             http_representation="decoded",
             expire_after=None,
             return_stale_on_error=False,
-            validator=None):
+            validator=None,
+            offline=None):
         """
         Return the local path to the downloaded copy of a given URL.
         Don't download the file again if it's already present,
@@ -186,7 +187,8 @@ class Cache:
             http_representation=http_representation,
             expire_after=expire_after,
             return_stale_on_error=return_stale_on_error,
-            validator=validator)
+            validator=validator,
+            offline=offline)
 
         self._local_paths[key] = path
         return path

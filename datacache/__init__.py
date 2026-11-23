@@ -28,12 +28,16 @@ if TYPE_CHECKING:
     from .bundles import BundleInspection, VersionedDatasetRegistry, inspect_bundle, install_bundle
     from .cache import Cache
     from .common import (
+        SHARED_CACHE_ENV_KEY,
+        CacheLocation,
         build_local_filename,
         build_path,
         clear_cache,
         ensure_dir,
+        format_bytes,
         get_cache_root,
         get_data_dir,
+        resolve_cache_dir,
     )
     from .database_helpers import (
         connect_if_correct_version,
@@ -49,6 +53,8 @@ if TYPE_CHECKING:
     from .inspection import CacheInspection, FileInspection, inspect_file, inspect_files
     from .integrity import FileValidationError, validate_file
     from .materialization import MaterializationInspection, inspect_materialization, materialize
+    from .offline import OFFLINE_ENV_KEYS, OfflineError, is_offline, offline_source, require_online
+    from .progress import NO_PROGRESS_ENV_KEYS, should_show_progress
     from .resume import CannotResume, discard_partial
     from .zip_members import install_zip_member
 
@@ -63,12 +69,16 @@ EXPORT_MODULES = {
     'inspect_bundle': 'bundles',
     'install_bundle': 'bundles',
     'Cache': 'cache',
+    'CacheLocation': 'common',
+    'SHARED_CACHE_ENV_KEY': 'common',
     'build_local_filename': 'common',
     'build_path': 'common',
     'clear_cache': 'common',
     'ensure_dir': 'common',
+    'format_bytes': 'common',
     'get_cache_root': 'common',
     'get_data_dir': 'common',
+    'resolve_cache_dir': 'common',
     'connect_if_correct_version': 'database_helpers',
     'db_from_dataframes_with_absolute_path': 'database_helpers',
     'expected_path': 'download',
@@ -85,6 +95,13 @@ EXPORT_MODULES = {
     'MaterializationInspection': 'materialization',
     'inspect_materialization': 'materialization',
     'materialize': 'materialization',
+    'OFFLINE_ENV_KEYS': 'offline',
+    'OfflineError': 'offline',
+    'is_offline': 'offline',
+    'offline_source': 'offline',
+    'require_online': 'offline',
+    'NO_PROGRESS_ENV_KEYS': 'progress',
+    'should_show_progress': 'progress',
     'CannotResume': 'resume',
     'discard_partial': 'resume',
     'install_zip_member': 'zip_members',
@@ -121,6 +138,17 @@ __all__ = [
     'ensure_dir',
     'get_data_dir',
     'get_cache_root',
+    'resolve_cache_dir',
+    'CacheLocation',
+    'SHARED_CACHE_ENV_KEY',
+    'format_bytes',
+    'OFFLINE_ENV_KEYS',
+    'OfflineError',
+    'is_offline',
+    'offline_source',
+    'require_online',
+    'NO_PROGRESS_ENV_KEYS',
+    'should_show_progress',
     'build_path',
     'clear_cache',
     'build_local_filename',

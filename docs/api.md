@@ -1,7 +1,7 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.33.0. Import these names from `datacache`.
+public `Cache` method in DataCache 1.34.0. Import these names from `datacache`.
 Signatures below show all defaults; arguments after `*` are keyword-only.
 Method signatures omit `self` and are called on a `Cache` instance.
 
@@ -15,7 +15,8 @@ explain the longer workflows and compatibility guarantees.
 | Area | APIs |
 | --- | --- |
 | Downloading | [fetch_file](#fetch_file), [fetch_bytes](#fetch_bytes), [fetch_and_transform](#fetch_and_transform), [discard_partial](#discard_partial) |
-| Paths and presence | [expected_path](#expected_path), [build_local_filename](#build_local_filename), [get_data_dir](#get_data_dir), [get_cache_root](#get_cache_root), [build_path](#build_path), [ensure_dir](#ensure_dir), [clear_cache](#clear_cache) |
+| Paths and presence | [expected_path](#expected_path), [build_local_filename](#build_local_filename), [get_data_dir](#get_data_dir), [get_cache_root](#get_cache_root), [resolve_cache_dir](#resolve_cache_dir), [CacheLocation](#cachelocation), [SHARED_CACHE_ENV_KEY](#shared_cache_env_key), [format_bytes](#format_bytes), [build_path](#build_path), [ensure_dir](#ensure_dir), [clear_cache](#clear_cache) |
+| Offline and progress policy | [OfflineError](#offlineerror), [OFFLINE_ENV_KEYS](#offline_env_keys), [is_offline](#is_offline), [offline_source](#offline_source), [require_online](#require_online), [NO_PROGRESS_ENV_KEYS](#no_progress_env_keys), [should_show_progress](#should_show_progress) |
 | Integrity and permissions | [validate_file](#validate_file), [inspect_file](#inspect_file), [inspect_files](#inspect_files) |
 | Results and exceptions | [FileInspection](#fileinspection), [CacheInspection](#cacheinspection), [FileValidationError](#filevalidationerror), [CannotResume](#cannotresume) |
 | SQLite | [db_from_dataframes_with_absolute_path](#db_from_dataframes_with_absolute_path), [connect_if_correct_version](#connect_if_correct_version) |
@@ -76,7 +77,7 @@ fetch_file(
     progress_callback=None, *, destination=None, cache_root=None, expected_sha256=None,
     expected_size=None, max_bytes=None, max_retries=2, retry_backoff=1.0,
     retry_max_delay=30.0, show_progress=False, record_provenance=False, allow_empty=False,
-    resume=False, raw=False, http_representation='decoded', expire_after=None, return_stale_on_error=False, validator=None
+    resume=False, raw=False, http_representation='decoded', expire_after=None, return_stale_on_error=False, validator=None, offline=None
 )
 ```
 
@@ -114,6 +115,7 @@ replacement leaves the previous file intact.
 | `expire_after` | How long a cached file stays fresh: non-negative seconds or a `datetime.timedelta`, as in requests-cache. An older cached file is downloaded again, as is one that no longer validates; `0` refreshes every time. Age comes from the provenance record's fetch time when one describes the file, otherwise from its modification time; a future time counts as new. Default `None` reuses a valid file however old and raises for an invalid one. |
 | `return_stale_on_error` | Boolean; when a refresh (`force=True` or an expired `expire_after`) raises and a valid cached file exists, log a warning (without URL secrets) and return the cached path, like HTTP `stale-if-error`. Without a valid cached file the error propagates, as does an exception from `progress_callback`, which cancels the fetch. The cached file is checked only after a failed refresh. Default `False`. |
 | `validator` | Optional callable `validator(path)` for content a successful transfer can still get wrong, such as an HTTP 200 error page. It rejects the file by raising (normally `ValueError`) or returning `False`. It checks the installed bytes before publication, so a rejected download never replaces the cached file, and checks cache hits. Rejection raises `FileValidationError`, chained to any exception. Not supported with `resume=True`. |
+| `offline` | Optional boolean overriding `DATACACHE_OFFLINE` / `OPENVAX_OFFLINE`. When offline, cache hits and `file://` URLs still succeed, while remote transfers raise `OfflineError` before modifying disk. |
 
 ZIP downloads install the member stored at the output name; otherwise a member
 with that name, ignoring letter case, in any folder: the one nearest the archive
@@ -164,7 +166,7 @@ assert fresh == path
 ```text
 fetch_bytes(
     download_url, *, timeout=None, max_retries=2, retry_backoff=1.0,
-    retry_max_delay=30.0, allow_empty=False, max_bytes=None
+    retry_max_delay=30.0, allow_empty=False, max_bytes=None, offline=None
 )
 ```
 
@@ -397,6 +399,136 @@ shared_root = dc.get_cache_root("example", "EXAMPLE_OWN", "EXAMPLE_SHARED")
 assert shared_root == str(root / "shared")
 del os.environ["EXAMPLE_SHARED"]
 print(dc.get_cache_root("example"))  # Platform cache directory for example.
+```
+
+### `resolve_cache_dir`
+
+```text
+resolve_cache_dir(
+    name, *envkeys, override=None, legacy=(),
+    shared_envkey='OPENVAX_DATA_CACHE', shared_subdir='openvax',
+    append_package_to_env=False
+)
+```
+
+Resolve a package's cache directory and report why it was chosen, without
+creating any directories on disk. Precedence:
+
+1. `override`, when not `None`.
+2. The first non-blank variable in `envkeys` (with `name` appended when
+   `append_package_to_env=True`).
+3. `shared_envkey` (`OPENVAX_DATA_CACHE` by default): `<shared>/<name>`.
+4. The default platform directory (`<platform_cache(shared_subdir)>/<name>` or
+   `_platform_cache_dir(name)` when `shared_subdir=None`), if it already holds
+   data.
+5. The first populated absolute path in `legacy`.
+6. The default platform directory.
+
+**Returns:** [CacheLocation](#cachelocation). **Raises:** `ValueError` for
+invalid arguments or relative `legacy` paths.
+
+```python
+loc = dc.resolve_cache_dir("example", override=root / "resolved")
+assert isinstance(loc, dc.CacheLocation)
+assert loc.origin == "override"
+```
+
+### `CacheLocation`
+
+```text
+CacheLocation(path: str, origin: str, detail: str)
+```
+
+Frozen dataclass returned by [resolve_cache_dir](#resolve_cache_dir). `path` is
+the resolved directory string, `origin` is one of `"override"`, `"env"`,
+`"shared_env"`, `"platform"`, `"legacy"`, or `"default"`, and `detail` is a
+human-readable label for CLI tables.
+
+### `SHARED_CACHE_ENV_KEY`
+
+Constant `"OPENVAX_DATA_CACHE"`, the default shared cache-root environment
+variable honored by [resolve_cache_dir](#resolve_cache_dir) and the
+`datacache` CLI.
+
+### `format_bytes`
+
+```text
+format_bytes(num_bytes)
+```
+
+Format a non-negative byte count as a concise binary-prefixed string (`B`,
+`KiB`, `MiB`, `GiB`, `TiB`).
+
+```python
+assert dc.format_bytes(1536) == "1.5 KiB"
+```
+
+## Offline and progress policy
+
+### `OfflineError`
+
+`OSError` subclass raised when a remote network transfer is attempted while
+offline mode is active. Cache hits and `file://` URLs are never blocked.
+
+### `OFFLINE_ENV_KEYS`
+
+Tuple `("DATACACHE_OFFLINE", "OPENVAX_OFFLINE")` checked in order by
+[is_offline](#is_offline) and [offline_source](#offline_source).
+
+### `is_offline`
+
+```text
+is_offline(offline=None)
+```
+
+Return `True` when remote downloads are forbidden by `offline` or environment
+variables in [OFFLINE_ENV_KEYS](#offline_env_keys).
+
+```python
+assert dc.is_offline(offline=True) is True
+assert dc.is_offline(offline=False) is False
+```
+
+### `offline_source`
+
+```text
+offline_source(offline=None)
+```
+
+Return the reason offline mode is active (such as `"OPENVAX_OFFLINE=1"` or
+`"offline=True"`), or `None` when online transfers are permitted.
+
+### `require_online`
+
+```text
+require_online(url, *, offline=None)
+```
+
+Raise [OfflineError](#offlineerror) if offline mode is active and `url` uses a
+remote scheme (`http`, `https`, `ftp`, `ftps`). Local paths and `file://` URLs
+are always allowed.
+
+```python
+dc.require_online(url, offline=True)  # file:// URLs stay allowed offline.
+```
+
+### `NO_PROGRESS_ENV_KEYS`
+
+Tuple `("DATACACHE_NO_PROGRESS", "OPENVAX_NO_PROGRESS")` checked in order by
+[should_show_progress](#should_show_progress).
+
+### `should_show_progress`
+
+```text
+should_show_progress(show_progress=None, *, stream=None)
+```
+
+Return whether progress bars should render on `stream` (default `sys.stderr`),
+honoring `False`, `True`, `"auto"` / `None`, and
+[NO_PROGRESS_ENV_KEYS](#no_progress_env_keys).
+
+```python
+assert dc.should_show_progress(False) is False
 ```
 
 ### `build_path`
@@ -787,7 +919,7 @@ Cache.fetch(
     expected_sha256=None, expected_size=None, max_bytes=None, max_retries=2,
     retry_backoff=1.0, retry_max_delay=30.0, show_progress=False, record_provenance=False,
     allow_empty=False, resume=False, raw=False, http_representation='decoded', expire_after=None, return_stale_on_error=False,
-    validator=None
+    validator=None, offline=None
 )
 ```
 
@@ -1200,7 +1332,8 @@ trust boundaries, and the distinction from bundles.
 ```text
 install_zip_member(destination, url, member, *, expected_sha256=None, expected_size=None,
                    compressed_sha256=None, max_compressed_bytes=536870912,
-                   max_bytes=4294967296, max_metadata_bytes=8388608, timeout=60, force=False)
+                   max_bytes=4294967296, max_metadata_bytes=8388608, timeout=60, force=False,
+                   offline=None)
 ```
 
 Download one explicitly named, regular, unencrypted stored/deflated ZIP member.

@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.34.0
+
+- Add shared OpenVax cache resolution (`resolve_cache_dir`, `CacheLocation`,
+  `SHARED_CACHE_ENV_KEY = "OPENVAX_DATA_CACHE"`, `format_bytes`) so packages
+  can resolve package-specific env vars, `OPENVAX_DATA_CACHE/<package>`, shared
+  platform caches, and legacy locations without mutating disk or forcing
+  re-downloads of existing caches.
+- Add global offline mode (`OfflineError`, `OFFLINE_ENV_KEYS`, `is_offline`,
+  `offline_source`, `require_online`) and `offline=` keyword support on
+  `fetch_file`, `fetch_bytes`, `Cache.fetch`, `install_zip_member`, and
+  `download_options`. Cache hits, `file://` URLs, and `return_stale_on_error`
+  fallbacks continue to work offline while remote transfers raise `OfflineError`
+  before creating directories or retrying.
+- Add shared stderr progress policy (`NO_PROGRESS_ENV_KEYS`,
+  `should_show_progress`), honor `DATACACHE_NO_PROGRESS` /
+  `OPENVAX_NO_PROGRESS`, and support `show_progress="auto"` on downloads.
+- Ship a fast, read-only-by-default `datacache` CLI (`datacache dirs`,
+  `datacache path`, `datacache scan`, `datacache prune`) with `--json`,
+  `NO_COLOR`, optional `argcomplete`, and dry-run-by-default pruning.
+
 ## 1.33.0
 
 - Require `pandas>=3,<4`, replacing the historical pandas minimum. Test current
