@@ -441,6 +441,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#offline-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Offline mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#sharing-one-root" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1040,6 +1051,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#offline-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Offline mode
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#sharing-one-root" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1142,6 +1164,26 @@ reading one variable agree on one directory. Nothing is created until something
 is downloaded.</p>
 <p>Pass the root to <code>fetch_file</code>, <code>Cache</code> or a registry as <code>cache_root</code>;
 <code>fetch_file</code>'s <code>subdir</code> alone reads no environment variables.</p>
+<p>To also honor a shared OpenVax root (<code>OPENVAX_DATA_CACHE</code>) and report <em>why</em> a
+directory was chosen (for example in a CLI <code>dirs</code> command), use
+<code>resolve_cache_dir</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">datacache</span><span class="w"> </span><span class="kn">import</span> <span class="n">resolve_cache_dir</span>
+
+<span class="n">loc</span> <span class="o">=</span> <span class="n">resolve_cache_dir</span><span class="p">(</span><span class="s2">"pyensembl"</span><span class="p">,</span> <span class="s2">"PYENSEMBL_CACHE_DIR"</span><span class="p">,</span> <span class="n">append_package_to_env</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">loc</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">loc</span><span class="o">.</span><span class="n">origin</span><span class="p">,</span> <span class="n">loc</span><span class="o">.</span><span class="n">detail</span><span class="p">)</span>
+</code></pre></div>
+<p>For quick terminal inspection and cleanup across local caches, run:</p>
+<div class="highlight"><pre><span></span><code>datacache<span class="w"> </span><span class="nb">dirs</span><span class="w">          </span><span class="c1"># Show all OpenVax/datacache caches, origins, and sizes</span>
+datacache<span class="w"> </span>path<span class="w"> </span>orfdata<span class="w">  </span><span class="c1"># Print the resolved cache directory for one package</span>
+datacache<span class="w"> </span>scan<span class="w">          </span><span class="c1"># Report datacache bundle stores and reclaimable bytes</span>
+datacache<span class="w"> </span>prune<span class="w"> </span>--yes<span class="w">   </span><span class="c1"># Remove stale bundle generations (dry-run without --yes)</span>
+</code></pre></div>
+<h2 id="offline-mode">Offline mode<a class="headerlink" href="#offline-mode" title="Permanent link">&para;</a></h2>
+<p>Set <code>OPENVAX_OFFLINE=1</code> (or <code>DATACACHE_OFFLINE=1</code>) to forbid remote HTTP(S)/FTP
+transfers across every DataCache consumer while continuing to serve valid cache
+hits and <code>file://</code> URLs. Remote cache misses raise <code>OfflineError</code> before
+creating directories or retrying; refreshes with <code>return_stale_on_error=True</code>
+fall back cleanly to the cached copy.</p>
 <h2 id="sharing-one-root">Sharing one root<a class="headerlink" href="#sharing-one-root" title="Permanent link">&para;</a></h2>
 <p>Select a common root explicitly:</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">datacache</span><span class="w"> </span><span class="kn">import</span> <span class="n">Cache</span>

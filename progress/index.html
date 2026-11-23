@@ -1064,8 +1064,11 @@
 your own callback, and control DataCache's log messages. Replace the
 <code>example.org</code> URLs with your own.</p>
 <p>See the <a href="../api/">API reference</a> for signatures, defaults, return values, and errors.</p>
-<p>Set <code>show_progress=True</code> on <code>fetch_file</code>, <code>Cache.fetch</code>, or the CSV and database
-helpers to display progress bars. Displays are quiet by default and close on
+<p>Set <code>show_progress=True</code> (or <code>show_progress="auto"</code> to enable only on an
+interactive stderr TTY) on <code>fetch_file</code>, <code>Cache.fetch</code>, or the CSV and database
+helpers to display progress bars. Set <code>OPENVAX_NO_PROGRESS=1</code> (or
+<code>DATACACHE_NO_PROGRESS=1</code>) to suppress bars globally in CI or batch logs.
+Displays are quiet by default and close on
 success, exceptions, and handled cancellation. The exception is
 <code>materialize</code>, which shows download, copy and hash progress unless you pass
 <code>show_progress=False</code> in its download options.</p>
