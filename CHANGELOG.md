@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.33.0
+## 1.34.0
 
 - Add shared OpenVax cache resolution (`resolve_cache_dir`, `CacheLocation`,
   `SHARED_CACHE_ENV_KEY = "OPENVAX_DATA_CACHE"`, `format_bytes`) so packages
@@ -19,6 +19,13 @@
 - Ship a fast, read-only-by-default `datacache` CLI (`datacache dirs`,
   `datacache path`, `datacache scan`, `datacache prune`) with `--json`,
   `NO_COLOR`, optional `argcomplete`, and dry-run-by-default pruning.
+
+## 1.33.0
+
+- Require `pandas>=3,<4`, replacing the historical pandas minimum. Test current
+  pandas 3.x across Python 3.11–3.14 and pandas 3.0.0 on Python 3.11. Remove
+  obsolete scalar and row-iteration compatibility workarounds while preserving
+  existing SQLite caches and lossless DataFrame conversion (#131).
 
 ## 1.32.0
 

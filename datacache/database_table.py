@@ -23,12 +23,8 @@ def _sqlite_converter():
     import numpy as np
     import pandas as pd
 
-    # pd.NA was introduced after the original supported pandas versions.
-    # Missing nullable scalars only exist when that feature is installed.
-    pandas_na = getattr(pd, "NA", object())
-
     def convert(value):
-        if value is None or value is pandas_na or value is pd.NaT:
+        if value is None or value is pd.NA or value is pd.NaT:
             return None
         if isinstance(value, np.generic):
             value = value.item()
@@ -118,11 +114,10 @@ class DatabaseTable:
 
         def make_rows():
             # df.values coerces mixed numeric columns to floats and exposes
-            # numpy integers that sqlite3 binds as blobs. Read column scalars.
-            # Column iteration also works on pandas versions predating the
-            # name=None option of itertuples; zip remains lazy on Python 3.
+            # numpy integers that sqlite3 binds as blobs. Iterate tuples of
+            # column scalars, excluding the DataFrame's index.
             return (tuple(convert(value) for value in row)
-                    for row in zip(*(df[column] for column in df.columns)))
+                    for row in df.itertuples(index=False, name=None))
 
         return cls(
             name=name,
