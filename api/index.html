@@ -12180,7 +12180,7 @@ rules, publication semantics, and an MHCflurry adapter.</p>
 
 
 <a href="#datacache.install_archive" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><span class="nf">install_archive</span><span class="p">(</span><span class="n">destination</span><span class="p">,</span> <span class="n">sources</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">expected_sha256</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">expected_size</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">extra_files</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">force</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">verified</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">download_options</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_members</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_extracted_size</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">validator</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">install_archive</span><span class="p">(</span><span class="n">destination</span><span class="p">,</span> <span class="n">sources</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">expected_sha256</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">expected_size</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">extra_files</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">force</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">verified</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">download_options</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_members</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_extracted_size</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">validator</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">portable_names</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents first">
@@ -12398,6 +12398,27 @@ the tree with <code>FileValidationError</code>.</p>
                   <code>None</code>
             </td>
           </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>portable_names</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If <code>True</code> (default), require every archive member path to also be
+valid on Windows. Set <code>False</code> on POSIX to permit POSIX-safe member
+names containing characters forbidden on Windows (such as <code>*</code> or
+<code>:</code> in historical archives) while keeping all path-traversal,
+symlink, control-character, case-collision, and <code>.datacache-*</code>
+checks active. On Windows, Windows-illegal names are still rejected.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
       </tbody>
     </table>
 
@@ -12475,7 +12496,7 @@ installation without <code>force=True</code>.</p>
 
 
 <a href="#datacache.inspect_archive" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><span class="nf">inspect_archive</span><span class="p">(</span><span class="n">destination</span><span class="p">,</span> <span class="n">sources</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">expected_sha256</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">expected_size</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">extra_files</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">verify_files</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">inspect_archive</span><span class="p">(</span><span class="n">destination</span><span class="p">,</span> <span class="n">sources</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">expected_sha256</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">expected_size</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">extra_files</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">verify_files</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">portable_names</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents first">
@@ -12593,6 +12614,26 @@ none of the extracted tree (returns empty <code>files</code> and
             </td>
             <td>
                   <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>portable_names</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Whether member names must also be valid on Windows. <code>None</code> (default)
+honors the policy recorded in the bundle manifest (<code>True</code> for bundles
+installed with the default policy, <code>False</code> for bundles installed with
+<code>portable_names=False</code>). Pass <code>True</code> to reject non-portable names
+even in bundles installed with <code>portable_names=False</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
             </td>
           </tr>
       </tbody>
@@ -15389,7 +15430,7 @@ offline-safe; remote acquisitions raise <code>OfflineError</code> when offline.<
   </span>
 
 <a href="#datacache.__version__" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><span class="n">__version__</span> <span class="o">=</span> <span class="s1">'1.36.0'</span>
+<div class="doc-signature highlight"><pre><span></span><code><span class="n">__version__</span> <span class="o">=</span> <span class="s1">'1.37.0'</span>
 </code></pre></div>
 
     <div class="doc doc-contents first">

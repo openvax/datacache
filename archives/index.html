@@ -1279,6 +1279,15 @@ the <code>.</code> root directory entry is ignored, so archives created with
 <li>archives without a regular file; and</li>
 <li>consumer <code>extra_files</code> that collide with archive content.</li>
 </ul>
+<p>Historical POSIX archives sometimes contain filenames with characters such as
+<code>*</code> or <code>:</code> (for example MHC allele weights like <code>weights_HLA-A*02:06-1.npz</code>)
+that are valid on POSIX filesystems but cannot be created on Windows. Pass
+<code>portable_names=False</code> to <code>install_archive</code> to allow POSIX-safe names on POSIX
+while keeping every traversal, symlink, control-character, case-collision, and
+<code>.datacache-*</code> guard active; Windows still rejects names NTFS cannot store.
+Installed manifests record <code>portable_names: false</code> so subsequent
+<code>inspect_archive</code> calls validate those bundles automatically unless the caller
+explicitly passes <code>portable_names=True</code>.</p>
 <p>Extraction writes regular files itself rather than calling <code>extractall</code>. Archive
 ownership, timestamps and permission bits—including executable and set-ID bits—
 are not applied. New files and directories use ordinary umask-derived modes.
