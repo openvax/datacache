@@ -1,13 +1,22 @@
-"""Read-only presence and integrity checks; creation and repair belong to fetch."""
+"""Read-only presence, integrity, and fetch-preflight checks; creation and repair belong to fetch."""
 
+from collections.abc import Mapping
+from contextlib import closing
 from dataclasses import dataclass
+import logging
 import os
 from pathlib import PurePosixPath, PureWindowsPath
 import stat
 from typing import Dict, Optional
+import urllib.parse
 
-from . import provenance
+from . import common, provenance
+from .common import parse_content_length
 from .integrity import FileValidationError, validate_expectations, validate_file_stat
+from .offline import offline_source, require_online
+from .space import free_disk_bytes
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -220,3 +229,272 @@ def inspect_files(cache_root, files):
                 root, "inaccessible" if status == "inaccessible" else "corrupt",
                 results, error=failed.error)
     return CacheInspection(root, "available", results, verified=all(r.verified for r in results.values()))
+
+
+@dataclass(frozen=True)
+class FetchPlan:
+    """Frozen read-only preflight plan for a prospective ``fetch_file`` call.
+
+    Returned by ``plan_fetch`` and ``Cache.plan_fetch`` without performing any
+    filesystem writes, directory creation, locking, or repair.
+
+    Attributes
+    ----------
+    url : str
+        Source URL that would be fetched.
+    destination : str
+        Exact local destination path string.
+    action : {"reuse", "download", "replace"}
+        Planned action: ``"reuse"`` when a valid file is already present (and
+        ``force=False``), ``"download"`` when ``destination`` is absent, or
+        ``"replace"`` when an existing entry is corrupt, inaccessible, or
+        ``force=True`` was requested.
+    inspection : FileInspection
+        Read-only ``FileInspection`` for the current ``destination``.
+    expected_size : int or None
+        Expected total size in bytes, from the caller's ``expected_size``
+        argument or (only when ``probe_remote_size=True``) the remote
+        ``Content-Length`` or local ``file://`` size; otherwise ``None``.
+    partial_bytes : int
+        Reusable bytes already stored in a matching private resumable partial
+        for ``destination`` (``0`` when reusing or when no matching partial
+        exists).
+    needed_bytes : int or None
+        Estimated additional free bytes required on the destination volume:
+        ``0`` for ``"reuse"``, ``max(0, expected_size - partial_bytes)`` when
+        ``expected_size`` is known, or ``None`` when ``expected_size`` is
+        unknown.
+    free_bytes : int or None
+        Available free space in bytes on the destination's filesystem
+        (queried via ``shutil.disk_usage`` on the nearest existing parent
+        directory), or ``None`` if disk usage could not be queried.
+    sufficient : bool or None
+        ``True`` when ``action == "reuse"`` or ``free_bytes >= needed_bytes``,
+        ``False`` when ``free_bytes < needed_bytes``, or ``None`` when either
+        ``needed_bytes`` or ``free_bytes`` is unknown.
+    """
+
+    url: str
+    destination: str
+    action: str
+    inspection: FileInspection
+    expected_size: Optional[int] = None
+    partial_bytes: int = 0
+    needed_bytes: Optional[int] = None
+    free_bytes: Optional[int] = None
+    sufficient: Optional[bool] = None
+
+
+def probe_remote_content_length(url, *, timeout=30, headers=None, offline=None):
+    """Probe the expected byte size of ``url`` via HTTP ``HEAD`` or local ``file://`` stat.
+
+    Performs no filesystem writes. For ``http`` / ``https`` URLs, sends an
+    HTTP ``HEAD`` request with ``Accept-Encoding: identity`` and returns a
+    parsed non-negative ``Content-Length`` only when the response is 2xx,
+    uses identity content encoding, and does not use chunked transfer
+    encoding. Transport errors or unsupported ``HEAD`` responses return
+    ``None``; explicit offline blocks raise ``OfflineError``.
+
+    Parameters
+    ----------
+    url : str
+        Source URL to probe.
+    timeout : float or tuple[float, float] or None, optional
+        Per-request timeout in seconds passed to ``requests.head``. Default is
+        ``30``.
+    headers : Mapping[str, str] or None, optional
+        Optional extra HTTP headers merged onto the default request headers.
+    offline : bool or None, optional
+        Override ``DATACACHE_OFFLINE`` / ``OPENVAX_OFFLINE``.
+
+    Returns
+    -------
+    int or None
+        Known byte size, or ``None`` when unavailable.
+
+    Raises
+    ------
+    OfflineError
+        If offline mode forbids probing a remote HTTP(S) URL.
+    ValueError
+        If ``headers`` is not a mapping or ``None``, or ``offline`` is invalid.
+    """
+    if headers is not None and not isinstance(headers, Mapping):
+        raise ValueError("headers must be a mapping or None")
+    offline_source(offline)
+    parts = urllib.parse.urlsplit(url)
+    scheme = parts.scheme.lower()
+    if scheme in ("http", "https"):
+        require_online(url, offline=offline)
+        import requests
+        request_headers = {"User-Agent": common.USER_AGENT, "Accept-Encoding": "identity"}
+        if headers is not None:
+            lower_custom = {key.lower() for key in headers}
+            request_headers = {
+                key: value for key, value in request_headers.items()
+                if key.lower() not in lower_custom
+            }
+            request_headers.update(headers)
+        try:
+            with closing(requests.head(
+                url, headers=request_headers, timeout=timeout, allow_redirects=True
+            )) as response:
+                if not (200 <= response.status_code < 300):
+                    return None
+                encoding = response.headers.get("Content-Encoding", "identity").strip().lower()
+                if encoding != "identity":
+                    return None
+                if "Transfer-Encoding" in response.headers:
+                    return None
+                return parse_content_length(response.headers.get("Content-Length"))
+        except requests.RequestException as error:
+            logger.debug("Could not probe remote size for %s: %s", provenance.redact_url(url), error)
+            return None
+    if scheme == "file":
+        if parts.netloc not in ("", "localhost") or parts.query or parts.fragment:
+            return None
+        from urllib.request import url2pathname
+        try:
+            info = os.stat(url2pathname(parts.path))
+        except OSError:
+            return None
+        return info.st_size if stat.S_ISREG(info.st_mode) else None
+    return None
+
+
+def plan_fetch(
+        url,
+        destination,
+        *,
+        expected_sha256=None,
+        expected_size=None,
+        probe_remote_size=False,
+        timeout=30,
+        headers=None,
+        force=False,
+        offline=None):
+    """Build a read-only preflight ``FetchPlan`` without writes, locks, or recovery.
+
+    Inspects ``destination`` with ``inspect_file``, checks available space on
+    the nearest existing parent directory via ``shutil.disk_usage``, and
+    credits any matching private resumable partial bytes toward the required
+    space. Never creates directories, acquires locks, repairs files, or makes
+    network requests unless ``probe_remote_size=True`` is explicitly requested
+    and ``expected_size`` is omitted for a file that would be downloaded or
+    replaced.
+
+    Parameters
+    ----------
+    url : str
+        Source URL that would be fetched.
+    destination : str or os.PathLike
+        Exact destination file path to plan for.
+    expected_sha256 : str or None, optional
+        Trusted 64-character hexadecimal SHA-256 digest (case-insensitive).
+    expected_size : int or None, optional
+        Expected non-negative integer size in bytes. Takes precedence over
+        ``probe_remote_size``.
+    probe_remote_size : bool, optional
+        If ``True`` and ``expected_size`` is ``None`` for a ``"download"`` or
+        ``"replace"`` plan, probe the size with an HTTP ``HEAD`` request (or
+        ``os.stat`` for ``file://`` URLs). Default is ``False`` (strictly
+        offline).
+    timeout : float or tuple[float, float] or None, optional
+        Per-request timeout in seconds for the optional HTTP ``HEAD`` probe.
+        Default is ``30``.
+    headers : Mapping[str, str] or None, optional
+        Optional extra HTTP headers sent on the ``HEAD`` probe when
+        ``probe_remote_size=True``.
+    force : bool, optional
+        If ``True``, plan ``"replace"`` instead of ``"reuse"`` when a valid
+        file is already present at ``destination``. Default is ``False``.
+    offline : bool or None, optional
+        Override ``DATACACHE_OFFLINE`` / ``OPENVAX_OFFLINE`` for optional
+        remote size probing.
+
+    Returns
+    -------
+    FetchPlan
+        Frozen preflight plan reporting ``action``, ``expected_size``,
+        ``partial_bytes``, ``needed_bytes``, ``free_bytes``, ``sufficient``,
+        and the current ``FileInspection``.
+
+    Raises
+    ------
+    ValueError
+        If ``url``, ``destination``, expectations, boolean flags, ``headers``,
+        or ``offline`` are invalid.
+    TypeError
+        If ``destination`` is not path-like.
+    OfflineError
+        If ``probe_remote_size=True`` requires a remote HTTP ``HEAD`` request
+        while offline mode is active.
+    """
+    if not isinstance(url, str) or not url:
+        raise ValueError("URL not provided")
+    dest = os.fspath(destination)
+    if not isinstance(dest, str) or not dest:
+        raise ValueError("destination must be a non-empty text path")
+    validate_expectations(expected_sha256, expected_size)
+    if not isinstance(probe_remote_size, bool):
+        raise ValueError("probe_remote_size must be a boolean")
+    if not isinstance(force, bool):
+        raise ValueError("force must be a boolean")
+    if headers is not None and not isinstance(headers, Mapping):
+        raise ValueError("headers must be a mapping or None")
+    offline_source(offline)
+
+    inspection = inspect_file(dest, expected_sha256=expected_sha256, expected_size=expected_size)
+    if inspection.status == "available":
+        action = "replace" if force else "reuse"
+    elif inspection.status == "missing":
+        action = "download"
+    else:
+        action = "replace"
+
+    free_bytes = free_disk_bytes(dest)
+    if action == "reuse":
+        return FetchPlan(
+            url=url,
+            destination=dest,
+            action="reuse",
+            inspection=inspection,
+            expected_size=expected_size,
+            partial_bytes=0,
+            needed_bytes=0,
+            free_bytes=free_bytes,
+            sufficient=True,
+        )
+
+    resolved_size = expected_size
+    if resolved_size is None and probe_remote_size:
+        resolved_size = probe_remote_content_length(
+            url, timeout=timeout, headers=headers, offline=offline
+        )
+
+    partial_bytes = 0
+    if resolved_size is not None:
+        from .resume import inspect_partial_bytes
+        partial_bytes = inspect_partial_bytes(
+            dest,
+            download_url=url,
+            expected_sha256=expected_sha256,
+            expected_size=resolved_size,
+        )
+        needed_bytes = max(0, resolved_size - partial_bytes)
+        sufficient = None if free_bytes is None else (free_bytes >= needed_bytes)
+    else:
+        needed_bytes = None
+        sufficient = None
+
+    return FetchPlan(
+        url=url,
+        destination=dest,
+        action=action,
+        inspection=inspection,
+        expected_size=resolved_size,
+        partial_bytes=partial_bytes,
+        needed_bytes=needed_bytes,
+        free_bytes=free_bytes,
+        sufficient=sufficient,
+    )

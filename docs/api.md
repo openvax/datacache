@@ -17,10 +17,10 @@ explain the longer workflows and compatibility guarantees.
 | Downloading | [fetch_file](#datacache.fetch_file), [fetch_bytes](#datacache.fetch_bytes), [fetch_and_transform](#datacache.fetch_and_transform), [discard_partial](#datacache.discard_partial) |
 | Paths and presence | [expected_path](#datacache.expected_path), [build_local_filename](#datacache.build_local_filename), [get_data_dir](#datacache.get_data_dir), [get_cache_root](#datacache.get_cache_root), [resolve_cache_dir](#datacache.resolve_cache_dir), [CacheLocation](#datacache.CacheLocation), [SHARED_CACHE_ENV_KEY](#datacache.SHARED_CACHE_ENV_KEY), [format_bytes](#datacache.format_bytes), [build_path](#datacache.build_path), [ensure_dir](#datacache.ensure_dir), [clear_cache](#datacache.clear_cache) |
 | Offline and progress policy | [OfflineError](#datacache.OfflineError), [OFFLINE_ENV_KEYS](#datacache.OFFLINE_ENV_KEYS), [is_offline](#datacache.is_offline), [offline_source](#datacache.offline_source), [require_online](#datacache.require_online), [NO_PROGRESS_ENV_KEYS](#datacache.NO_PROGRESS_ENV_KEYS), [should_show_progress](#datacache.should_show_progress) |
-| Integrity and inspection | [validate_file](#datacache.validate_file), [inspect_file](#datacache.inspect_file), [inspect_files](#datacache.inspect_files) |
-| Results and exceptions | [FileInspection](#datacache.FileInspection), [CacheInspection](#datacache.CacheInspection), [FileValidationError](#datacache.FileValidationError), [CannotResume](#datacache.CannotResume) |
+| Integrity and inspection | [validate_file](#datacache.validate_file), [inspect_file](#datacache.inspect_file), [inspect_files](#datacache.inspect_files), [plan_fetch](#datacache.plan_fetch) |
+| Results and exceptions | [FileInspection](#datacache.FileInspection), [CacheInspection](#datacache.CacheInspection), [FetchPlan](#datacache.FetchPlan), [FileValidationError](#datacache.FileValidationError), [InsufficientSpaceError](#datacache.InsufficientSpaceError), [CannotResume](#datacache.CannotResume) |
 | SQLite | [db_from_dataframes_with_absolute_path](#datacache.db_from_dataframes_with_absolute_path), [connect_if_correct_version](#datacache.connect_if_correct_version) |
-| Cache object | [Cache](#datacache.Cache), [fetch](#datacache.Cache.fetch), [local_filename](#datacache.Cache.local_filename), [local_path](#datacache.Cache.local_path), [exists](#datacache.Cache.exists), [inspect](#datacache.Cache.inspect), [make_readable](#datacache.Cache.make_readable), [delete_url](#datacache.Cache.delete_url), [delete_all](#datacache.Cache.delete_all) |
+| Cache object | [Cache](#datacache.Cache), [fetch](#datacache.Cache.fetch), [local_filename](#datacache.Cache.local_filename), [local_path](#datacache.Cache.local_path), [exists](#datacache.Cache.exists), [inspect](#datacache.Cache.inspect), [plan_fetch](#datacache.Cache.plan_fetch), [make_readable](#datacache.Cache.make_readable), [delete_url](#datacache.Cache.delete_url), [delete_all](#datacache.Cache.delete_all) |
 | Complete archive trees | [install_archive](#datacache.install_archive), [inspect_archive](#datacache.inspect_archive), [ArchiveInspection](#datacache.ArchiveInspection) |
 | Versioned file bundles | [install_bundle](#datacache.install_bundle), [inspect_bundle](#datacache.inspect_bundle), [BundleInspection](#datacache.BundleInspection), [VersionedDatasetRegistry](#datacache.VersionedDatasetRegistry) |
 | Derived artifacts | [materialize](#datacache.materialize), [inspect_materialization](#datacache.inspect_materialization), [MaterializationInspection](#datacache.MaterializationInspection) |
@@ -86,11 +86,17 @@ explain the longer workflows and compatibility guarantees.
 
 ::: datacache.inspect_files
 
+::: datacache.plan_fetch
+
 ::: datacache.FileInspection
 
 ::: datacache.CacheInspection
 
+::: datacache.FetchPlan
+
 ::: datacache.FileValidationError
+
+::: datacache.InsufficientSpaceError
 
 ::: datacache.CannotResume
 

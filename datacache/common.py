@@ -95,6 +95,29 @@ def format_bytes(num_bytes):
     return "%.1f TiB" % value
 
 
+def parse_content_length(header_value):
+    """Parse an HTTP ``Content-Length`` header value into a non-negative integer.
+
+    Parameters
+    ----------
+    header_value : str, int, or None
+        Raw ``Content-Length`` header value.
+
+    Returns
+    -------
+    int or None
+        Non-negative integer byte count, or ``None`` if absent, negative, or
+        not a valid integer.
+    """
+    if header_value is None or isinstance(header_value, bool):
+        return None
+    try:
+        length = int(header_value)
+    except (TypeError, ValueError):
+        return None
+    return length if length >= 0 else None
+
+
 def source_suffix(download_url):
     """Infer a supported lowercase file suffix from a download URL.
 

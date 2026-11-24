@@ -50,12 +50,20 @@ if TYPE_CHECKING:
         fetch_file,
     )
     from .file_registry import VersionedFileRegistry
-    from .inspection import CacheInspection, FileInspection, inspect_file, inspect_files
+    from .inspection import (
+        CacheInspection,
+        FetchPlan,
+        FileInspection,
+        inspect_file,
+        inspect_files,
+        plan_fetch,
+    )
     from .integrity import FileValidationError, validate_file
     from .materialization import MaterializationInspection, inspect_materialization, materialize
     from .offline import OFFLINE_ENV_KEYS, OfflineError, is_offline, offline_source, require_online
     from .progress import NO_PROGRESS_ENV_KEYS, should_show_progress
     from .resume import CannotResume, discard_partial
+    from .space import InsufficientSpaceError
     from .zip_members import install_zip_member
 
 # The submodule that defines each public name. ``__getattr__`` imports it the
@@ -87,9 +95,11 @@ EXPORT_MODULES = {
     'fetch_file': 'download',
     'VersionedFileRegistry': 'file_registry',
     'CacheInspection': 'inspection',
+    'FetchPlan': 'inspection',
     'FileInspection': 'inspection',
     'inspect_file': 'inspection',
     'inspect_files': 'inspection',
+    'plan_fetch': 'inspection',
     'FileValidationError': 'integrity',
     'validate_file': 'integrity',
     'MaterializationInspection': 'materialization',
@@ -104,6 +114,7 @@ EXPORT_MODULES = {
     'should_show_progress': 'progress',
     'CannotResume': 'resume',
     'discard_partial': 'resume',
+    'InsufficientSpaceError': 'space',
     'install_zip_member': 'zip_members',
 }
 
@@ -128,9 +139,12 @@ __all__ = [
     'expected_path',
     'FileInspection',
     'CacheInspection',
+    'FetchPlan',
     'inspect_file',
     'inspect_files',
+    'plan_fetch',
     'FileValidationError',
+    'InsufficientSpaceError',
     'validate_file',
     'fetch_and_transform',
     'db_from_dataframes_with_absolute_path',

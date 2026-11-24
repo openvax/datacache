@@ -32,6 +32,7 @@ from .bundle_store import (
 from .download import normal_creation_mode, run_validator, validate_download_options, validate_limit, validate_size_within_limit
 from .integrity import FileValidationError, sha256_stream, validate_expectations
 from .provenance import redact_url
+from .space import translate_enospc
 
 
 FORMAT = 1
@@ -625,65 +626,66 @@ def install_archive(
         run_validator(validator, Path(inspection.bundle), path, "archive tree")
         return Path(inspection.bundle)
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with store.lock():
-        store.create()
-        inspection = inspect_archive(
-            path, sources, expected_sha256=expected_sha256,
-            expected_size=expected_size, extra_files=extra_files, verify_files=not force)
-        if store.can_reuse(inspection, force=force):
-            run_validator(validator, Path(inspection.bundle), path, "archive tree")
-            return Path(inspection.bundle)
+    with translate_enospc(path, needed_bytes=expected_size):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with store.lock():
+            store.create()
+            inspection = inspect_archive(
+                path, sources, expected_sha256=expected_sha256,
+                expected_size=expected_size, extra_files=extra_files, verify_files=not force)
+            if store.can_reuse(inspection, force=force):
+                run_validator(validator, Path(inspection.bundle), path, "archive tree")
+                return Path(inspection.bundle)
 
-        # Parts are kept across attempts only when each is pinned, so a kept
-        # part can never be stale; "auto" doesn't require pinning, True does.
-        resumable = options.get("resume") is True or (options.get("resume") == "auto" and all(
-            source["path"] is not None or None not in _part_expectations(definition, index)
-            for index, source in enumerate(definition["sources"])))
-        working = private_directory(
-            path / (".staging-" + (_working_key(definition) if resumable else uuid4().hex)))
-        tree = working / "tree"
-        if tree.exists():
-            shutil.rmtree(tree)
-        tree.mkdir()
-        published = False
-        try:
-            archive_path, archive_record, source_records = _assemble_archive(
-                working, definition, options, keep_parts=resumable)
-            _extract_tar(
-                archive_path, tree, max_members, max_extracted_size,
-                definition["extra_files"])
-            for name, value in definition["extra_files"].items():
-                target = tree / Path(*name.split("/"))
-                target.parent.mkdir(parents=True, exist_ok=True)
-                flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
-                flags |= getattr(os, "O_NOFOLLOW", 0)
-                try:
-                    descriptor = os.open(target, flags, 0o666)
-                except FileExistsError as error:
-                    raise FileValidationError(target, "extra file collides with archive content") from error
-                with os.fdopen(descriptor, "wb") as output:
-                    output.write(value)
-            run_validator(validator, tree, path, "archive tree")
-            listing = list_tree(tree)
-            files = {name: hash_file(file_path).record for name, file_path in listing.files.items()}
-            receipt = {
-                "format": FORMAT,
-                "kind": "archive-tree",
-                "fetched_at": datetime.now(timezone.utc).isoformat(),
-                "archive": archive_record,
-                "sources": source_records,
-                "files": files,
-                "extra_files": {name: files[name] for name in definition["extra_files"]},
-                "directories": listing.directories,
-            }
-            write_json(tree / MANIFEST, receipt, mode=normal_creation_mode(tree))
-            # Every file was just hashed into the manifest: read it back and
-            # check it against the tree, without hashing again.
-            _check_bundle(store, tree, definition, verify_files=False)
-            bundle = store.publish(tree)
-            published = True
-            return bundle
-        finally:
-            if published or not resumable:
-                discard_private_directory(working)
+            # Parts are kept across attempts only when each is pinned, so a kept
+            # part can never be stale; "auto" doesn't require pinning, True does.
+            resumable = options.get("resume") is True or (options.get("resume") == "auto" and all(
+                source["path"] is not None or None not in _part_expectations(definition, index)
+                for index, source in enumerate(definition["sources"])))
+            working = private_directory(
+                path / (".staging-" + (_working_key(definition) if resumable else uuid4().hex)))
+            tree = working / "tree"
+            if tree.exists():
+                shutil.rmtree(tree)
+            tree.mkdir()
+            published = False
+            try:
+                archive_path, archive_record, source_records = _assemble_archive(
+                    working, definition, options, keep_parts=resumable)
+                _extract_tar(
+                    archive_path, tree, max_members, max_extracted_size,
+                    definition["extra_files"])
+                for name, value in definition["extra_files"].items():
+                    target = tree / Path(*name.split("/"))
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+                    flags |= getattr(os, "O_NOFOLLOW", 0)
+                    try:
+                        descriptor = os.open(target, flags, 0o666)
+                    except FileExistsError as error:
+                        raise FileValidationError(target, "extra file collides with archive content") from error
+                    with os.fdopen(descriptor, "wb") as output:
+                        output.write(value)
+                run_validator(validator, tree, path, "archive tree")
+                listing = list_tree(tree)
+                files = {name: hash_file(file_path).record for name, file_path in listing.files.items()}
+                receipt = {
+                    "format": FORMAT,
+                    "kind": "archive-tree",
+                    "fetched_at": datetime.now(timezone.utc).isoformat(),
+                    "archive": archive_record,
+                    "sources": source_records,
+                    "files": files,
+                    "extra_files": {name: files[name] for name in definition["extra_files"]},
+                    "directories": listing.directories,
+                }
+                write_json(tree / MANIFEST, receipt, mode=normal_creation_mode(tree))
+                # Every file was just hashed into the manifest: read it back and
+                # check it against the tree, without hashing again.
+                _check_bundle(store, tree, definition, verify_files=False)
+                bundle = store.publish(tree)
+                published = True
+                return bundle
+            finally:
+                if published or not resumable:
+                    discard_private_directory(working)

@@ -27,7 +27,7 @@ import zipfile
 import urllib.parse
 
 from . import common, provenance
-from .common import build_local_filename, source_suffix
+from .common import build_local_filename, parse_content_length, source_suffix
 from .integrity import FileValidationError, validate_expectations, validate_file
 from .inspection import path_exists
 from .offline import offline_source, require_online
@@ -36,6 +36,7 @@ from .retries import (
     DEFAULT_MAX_RETRIES, DEFAULT_RETRY_BACKOFF, DEFAULT_RETRY_MAX_DELAY,
     error_description, is_retryable_http_error, retry_delay, validate_retry_options,
 )
+from .space import InsufficientSpaceError, free_disk_bytes, is_enospc, translate_enospc
 
 logger = logging.getLogger(__name__)
 
@@ -110,18 +111,6 @@ class LimitedWriter:
         return self.file.write(data)
 
 
-def _content_length(header_value):
-    """Parse a Content-Length header value into an int, or None if it's
-    absent or not a valid integer."""
-    if header_value is None:
-        return None
-    try:
-        length = int(header_value)
-        return length if length >= 0 else None
-    except (TypeError, ValueError):
-        return None
-
-
 def http_chunks(response, chunk_size, http_representation):
     """Stream chunks of one HTTP representation, preserving Requests transport errors.
 
@@ -190,6 +179,7 @@ def _stream_to_file(
     """
     require_online(download_url, offline=offline)
     bytes_downloaded = 0
+    target_name = getattr(file_handle, "name", None)
     if max_bytes is not None:
         file_handle = LimitedWriter(file_handle, max_bytes)
         # Never read, and so never decode, much more than the limit at once.
@@ -198,6 +188,19 @@ def _stream_to_file(
     def report(total_bytes):
         if progress_callback is not None:
             progress_callback(bytes_downloaded, total_bytes)
+
+    def write_chunk(chunk, total_bytes):
+        try:
+            file_handle.write(chunk)
+        except OSError as error:
+            if is_enospc(error):
+                target = target_name if isinstance(target_name, (str, os.PathLike)) else "."
+                raise InsufficientSpaceError(
+                    target,
+                    needed_bytes=total_bytes,
+                    free_bytes=free_disk_bytes(target),
+                ) from error
+            raise
 
     if urllib.parse.urlsplit(download_url).scheme.lower() in ("http", "https"):
         import requests
@@ -212,7 +215,7 @@ def _stream_to_file(
             # Requests decodes content encoding before yielding chunks; a wire
             # length is not a valid total for the bytes we write in that case.
             encoding = response.headers.get("Content-Encoding", "identity").strip().lower()
-            total_bytes = (_content_length(response.headers.get("Content-Length"))
+            total_bytes = (parse_content_length(response.headers.get("Content-Length"))
                            if encoding == "identity" or http_representation == "encoded" else None)
             # Chunked transfer makes Content-Length meaningless (RFC 9112).
             if "Transfer-Encoding" in response.headers:
@@ -222,7 +225,7 @@ def _stream_to_file(
                 if not chunk:
                     # skip keep-alive chunks that carry no data
                     continue
-                file_handle.write(chunk)
+                write_chunk(chunk, total_bytes)
                 bytes_downloaded += len(chunk)
                 report(total_bytes)
     else:
@@ -231,13 +234,13 @@ def _stream_to_file(
         from urllib.request import Request, urlopen
         req = Request(download_url)
         with urlopen(req, data=None, timeout=timeout) as response:
-            total_bytes = _content_length(response.headers.get("Content-Length"))
+            total_bytes = parse_content_length(response.headers.get("Content-Length"))
             refuse_if_over(total_bytes or 0, max_bytes)
             while True:
                 chunk = response.read(chunk_size)
                 if not chunk:
                     break
-                file_handle.write(chunk)
+                write_chunk(chunk, total_bytes)
                 bytes_downloaded += len(chunk)
                 report(total_bytes)
     return bytes_downloaded
@@ -299,7 +302,9 @@ def _download_to_temp_file(
         allow_empty=True,
         max_bytes=None,
         http_representation="decoded",
-        offline=None):
+        offline=None,
+        report_path=None,
+        needed_bytes=None):
 
     retry_backoff, retry_max_delay = validate_retry_options(max_retries, retry_backoff, retry_max_delay)
     if not download_url:
@@ -340,9 +345,24 @@ def _download_to_temp_file(
                     if not allow_empty:
                         raise EmptyResponse("the transfer delivered no bytes")
             return tmp_path
-        except BaseException:
+        except BaseException as error:
             if tmp_path is not None:
                 remove_staging_file(tmp_path)
+            if isinstance(error, InsufficientSpaceError):
+                target = report_path if report_path is not None else (tmp_path or directory or ".")
+                needed = error.needed_bytes if error.needed_bytes is not None else needed_bytes
+                raise InsufficientSpaceError(
+                    target,
+                    needed_bytes=needed,
+                    free_bytes=free_disk_bytes(target),
+                ) from (error.__cause__ or error)
+            if is_enospc(error):
+                target = report_path if report_path is not None else (tmp_path or directory or ".")
+                raise InsufficientSpaceError(
+                    target,
+                    needed_bytes=needed_bytes,
+                    free_bytes=free_disk_bytes(target),
+                ) from error
             raise
 
     return _with_retries(
@@ -692,64 +712,83 @@ def _download_and_decompress_if_necessary(
             allow_empty=not reject_empty,
             max_bytes=max_bytes,
             http_representation=http_representation,
-            offline=offline)
+            offline=offline,
+            report_path=full_path,
+            needed_bytes=None if (unzip or gunzip or html) else expected_size)
     except EmptyResponse as error:
         raise FileValidationError(full_path, "downloaded file is empty; pass allow_empty=True if an empty file is expected") from error
     except MaxBytesExceeded as error:
         raise FileValidationError(full_path, "download has %s" % error) from error
 
     staged_path = tmp_path
+    needed_hint = expected_size
     try:
-        if unzip or gunzip or html:
-            with open_staging_file(
-                    directory=out_dir, prefix=".datacache-install-") as tmp:
-                staged_path = tmp.name
-            if unzip:
-                with zipfile.ZipFile(tmp_path) as z:
-                    infos = [info for info in z.infolist() if not info.is_dir()]
-                    if not infos:
-                        raise ValueError("Empty zip archive")
-                    # Never extract stored paths: stream one member's contents.
-                    chosen = _choose_zip_member(infos, filename, warn=explicit_output is not False)
-                    refuse_if_over(chosen.file_size, max_bytes)
-                    with z.open(chosen) as src, open(staged_path, "wb") as dst:
-                        _copy_with_progress(src, dst, show_progress, chosen.file_size, max_bytes)
-            elif gunzip:
-                with gzip.GzipFile(tmp_path) as src, open(staged_path, "wb") as dst:
-                    _copy_with_progress(src, dst, show_progress, max_bytes=max_bytes)
-            else:
-                import pandas as pd
-                df = pd.read_html(tmp_path, header=0)[0]
-                df.to_csv(staged_path, sep=',', index=False, encoding='utf-8')
-            if reject_empty and os.path.getsize(staged_path) == 0:
-                raise FileValidationError(full_path, "installed file is empty; pass allow_empty=True if an empty file is expected")
         try:
-            if should_show_progress(show_progress):
-                validate_file(staged_path, expected_sha256, expected_size, show_progress=show_progress)
-            else:
-                validate_file(staged_path, expected_sha256, expected_size)
-        except FileValidationError as error:
-            raise FileValidationError(full_path, "downloaded file " + error.reason) from error
-        run_validator(validator, staged_path, full_path, "downloaded file")
-        record = None
-        if record_provenance:
-            # Describe the private staged bytes, not whatever is at full_path
-            # after publication, which a concurrent writer may have replaced.
-            # os.replace keeps their size and modification time.
+            if unzip or gunzip or html:
+                with open_staging_file(
+                        directory=out_dir, prefix=".datacache-install-") as tmp:
+                    staged_path = tmp.name
+                if unzip:
+                    with zipfile.ZipFile(tmp_path) as z:
+                        infos = [info for info in z.infolist() if not info.is_dir()]
+                        if not infos:
+                            raise ValueError("Empty zip archive")
+                        # Never extract stored paths: stream one member's contents.
+                        chosen = _choose_zip_member(infos, filename, warn=explicit_output is not False)
+                        if needed_hint is None and chosen.file_size is not None:
+                            needed_hint = chosen.file_size
+                        refuse_if_over(chosen.file_size, max_bytes)
+                        with z.open(chosen) as src, open(staged_path, "wb") as dst:
+                            _copy_with_progress(src, dst, show_progress, chosen.file_size, max_bytes)
+                elif gunzip:
+                    with gzip.GzipFile(tmp_path) as src, open(staged_path, "wb") as dst:
+                        _copy_with_progress(src, dst, show_progress, max_bytes=max_bytes)
+                else:
+                    import pandas as pd
+                    df = pd.read_html(tmp_path, header=0)[0]
+                    df.to_csv(staged_path, sep=',', index=False, encoding='utf-8')
+                if reject_empty and os.path.getsize(staged_path) == 0:
+                    raise FileValidationError(full_path, "installed file is empty; pass allow_empty=True if an empty file is expected")
             try:
-                record = provenance.describe(
-                    download_url, os.stat(staged_path), expected_sha256,
-                    http_representation=http_representation)
-            except OSError as error:
-                logger.debug("Could not describe provenance for %s: %s", full_path, error)
-        publish_file(staged_path, full_path, record)
-    except MaxBytesExceeded as error:
-        # Only decompression writes here; the download was limited above.
-        raise FileValidationError(full_path, "decompressed file has %s" % error) from error
-    finally:
-        if staged_path != tmp_path:
-            remove_staging_file(staged_path)
-        remove_staging_file(tmp_path)
+                if should_show_progress(show_progress):
+                    validate_file(staged_path, expected_sha256, expected_size, show_progress=show_progress)
+                else:
+                    validate_file(staged_path, expected_sha256, expected_size)
+            except FileValidationError as error:
+                raise FileValidationError(full_path, "downloaded file " + error.reason) from error
+            run_validator(validator, staged_path, full_path, "downloaded file")
+            record = None
+            if record_provenance:
+                # Describe the private staged bytes, not whatever is at full_path
+                # after publication, which a concurrent writer may have replaced.
+                # os.replace keeps their size and modification time.
+                try:
+                    record = provenance.describe(
+                        download_url, os.stat(staged_path), expected_sha256,
+                        http_representation=http_representation)
+                except OSError as error:
+                    logger.debug("Could not describe provenance for %s: %s", full_path, error)
+            if needed_hint is None:
+                try:
+                    needed_hint = os.path.getsize(staged_path)
+                except OSError:
+                    pass
+            publish_file(staged_path, full_path, record)
+        except MaxBytesExceeded as error:
+            # Only decompression writes here; the download was limited above.
+            raise FileValidationError(full_path, "decompressed file has %s" % error) from error
+        finally:
+            if staged_path != tmp_path:
+                remove_staging_file(staged_path)
+            remove_staging_file(tmp_path)
+    except OSError as error:
+        if is_enospc(error) and not isinstance(error, InsufficientSpaceError):
+            raise InsufficientSpaceError(
+                full_path,
+                needed_bytes=needed_hint,
+                free_bytes=free_disk_bytes(full_path),
+            ) from error
+        raise
 
 
 def run_validator(validator, path, reported_path, description):
@@ -1221,8 +1260,15 @@ def fetch_file(
         or size, digest, representation, or validator mismatches.
     OfflineError
         When offline mode forbids a remote transfer.
+    InsufficientSpaceError
+        When the destination filesystem runs out of disk space (``ENOSPC``)
+        during directory creation, download, decompression, or publication.
+        Staging files are removed (or, when ``resume`` is enabled, only the
+        private resumable partial file is retained) and the destination file
+        is left untouched.
     OSError
-        For filesystem access or publication failures.
+        For other filesystem access or publication failures (such as
+        ``PermissionError``).
     requests.RequestException
         For HTTP failures, preserved after retry exhaustion.
     urllib.error.URLError
@@ -1234,8 +1280,11 @@ def fetch_file(
     Notes
     -----
     A corrupt cache hit raises ``FileValidationError``; use ``force=True`` for
-    an explicit repair. Failed downloads leave any existing destination
-    unchanged and remove staging files. Atomic replacement requires a local
+    an explicit repair. Failed downloads (including ``InsufficientSpaceError``
+    on ``ENOSPC``) leave any existing destination unchanged and remove staging
+    files (when ``resume`` is enabled, only the private resumable partial is
+    kept and never exposed at the final destination). Atomic replacement
+    requires a local
     filesystem supporting ``os.replace``. Staging files remain private until
     publication; new files use normal creation permissions (``0666`` filtered
     by umask) and replacements preserve existing read/write/execute bits.
@@ -1349,7 +1398,8 @@ def fetch_file(
                 raise
     try:
         require_online(download_url, offline=offline)
-        os.makedirs(os.path.dirname(full_path) or ".", exist_ok=True)
+        with translate_enospc(full_path, needed_bytes=expected_size):
+            os.makedirs(os.path.dirname(full_path) or ".", exist_ok=True)
         logger.info("Fetching %s from URL %s", full_path, download_url)
         def download_in_full():
             _download_and_decompress_if_necessary(
@@ -1535,21 +1585,22 @@ def fetch_and_transform(
         if source_path is None:
             source_path = fetch_file(source_url, filename=source_filename, subdir=subdir, **options)
         logger.info("Generating data file %s from %s", transformed_path, source_path)
-        os.makedirs(os.path.dirname(transformed_path) or ".", exist_ok=True)
-        # A private directory keeps arbitrary transformer output private while
-        # preserving the filename/extension and the absent-output contract.
-        with TemporaryDirectory(
-                dir=os.path.dirname(transformed_path) or ".",
-                prefix=".datacache-transform-") as staging_directory:
-            staged_path = os.path.join(staging_directory, os.path.basename(transformed_path))
-            result = transformer(source_path, staged_path)
-            try:
-                validate_file(staged_path)
-            except FileNotFoundError as error:
-                raise RuntimeError("Transformer did not create %s" % transformed_path) from error
-            publish_file(staged_path, transformed_path)
-            if isinstance(result, (str, os.PathLike)) and os.fspath(result) == staged_path:
-                result = type(result)(transformed_path)
+        with translate_enospc(transformed_path):
+            os.makedirs(os.path.dirname(transformed_path) or ".", exist_ok=True)
+            # A private directory keeps arbitrary transformer output private while
+            # preserving the filename/extension and the absent-output contract.
+            with TemporaryDirectory(
+                    dir=os.path.dirname(transformed_path) or ".",
+                    prefix=".datacache-transform-") as staging_directory:
+                staged_path = os.path.join(staging_directory, os.path.basename(transformed_path))
+                result = transformer(source_path, staged_path)
+                try:
+                    validate_file(staged_path)
+                except FileNotFoundError as error:
+                    raise RuntimeError("Transformer did not create %s" % transformed_path) from error
+                publish_file(staged_path, transformed_path)
+                if isinstance(result, (str, os.PathLike)) and os.fspath(result) == staged_path:
+                    result = type(result)(transformed_path)
     else:
         logger.info("Cached data file: %s", transformed_path)
         result = loader(transformed_path)
