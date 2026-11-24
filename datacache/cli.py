@@ -33,12 +33,18 @@ _KNOWN_PACKAGES = (
     ("orfdata", ("ORFDATA_CACHE",), False, ()),
     ("osteosarc", ("OSTEOSARC_CACHE",), False, ()),
     ("hitlist", ("HITLIST_DATA_DIR",), False, ("platform:hitlist", "~/.hitlist")),
-    ("oncoref", ("CANCERDATA_BUNDLED_DATA", "ONCOREF_ASSET_CACHE", "PIRLYGENES_BUNDLED_DATA"), False,
-     ("platform:oncoref", "~/.cache/oncoref")),
+    ("oncoref", (
+        "ONCOREF_CACHE_DIR",
+        "CANCERDATA_DATA_DIR",
+        "CANCERDATA_BUNDLED_DATA",
+        "ONCOREF_ASSET_CACHE",
+        "PIRLYGENES_BUNDLED_DATA",
+    ), False, ("platform:oncoref", "~/.cache/oncoref", "~/.cache/pirlygenes")),
     ("pirlygenes", ("PIRLYGENES_CACHE",), False, ("~/.cache/pirlygenes",)),
     ("vaxrank", ("VAXRANK_REF_PEPTIDES_DIR",), False, ("platform:vaxrank",)),
     ("weirdo", ("WEIRDO_DATA_DIR",), False, ("~/.weirdo", "platform:weirdo")),
-    ("mhcflurry", ("MHCFLURRY_DATA_DIR", "MHCFLURRY_DOWNLOADS_DIR"), False, ("data:mhcflurry",)),
+    ("mhcflurry", ("MHCFLURRY_DATA_DIR", "MHCFLURRY_DOWNLOADS_DIR"), False,
+     ("data:mhcflurry:4", "data:mhcflurry")),
     ("mhcseqs", ("MHCSEQS_DATA",), False, ("~/.cache/mhcseqs",)),
     ("pepdata", (), False, ("platform:pepdata",)),
 )
@@ -105,7 +111,11 @@ def _expand_legacy_specs(specs):
             paths.append(_platform_cache_dir(spec.split(":", 1)[1]))
         elif spec.startswith("data:"):
             import platformdirs
-            paths.append(platformdirs.user_data_dir(spec.split(":", 1)[1]))
+            parts = spec.split(":", 2)
+            if len(parts) == 3 and parts[2]:
+                paths.append(platformdirs.user_data_dir(parts[1], version=parts[2]))
+            else:
+                paths.append(platformdirs.user_data_dir(parts[1]))
         else:
             paths.append(os.path.expanduser(spec))
     return tuple(paths)

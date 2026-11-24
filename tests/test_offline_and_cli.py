@@ -320,6 +320,49 @@ class TestCLI:
         assert after["stores"][0]["bundles"] == 1
         assert after["stores"][0]["stale_bundles"] == 0
 
+    def test_dirs_detects_mhcflurry_v4_legacy_and_oncoref_cache_dir(self, tmp_path, monkeypatch, capsys):
+        import platformdirs
+        import datacache.common as dc_common
+
+        shared_platform = tmp_path / "platform-openvax"
+        legacy_mhcflurry_v4 = tmp_path / "data" / "mhcflurry" / "4"
+        legacy_mhcflurry_v4.mkdir(parents=True)
+        (legacy_mhcflurry_v4 / "weights.bin").write_bytes(b"123456")
+
+        oncoref_override = tmp_path / "custom-oncoref"
+        oncoref_override.mkdir()
+        (oncoref_override / "bundle.dat").write_bytes(b"abc")
+
+        monkeypatch.delenv("OPENVAX_DATA_CACHE", raising=False)
+        monkeypatch.delenv("MHCFLURRY_DATA_DIR", raising=False)
+        monkeypatch.delenv("MHCFLURRY_DOWNLOADS_DIR", raising=False)
+        monkeypatch.setenv("ONCOREF_CACHE_DIR", str(oncoref_override))
+        monkeypatch.setattr(
+            dc_common,
+            "_platform_cache_dir",
+            lambda app: str(shared_platform if app == "openvax" else tmp_path / "cache" / app),
+        )
+        monkeypatch.setattr(
+            platformdirs,
+            "user_data_dir",
+            lambda app, version=None, **kw: str(
+                tmp_path / "data" / app / version if version else tmp_path / "data" / app
+            ),
+        )
+
+        cli.run(["dirs", "--all", "--json"])
+        payload = json.loads(capsys.readouterr().out)
+        by_pkg = {row["package"]: row for row in payload["caches"]}
+
+        assert by_pkg["mhcflurry"]["path"] == str(legacy_mhcflurry_v4)
+        assert by_pkg["mhcflurry"]["origin"] == "legacy"
+        assert by_pkg["mhcflurry"]["size_bytes"] == 6
+
+        assert by_pkg["oncoref"]["path"] == str(oncoref_override)
+        assert by_pkg["oncoref"]["origin"] == "env"
+        assert by_pkg["oncoref"]["detail"] == "ONCOREF_CACHE_DIR"
+        assert by_pkg["oncoref"]["size_bytes"] == 3
+
 
 def test_import_stays_lazy():
     code = (
