@@ -20,6 +20,7 @@ from .bundle_store import (
 from .download import download_transform, normal_creation_mode, validate_download_options, validate_size_within_limit
 from .integrity import FileValidationError, validate_expectations
 from .provenance import redact_url
+from .space import translate_enospc
 
 FORMAT = 1
 
@@ -292,81 +293,82 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
     inspection = inspect_bundle(path, expected, verify_files=verify_files and not force)
     if store.can_reuse(inspection, force=force):
         return _paths(inspection)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with store.lock():
-        store.create()
-        inspection = inspect_bundle(path, expected, verify_files=verify_files and not force)
-        if store.can_reuse(inspection, force=force):
-            return _paths(inspection)
-        # A resumable bundle keeps its private working directory across calls,
-        # including completed assets. The registry identity selects it, and
-        # different users never inherit each other's private partials. With
-        # "auto", only when every asset is pinned, so a kept file can never be
-        # stale: an unpinned upstream file may change between attempts.
-        resumable = options.get('resume') is True or (
-            options.get('resume') == 'auto'
-            and all(spec['sha256'] is not None and spec['size'] is not None for spec in expected.values()))
-        staging_key = (hashlib.sha256(json.dumps(expected, sort_keys=True).encode()).hexdigest()
-                       + '-' + user_key()) if resumable else uuid4().hex
-        working = private_directory(path / ('.staging-' + staging_key))
-        # The private parent protects unfinished bytes. The inner directory
-        # already has its final sharing mode, so the bundle is readable by
-        # others the moment it is renamed into place.
-        staged = working / 'files'
-        staged.mkdir(exist_ok=resumable)
-        require_directory(staged)
-        published = False
-        try:
-            recorded = {}
-            for name, spec in expected.items():
-                target = staged / name
-                fetch_options = dict(options, destination=target, decompress=spec['decompress'],
-                                     expected_sha256=spec['sha256'], expected_size=spec['size'])
-                source = spec['url']
-                if name in local_sources:
-                    # Read the local copy; the manifest keeps the declared URL.
-                    source = local_sources[name].as_uri()
-                    fetch_options.pop('resume', None)
-                    fetch_options['raw'] = not spec['decompress']
-                try:
-                    fetch_file(source, **fetch_options)
-                except FileValidationError:
-                    if not resumable or not target.is_file():
-                        raise
-                    # This is private, unpublished working state, not a user's
-                    # installed bundle. Explicit installation may repair it.
-                    fetch_file(source, force=True, **fetch_options)
-                # fetch_file already checked a trusted hash; hash only the rest.
-                hashed = hash_file(target, hash_contents=spec['sha256'] is None)
-                recorded[name] = dict(url=redact_url(spec['url']), sha256=hashed.sha256 or spec['sha256'],
-                                      size=hashed.size, decompress=spec['decompress'])
-                if 'source_identity' in spec:
-                    recorded[name]['source_identity'] = spec['source_identity']
-            receipt = dict(format=FORMAT, fetched_at=datetime.now(timezone.utc).isoformat(), assets=recorded,
-                           source_fingerprints={name: source_fingerprint(spec['url'])
-                                                for name, spec in expected.items()})
-            # Query-string filenames can select a transform, but are redacted
-            # from display URLs. Record the declared download policy separately;
-            # source_paths continues to supply local replacements for that URL.
-            receipt['source_transforms'] = {
-                name: download_transform(spec['url'], name, decompress=spec['decompress'])
-                for name, spec in expected.items() if 'source_identity' in spec}
-            # Remove DataCache's own temporary files: resume state and anything
-            # an interrupted earlier attempt left. No asset is named .datacache-*.
-            for leftover in sorted(staged.rglob('.datacache-*'), reverse=True):
-                if leftover.is_dir() and not leftover.is_symlink():
-                    shutil.rmtree(leftover)
-                else:
-                    leftover.unlink(missing_ok=True)
-            write_json(staged / MANIFEST, receipt, mode=normal_creation_mode(staged))
-            # Check the complete bundle, hashes included, before publishing it.
-            _check_bundle(store, staged, expected)
-            bundle = store.publish(staged)
-            published = True
-            return {name: str(bundle / name) for name in expected}
-        finally:
-            if published or not resumable:
-                discard_private_directory(working)
+    with translate_enospc(path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with store.lock():
+            store.create()
+            inspection = inspect_bundle(path, expected, verify_files=verify_files and not force)
+            if store.can_reuse(inspection, force=force):
+                return _paths(inspection)
+            # A resumable bundle keeps its private working directory across calls,
+            # including completed assets. The registry identity selects it, and
+            # different users never inherit each other's private partials. With
+            # "auto", only when every asset is pinned, so a kept file can never be
+            # stale: an unpinned upstream file may change between attempts.
+            resumable = options.get('resume') is True or (
+                options.get('resume') == 'auto'
+                and all(spec['sha256'] is not None and spec['size'] is not None for spec in expected.values()))
+            staging_key = (hashlib.sha256(json.dumps(expected, sort_keys=True).encode()).hexdigest()
+                           + '-' + user_key()) if resumable else uuid4().hex
+            working = private_directory(path / ('.staging-' + staging_key))
+            # The private parent protects unfinished bytes. The inner directory
+            # already has its final sharing mode, so the bundle is readable by
+            # others the moment it is renamed into place.
+            staged = working / 'files'
+            staged.mkdir(exist_ok=resumable)
+            require_directory(staged)
+            published = False
+            try:
+                recorded = {}
+                for name, spec in expected.items():
+                    target = staged / name
+                    fetch_options = dict(options, destination=target, decompress=spec['decompress'],
+                                         expected_sha256=spec['sha256'], expected_size=spec['size'])
+                    source = spec['url']
+                    if name in local_sources:
+                        # Read the local copy; the manifest keeps the declared URL.
+                        source = local_sources[name].as_uri()
+                        fetch_options.pop('resume', None)
+                        fetch_options['raw'] = not spec['decompress']
+                    try:
+                        fetch_file(source, **fetch_options)
+                    except FileValidationError:
+                        if not resumable or not target.is_file():
+                            raise
+                        # This is private, unpublished working state, not a user's
+                        # installed bundle. Explicit installation may repair it.
+                        fetch_file(source, force=True, **fetch_options)
+                    # fetch_file already checked a trusted hash; hash only the rest.
+                    hashed = hash_file(target, hash_contents=spec['sha256'] is None)
+                    recorded[name] = dict(url=redact_url(spec['url']), sha256=hashed.sha256 or spec['sha256'],
+                                          size=hashed.size, decompress=spec['decompress'])
+                    if 'source_identity' in spec:
+                        recorded[name]['source_identity'] = spec['source_identity']
+                receipt = dict(format=FORMAT, fetched_at=datetime.now(timezone.utc).isoformat(), assets=recorded,
+                               source_fingerprints={name: source_fingerprint(spec['url'])
+                                                    for name, spec in expected.items()})
+                # Query-string filenames can select a transform, but are redacted
+                # from display URLs. Record the declared download policy separately;
+                # source_paths continues to supply local replacements for that URL.
+                receipt['source_transforms'] = {
+                    name: download_transform(spec['url'], name, decompress=spec['decompress'])
+                    for name, spec in expected.items() if 'source_identity' in spec}
+                # Remove DataCache's own temporary files: resume state and anything
+                # an interrupted earlier attempt left. No asset is named .datacache-*.
+                for leftover in sorted(staged.rglob('.datacache-*'), reverse=True):
+                    if leftover.is_dir() and not leftover.is_symlink():
+                        shutil.rmtree(leftover)
+                    else:
+                        leftover.unlink(missing_ok=True)
+                write_json(staged / MANIFEST, receipt, mode=normal_creation_mode(staged))
+                # Check the complete bundle, hashes included, before publishing it.
+                _check_bundle(store, staged, expected)
+                bundle = store.publish(staged)
+                published = True
+                return {name: str(bundle / name) for name in expected}
+            finally:
+                if published or not resumable:
+                    discard_private_directory(working)
 
 
 class VersionedDatasetRegistry:

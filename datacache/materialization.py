@@ -20,6 +20,7 @@ from .bundle_store import (
 from .download import normal_creation_mode, validate_download_options, validate_size_within_limit
 from .integrity import FileValidationError, validate_expectations, sha256_stream
 from . import provenance
+from .space import translate_enospc
 
 INPUTS = '.datacache-inputs.json'
 FORMAT = 1
@@ -462,45 +463,46 @@ def materialize(destination, sources, *, transform, outputs, builder, force=Fals
     inspection = inspect_current()
     if store.can_reuse(inspection, force=force):
         return {name: value.path for name, value in inspection.files.items()}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with store.lock():
-        store.create()
-        inspection = inspect_current()
-        if store.can_reuse(inspection, force=force):
-            return {name: value.path for name, value in inspection.files.items()}
-        inputs = _input_directory(path, definition)
-        source_paths, records = _acquire_inputs(inputs, definition['sources'], acquisition, options, force=force)
-        working = path / ('.staging-%s-%s' % (_fingerprint(definition), user_key()))
-        # Start from nothing: discard this user's own outputs from a failed build.
-        discard_private_directory(working)
-        private_directory(working)
-        staged = working / 'files'
-        staged.mkdir()
-        output_paths = {name: str(staged / name) for name in definition['outputs']}
-        for target in output_paths.values():
-            Path(target).parent.mkdir(parents=True, exist_ok=True)
-        try:
-            builder(dict(source_paths), dict(output_paths))
-            # Builder callbacks are trusted code, not a sandbox; enforce their
-            # read-only-input contract before creating a dependency receipt.
-            for name, source in source_paths.items():
-                hash_file(source, records[name])
-            # Reject extras/links/specials before hashing any declared output.
-            declared = definition['outputs']
-            check_tree(staged, declared, parent_directories(declared), hash_contents=False)
-            mode = normal_creation_mode(staged)
-            observed = {}
-            for name, target in output_paths.items():
-                observed[name] = hash_file(target, declared[name], show_progress=options['show_progress']).record
-                os.chmod(target, mode)
-            receipt = dict(format=FORMAT, created_at=datetime.now(timezone.utc).isoformat(),
-                           definition=definition, sources=records, outputs=observed)
-            write_json(staged / MANIFEST, receipt, mode=mode)
-            # The outputs were just hashed into the manifest; check its
-            # structure, inventory and sizes without hashing them again.
-            _check_bundle(store, staged, definition, verify_files=False)
-            bundle = store.publish(staged)
-            _cleanup_inputs(path, definition, retain_sources)
-            return {name: str(bundle / name) for name in declared}
-        finally:
+    with translate_enospc(path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with store.lock():
+            store.create()
+            inspection = inspect_current()
+            if store.can_reuse(inspection, force=force):
+                return {name: value.path for name, value in inspection.files.items()}
+            inputs = _input_directory(path, definition)
+            source_paths, records = _acquire_inputs(inputs, definition['sources'], acquisition, options, force=force)
+            working = path / ('.staging-%s-%s' % (_fingerprint(definition), user_key()))
+            # Start from nothing: discard this user's own outputs from a failed build.
             discard_private_directory(working)
+            private_directory(working)
+            staged = working / 'files'
+            staged.mkdir()
+            output_paths = {name: str(staged / name) for name in definition['outputs']}
+            for target in output_paths.values():
+                Path(target).parent.mkdir(parents=True, exist_ok=True)
+            try:
+                builder(dict(source_paths), dict(output_paths))
+                # Builder callbacks are trusted code, not a sandbox; enforce their
+                # read-only-input contract before creating a dependency receipt.
+                for name, source in source_paths.items():
+                    hash_file(source, records[name])
+                # Reject extras/links/specials before hashing any declared output.
+                declared = definition['outputs']
+                check_tree(staged, declared, parent_directories(declared), hash_contents=False)
+                mode = normal_creation_mode(staged)
+                observed = {}
+                for name, target in output_paths.items():
+                    observed[name] = hash_file(target, declared[name], show_progress=options['show_progress']).record
+                    os.chmod(target, mode)
+                receipt = dict(format=FORMAT, created_at=datetime.now(timezone.utc).isoformat(),
+                               definition=definition, sources=records, outputs=observed)
+                write_json(staged / MANIFEST, receipt, mode=mode)
+                # The outputs were just hashed into the manifest; check its
+                # structure, inventory and sizes without hashing them again.
+                _check_bundle(store, staged, definition, verify_files=False)
+                bundle = store.publish(staged)
+                _cleanup_inputs(path, definition, retain_sources)
+                return {name: str(bundle / name) for name in declared}
+            finally:
+                discard_private_directory(working)

@@ -18,7 +18,7 @@ from . import common
 from . import download
 from . import provenance
 from .download import expected_path
-from .inspection import inspect_file, path_exists
+from .inspection import inspect_file, path_exists, plan_fetch
 from .permissions import make_file_readable
 
 
@@ -194,6 +194,75 @@ class Cache:
         return inspect_file(
             self.local_path(url, filename, decompress),
             expected_sha256=expected_sha256, expected_size=expected_size)
+
+    def plan_fetch(
+            self,
+            url,
+            filename=None,
+            decompress=False,
+            *,
+            expected_sha256=None,
+            expected_size=None,
+            probe_remote_size=False,
+            timeout=30,
+            headers=None,
+            force=False,
+            offline=None):
+        """Call ``plan_fetch`` on the cache path selected by ``url``, ``filename``, and ``decompress``.
+
+        Performs no writes, directory creation, locks, or repair. Network
+        access occurs only when ``probe_remote_size=True`` and
+        ``expected_size`` is omitted for a file that would be downloaded or
+        replaced.
+
+        Parameters
+        ----------
+        url : str
+            Source URL that would be fetched.
+        filename : str or None, optional
+            Explicit cache key filename.
+        decompress : bool, optional
+            Whether to target the decompressed cache key. Default is ``False``.
+        expected_sha256 : str or None, optional
+            Trusted 64-character hexadecimal SHA-256 digest.
+        expected_size : int or None, optional
+            Expected non-negative byte size.
+        probe_remote_size : bool, optional
+            If ``True`` and ``expected_size`` is omitted, probe the remote
+            ``Content-Length`` (or local ``file://`` size). Default is ``False``.
+        timeout : float or tuple[float, float] or None, optional
+            Timeout in seconds for optional remote ``HEAD`` probing. Default is ``30``.
+        headers : Mapping[str, str] or None, optional
+            Optional extra HTTP headers for remote ``HEAD`` probing.
+        force : bool, optional
+            If ``True``, plan ``"replace"`` instead of ``"reuse"`` when a valid
+            file is already cached. Default is ``False``.
+        offline : bool or None, optional
+            Override ``DATACACHE_OFFLINE`` / ``OPENVAX_OFFLINE``.
+
+        Returns
+        -------
+        FetchPlan
+            Frozen preflight plan for the selected cache path.
+
+        Raises
+        ------
+        ValueError
+            For invalid naming arguments, expectations, or options.
+        OfflineError
+            If ``probe_remote_size=True`` requires a remote probe while offline.
+        """
+        return plan_fetch(
+            url,
+            self.local_path(url, filename, decompress),
+            expected_sha256=expected_sha256,
+            expected_size=expected_size,
+            probe_remote_size=probe_remote_size,
+            timeout=timeout,
+            headers=headers,
+            force=force,
+            offline=offline,
+        )
 
     def make_readable(self, url=None, filename=None, decompress=False, *, group=True, others=False):
         """Explicitly add POSIX read access to one cached regular file.

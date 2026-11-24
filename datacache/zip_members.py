@@ -33,6 +33,7 @@ from .integrity import validate_expectations
 from .offline import offline_source, require_online
 from .provenance import redact_url
 from .resume import strong_etag
+from .space import translate_enospc
 
 
 def _positive(value, name):
@@ -365,97 +366,98 @@ def install_zip_member(
     if existing:
         return existing
     require_online(url, offline=offline)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    with store.lock():
-        store.create()
-        existing = reuse()
-        if existing:
-            return existing
-        working = private_directory(destination / (".staging-" + uuid4().hex))
-        staged = working / "files"
-        staged.mkdir()
-        paths = {
-            name: staged / name for name in ("payload", "compressed", "receipt.json")
-        }
-        try:
-            with (
-                _HTTPFile(url, timeout, max_metadata_bytes, offline=offline) as remote,
-                zipfile.ZipFile(remote) as archive,
-            ):
-                matches = [
-                    info for info in archive.infolist() if info.filename == member
-                ]
-                if len(matches) != 1:
-                    raise ValueError(
-                        "ZIP must contain exactly one member named %r" % member
-                    )
-                info = matches[0]
-                if (
-                    info.is_dir()
-                    or info.flag_bits & 1
-                    or info.compress_type
-                    not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
+    with translate_enospc(destination, needed_bytes=expected_size):
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with store.lock():
+            store.create()
+            existing = reuse()
+            if existing:
+                return existing
+            working = private_directory(destination / (".staging-" + uuid4().hex))
+            staged = working / "files"
+            staged.mkdir()
+            paths = {
+                name: staged / name for name in ("payload", "compressed", "receipt.json")
+            }
+            try:
+                with (
+                    _HTTPFile(url, timeout, max_metadata_bytes, offline=offline) as remote,
+                    zipfile.ZipFile(remote) as archive,
                 ):
-                    raise ValueError(
-                        "ZIP member must be unencrypted, stored or deflated"
+                    matches = [
+                        info for info in archive.infolist() if info.filename == member
+                    ]
+                    if len(matches) != 1:
+                        raise ValueError(
+                            "ZIP must contain exactly one member named %r" % member
+                        )
+                    info = matches[0]
+                    if (
+                        info.is_dir()
+                        or info.flag_bits & 1
+                        or info.compress_type
+                        not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
+                    ):
+                        raise ValueError(
+                            "ZIP member must be unencrypted, stored or deflated"
+                        )
+                    mode = (info.external_attr >> 16) & 0o170000
+                    if mode not in (0, 0o100000):
+                        raise ValueError("ZIP member must be a regular file")
+                    if (
+                        info.compress_size > max_compressed_bytes
+                        or info.file_size > max_bytes
+                    ):
+                        raise ValueError(
+                            "ZIP member exceeds compressed or expanded size limits"
+                        )
+                    check_expected(
+                        member, {"size": info.file_size, "sha256": None}, definition
                     )
-                mode = (info.external_attr >> 16) & 0o170000
-                if mode not in (0, 0o100000):
-                    raise ValueError("ZIP member must be a regular file")
-                if (
-                    info.compress_size > max_compressed_bytes
-                    or info.file_size > max_bytes
-                ):
-                    raise ValueError(
-                        "ZIP member exceeds compressed or expanded size limits"
+                    remote.seek(info.header_offset)
+                    header = remote.read(30)
+                    if len(header) != 30 or header[:4] != b"PK\x03\x04":
+                        raise ValueError("invalid ZIP local header")
+                    flags, method = struct.unpack_from("<HH", header, 6)
+                    if flags != info.flag_bits or method != info.compress_type:
+                        raise ValueError("ZIP local and central header disagree")
+                    # The standard parser checks local/central header agreement,
+                    # overlapping members, unsupported flags and ZIP64 metadata.
+                    with archive.open(info):
+                        offset = remote.tell()
+                    _extract(remote, info, offset, paths, max_bytes)
+                    payload = hash_file(paths["payload"], definition).record
+                    compressed = hash_file(
+                        paths["compressed"], {"sha256": definition["compressed_sha256"]}
+                    ).record
+                    receipt = dict(
+                        format=1,
+                        definition=definition,
+                        fetched_at=datetime.now(timezone.utc).isoformat(),
+                        archive_size_bytes=remote.size,
+                        validator=remote.validator,
+                        metadata_size_bytes=remote.metadata_bytes,
+                        data_offset_bytes=offset,
+                        compression_method=info.compress_type,
+                        crc32="%08x" % info.CRC,
+                        payload=payload,
+                        compressed=compressed,
+                        payload_verified=expected_sha256 is not None,
+                        compressed_verified=compressed_sha256 is not None,
                     )
-                check_expected(
-                    member, {"size": info.file_size, "sha256": None}, definition
+                    write_json(paths["receipt.json"], receipt)
+                files = dict(payload=payload, compressed=compressed)
+                files["receipt.json"] = hash_file(paths["receipt.json"]).record
+                mode = normal_creation_mode(staged)
+                for path in paths.values():
+                    os.chmod(path, mode)
+                write_json(
+                    staged / MANIFEST,
+                    dict(format=1, definition=definition, files=files),
+                    mode=mode,
                 )
-                remote.seek(info.header_offset)
-                header = remote.read(30)
-                if len(header) != 30 or header[:4] != b"PK\x03\x04":
-                    raise ValueError("invalid ZIP local header")
-                flags, method = struct.unpack_from("<HH", header, 6)
-                if flags != info.flag_bits or method != info.compress_type:
-                    raise ValueError("ZIP local and central header disagree")
-                # The standard parser checks local/central header agreement,
-                # overlapping members, unsupported flags and ZIP64 metadata.
-                with archive.open(info):
-                    offset = remote.tell()
-                _extract(remote, info, offset, paths, max_bytes)
-                payload = hash_file(paths["payload"], definition).record
-                compressed = hash_file(
-                    paths["compressed"], {"sha256": definition["compressed_sha256"]}
-                ).record
-                receipt = dict(
-                    format=1,
-                    definition=definition,
-                    fetched_at=datetime.now(timezone.utc).isoformat(),
-                    archive_size_bytes=remote.size,
-                    validator=remote.validator,
-                    metadata_size_bytes=remote.metadata_bytes,
-                    data_offset_bytes=offset,
-                    compression_method=info.compress_type,
-                    crc32="%08x" % info.CRC,
-                    payload=payload,
-                    compressed=compressed,
-                    payload_verified=expected_sha256 is not None,
-                    compressed_verified=compressed_sha256 is not None,
-                )
-                write_json(paths["receipt.json"], receipt)
-            files = dict(payload=payload, compressed=compressed)
-            files["receipt.json"] = hash_file(paths["receipt.json"]).record
-            mode = normal_creation_mode(staged)
-            for path in paths.values():
-                os.chmod(path, mode)
-            write_json(
-                staged / MANIFEST,
-                dict(format=1, definition=definition, files=files),
-                mode=mode,
-            )
-            check_tree(staged, files, [], ignore=(MANIFEST,), hash_contents=False)
-            bundle = store.publish(staged)
-            return {name: str(bundle / name) for name in paths}
-        finally:
-            discard_private_directory(working)
+                check_tree(staged, files, [], ignore=(MANIFEST,), hash_contents=False)
+                bundle = store.publish(staged)
+                return {name: str(bundle / name) for name in paths}
+            finally:
+                discard_private_directory(working)

@@ -75,6 +75,7 @@ def test_get_cache_root_loads_no_network_or_storage_modules():
     "import datacache.common",
     "from datacache import get_data_dir, build_local_filename",
     "from datacache import FileValidationError, inspect_file",
+    "from datacache import InsufficientSpaceError, FetchPlan, plan_fetch",
     "from datacache import fetch_file",
     "import datacache.download",
     "import datacache, tempfile; datacache.Cache('example', cache_root=tempfile.mkdtemp())",

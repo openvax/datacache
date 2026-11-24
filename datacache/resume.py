@@ -16,6 +16,7 @@ from .integrity import FileValidationError, validate_expectations, validate_file
 from .offline import require_online
 from .progress import Progress
 from .retries import error_description, is_retryable_http_error, retry_delay
+from .space import InsufficientSpaceError, free_disk_bytes, is_enospc, translate_enospc
 
 logger = logging.getLogger(__name__)
 
@@ -76,17 +77,103 @@ def _prepare_directory(destination):
 
 
 @contextmanager
-def _state_lock(directory):
+def _state_lock(directory, *, destination=None, needed_bytes=None):
     """The private lock on resume state; CannotResume if this filesystem can't hold it."""
     try:
         lock = file_lock(directory / 'lock', private=True)
         lock.__enter__()
     except (OSError, FileValidationError) as error:
+        if is_enospc(error):
+            report_path = destination if destination is not None else directory
+            raise InsufficientSpaceError(
+                report_path, needed_bytes=needed_bytes, free_bytes=free_disk_bytes(report_path)
+            ) from error
         raise CannotResume(directory, 'cannot lock resume state on this filesystem: %s' % error) from error
     try:
         yield
     finally:
         lock.__exit__(None, None, None)
+
+
+def inspect_partial_bytes(
+        destination,
+        *,
+        download_url=None,
+        expected_sha256=None,
+        expected_size=None,
+        http_representation="decoded"):
+    """Return usable resumable partial bytes already on disk for ``destination``, read-only.
+
+    Performs no writes, directory creation, locking, or recovery. Returns
+    ``0`` on non-POSIX platforms, when no private resume state exists, when
+    the partial's recorded identity or HTTP validator does not match the
+    supplied expectations, or if the partial is unreadable, non-regular, or
+    larger than ``expected_size``.
+
+    Parameters
+    ----------
+    destination : str or os.PathLike
+        Exact destination file path whose resume state should be inspected.
+    download_url : str or None, optional
+        Source URL expected to match the recorded resume identity.
+    expected_sha256 : str or None, optional
+        Expected 64-character hexadecimal SHA-256 digest.
+    expected_size : int or None, optional
+        Expected total size in bytes.
+    http_representation : {"decoded", "encoded"}, optional
+        HTTP representation expected to match the recorded resume identity.
+        Default is ``"decoded"``.
+
+    Returns
+    -------
+    int
+        Number of reusable partial bytes currently stored, or ``0``.
+    """
+    if os.name != 'posix' or expected_size is None:
+        return 0
+    directory = _state_directory(destination)
+    try:
+        dir_info = directory.lstat()
+    except OSError:
+        return 0
+    if (not stat.S_ISDIR(dir_info.st_mode)
+            or dir_info.st_uid != os.getuid()
+            or stat.S_IMODE(dir_info.st_mode) & 0o077):
+        return 0
+    try:
+        metadata = read_json(directory / 'metadata.json')
+    except (OSError, ValueError, RecursionError, FileValidationError):
+        return 0
+    if not isinstance(metadata, dict):
+        return 0
+    if download_url is not None:
+        expected_identity = {
+            'sha256': expected_sha256.lower() if expected_sha256 is not None else None,
+            'size': expected_size,
+            'http_representation': http_representation,
+            'url_hash': hashlib.sha256(download_url.encode()).hexdigest(),
+        }
+        if metadata.get('identity') != expected_identity:
+            return 0
+    validator = metadata.get('validator')
+    is_valid_validator = valid_validator(validator)
+    strong_validator = is_valid_validator and validator['header'] == 'ETag'
+    if ((validator is not None and not is_valid_validator)
+            or (expected_sha256 is None and not strong_validator)):
+        return 0
+    partial = directory / 'partial'
+    try:
+        info = partial.lstat()
+    except OSError:
+        return 0
+    if (not stat.S_ISREG(info.st_mode)
+            or info.st_nlink != 1
+            or info.st_uid != os.getuid()
+            or stat.S_IMODE(info.st_mode) & 0o077):
+        return 0
+    if info.st_size > expected_size:
+        return 0
+    return info.st_size
 
 
 def discard_partial(destination):
@@ -196,19 +283,22 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
     Returns None. Raises CannotResume when the server or filesystem can't
     support a resumable transfer (fetch_file(resume="auto") then downloads
     in full), FileValidationError for a destination or download that fails
-    validation, and the final transport error when retries are exhausted.
+    validation, InsufficientSpaceError on ENOSPC (leaving destination
+    unchanged and retaining only the private resumable partial), and the
+    final transport error when retries are exhausted.
     """
     from . import download, provenance
     import requests
 
-    directory = _prepare_directory(destination)
+    with translate_enospc(destination, needed_bytes=expected_size):
+        directory = _prepare_directory(destination)
     partial = directory / 'partial'
     metadata_path = directory / 'metadata.json'
     identity = {'sha256': expected_sha256.lower() if expected_sha256 is not None else None,
                 'size': expected_size,
                 'http_representation': http_representation,
                 'url_hash': hashlib.sha256(download_url.encode()).hexdigest()}
-    with _state_lock(directory):
+    with _state_lock(directory, destination=destination, needed_bytes=expected_size):
         # Another installer may have completed while we waited for its lock.
         if not force:
             try:
@@ -233,148 +323,170 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
                 or (expected_sha256 is None and not strong_validator)):
             metadata['validator'] = None
             partial.unlink(missing_ok=True)
-        write_json(metadata_path, metadata)
+        with translate_enospc(destination, needed_bytes=expected_size):
+            write_json(metadata_path, metadata)
+            try:
+                fd = open_regular(partial, os.O_RDWR | os.O_CREAT, private=True)
+            except FileValidationError as error:
+                raise CannotResume(partial, error.reason) from error
         try:
-            fd = open_regular(partial, os.O_RDWR | os.O_CREAT, private=True)
-        except FileValidationError as error:
-            raise CannotResume(partial, error.reason) from error
-        with os.fdopen(fd, 'r+b') as output:
-            backoff = retry_backoff
-            with Progress(show_progress, 'Downloading', expected_size) as progress:
-                def report():
-                    done = output.tell()
-                    progress(done, expected_size)
-                    if progress_callback is not None:
-                        progress_callback(done, expected_size)
+            with os.fdopen(fd, 'r+b') as output:
+                backoff = retry_backoff
+                with Progress(show_progress, 'Downloading', expected_size) as progress:
+                    def report():
+                        done = output.tell()
+                        progress(done, expected_size)
+                        if progress_callback is not None:
+                            progress_callback(done, expected_size)
 
-                for attempt in range(max_retries + 1):
-                    output.seek(0, os.SEEK_END)
-                    offset = output.tell()
-                    if offset >= expected_size:
-                        output.flush()
-                        if expected_sha256 is not None:
-                            try:
-                                validate_file(partial, expected_sha256, expected_size)
-                            except FileValidationError:
-                                pass
-                            else:
-                                report()
-                                break
-                        # Size alone cannot validate a completed persistent
-                        # partial, including an empty one. Request fresh bytes.
-                        output.seek(0)
-                        output.truncate()
-                        offset = 0
-                        metadata['validator'] = None
-                    callback_failed = False
-                    try:
-                        # One protocol restart per attempt, independent of retries.
-                        for restart in range(2):
-                            require_online(download_url, offline=offline)
-                            headers = {'Accept-Encoding': 'identity', 'User-Agent': USER_AGENT}
-                            validator = metadata.get('validator')
-                            if offset:
-                                headers['Range'] = 'bytes=%d-' % offset
-                                if validator and validator['header'] == 'ETag':
-                                    headers['If-Range'] = validator['value']
-                            with closing(requests.get(download_url, headers=headers,
-                                                      timeout=timeout, stream=True)) as response:
-                                if offset and response.status_code == 416:
-                                    output.seek(0)
-                                    output.truncate()
-                                    offset = 0
-                                    metadata['validator'] = None
-                                    continue
-                                response.raise_for_status()
-                                encoding = response.headers.get('Content-Encoding', 'identity').strip().lower()
-                                if http_representation == 'decoded' and encoding != 'identity':
-                                    raise CannotResume(destination, 'resume requires identity Content-Encoding')
-                                current_validator = _validator(response.headers)
-                                if response.status_code == 206:
-                                    match = re.fullmatch(r'bytes (\d+)-(\d+)/(\d+)',
-                                                         response.headers.get('Content-Range', ''))
-                                    valid_range = (match is not None and
-                                                   tuple(map(int, match.groups())) ==
-                                                   (offset, expected_size - 1, expected_size))
-                                    same_identity = not offset or (
-                                        (not validator or validator == current_validator)
-                                        and metadata.get('content_encoding', 'identity') == encoding)
-                                    if not valid_range or not same_identity:
+                    for attempt in range(max_retries + 1):
+                        output.seek(0, os.SEEK_END)
+                        offset = output.tell()
+                        if offset >= expected_size:
+                            output.flush()
+                            if expected_sha256 is not None:
+                                try:
+                                    validate_file(partial, expected_sha256, expected_size)
+                                except FileValidationError:
+                                    pass
+                                else:
+                                    report()
+                                    break
+                            # Size alone cannot validate a completed persistent
+                            # partial, including an empty one. Request fresh bytes.
+                            output.seek(0)
+                            output.truncate()
+                            offset = 0
+                            metadata['validator'] = None
+                        callback_failed = False
+                        try:
+                            # One protocol restart per attempt, independent of retries.
+                            for restart in range(2):
+                                require_online(download_url, offline=offline)
+                                headers = {'Accept-Encoding': 'identity', 'User-Agent': USER_AGENT}
+                                validator = metadata.get('validator')
+                                if offset:
+                                    headers['Range'] = 'bytes=%d-' % offset
+                                    if validator and validator['header'] == 'ETag':
+                                        headers['If-Range'] = validator['value']
+                                with closing(requests.get(download_url, headers=headers,
+                                                          timeout=timeout, stream=True)) as response:
+                                    if offset and response.status_code == 416:
                                         output.seek(0)
                                         output.truncate()
                                         offset = 0
                                         metadata['validator'] = None
-                                        if restart == 0:
-                                            continue
-                                        raise CannotResume(destination, 'incompatible HTTP Content-Range or validator')
-                                elif response.status_code == 200:
-                                    output.seek(0)
-                                    output.truncate()
-                                    offset = 0
-                                else:
-                                    raise CannotResume(destination, 'expected HTTP 200 or 206')
-                                if expected_sha256 is None and (
-                                        current_validator is None or current_validator['header'] != 'ETag'):
-                                    raise CannotResume(
-                                        destination, 'resume without expected_sha256 requires a strong ETag')
-                                metadata['validator'] = current_validator
-                                metadata['content_encoding'] = encoding
-                                write_json(metadata_path, metadata)
-                                for chunk in download.http_chunks(response, chunk_size, http_representation):
-                                    if not chunk:
                                         continue
-                                    if output.tell() + len(chunk) > expected_size:
+                                    response.raise_for_status()
+                                    encoding = response.headers.get('Content-Encoding', 'identity').strip().lower()
+                                    if http_representation == 'decoded' and encoding != 'identity':
+                                        raise CannotResume(destination, 'resume requires identity Content-Encoding')
+                                    current_validator = _validator(response.headers)
+                                    if response.status_code == 206:
+                                        match = re.fullmatch(r'bytes (\d+)-(\d+)/(\d+)',
+                                                             response.headers.get('Content-Range', ''))
+                                        valid_range = (match is not None and
+                                                       tuple(map(int, match.groups())) ==
+                                                       (offset, expected_size - 1, expected_size))
+                                        same_identity = not offset or (
+                                            (not validator or validator == current_validator)
+                                            and metadata.get('content_encoding', 'identity') == encoding)
+                                        if not valid_range or not same_identity:
+                                            output.seek(0)
+                                            output.truncate()
+                                            offset = 0
+                                            metadata['validator'] = None
+                                            if restart == 0:
+                                                continue
+                                            raise CannotResume(destination, 'incompatible HTTP Content-Range or validator')
+                                    elif response.status_code == 200:
                                         output.seek(0)
                                         output.truncate()
-                                        raise FileValidationError(destination, 'download exceeds expected_size')
-                                    output.write(chunk)
-                                    try:
-                                        report()
-                                    except BaseException:
-                                        callback_failed = True
-                                        raise
-                                if output.tell() != expected_size:
-                                    raise requests.ConnectionError('incomplete resumable response')
-                                break
-                        else:
-                            raise CannotResume(destination, 'server could not restart the download')
-                        output.flush()
-                        try:
-                            validate_file(partial, expected_sha256, expected_size, show_progress=show_progress)
-                        except FileValidationError:
-                            output.seek(0)
-                            output.truncate()
-                            raise
-                        break
-                    except BaseException as error:
-                        output.flush()
-                        if callback_failed or not is_retryable_http_error(error) or attempt == max_retries:
-                            raise
-                        delay = retry_delay(error, backoff, retry_max_delay)
-                        if delay is None:
-                            raise
-                        logger.warning('Resumable HTTP attempt %d/%d failed (%s); retrying in %.3g seconds',
-                                       attempt + 1, max_retries + 1, error_description(error), delay)
-                        if delay:
-                            time.sleep(delay)
-                        backoff *= 2  # retry_delay caps it at retry_max_delay.
-                output.flush()
-                os.fsync(output.fileno())
+                                        offset = 0
+                                    else:
+                                        raise CannotResume(destination, 'expected HTTP 200 or 206')
+                                    if expected_sha256 is None and (
+                                            current_validator is None or current_validator['header'] != 'ETag'):
+                                        raise CannotResume(
+                                            destination, 'resume without expected_sha256 requires a strong ETag')
+                                    metadata['validator'] = current_validator
+                                    metadata['content_encoding'] = encoding
+                                    write_json(metadata_path, metadata)
+                                    for chunk in download.http_chunks(response, chunk_size, http_representation):
+                                        if not chunk:
+                                            continue
+                                        if output.tell() + len(chunk) > expected_size:
+                                            output.seek(0)
+                                            output.truncate()
+                                            raise FileValidationError(destination, 'download exceeds expected_size')
+                                        output.write(chunk)
+                                        try:
+                                            report()
+                                        except BaseException:
+                                            callback_failed = True
+                                            raise
+                                    if output.tell() != expected_size:
+                                        raise requests.ConnectionError('incomplete resumable response')
+                                    break
+                            else:
+                                raise CannotResume(destination, 'server could not restart the download')
+                            output.flush()
+                            try:
+                                validate_file(partial, expected_sha256, expected_size, show_progress=show_progress)
+                            except FileValidationError:
+                                output.seek(0)
+                                output.truncate()
+                                raise
+                            break
+                        except BaseException as error:
+                            try:
+                                output.flush()
+                            except OSError as flush_error:
+                                if not is_enospc(error) and is_enospc(flush_error):
+                                    error = flush_error
+                            if is_enospc(error):
+                                raise error
+                            if callback_failed or not is_retryable_http_error(error) or attempt == max_retries:
+                                raise
+                            delay = retry_delay(error, backoff, retry_max_delay)
+                            if delay is None:
+                                raise
+                            logger.warning('Resumable HTTP attempt %d/%d failed (%s); retrying in %.3g seconds',
+                                           attempt + 1, max_retries + 1, error_description(error), delay)
+                            if delay:
+                                time.sleep(delay)
+                            backoff *= 2  # retry_delay caps it at retry_max_delay.
+                    output.flush()
+                    os.fsync(output.fileno())
+        except OSError as error:
+            if is_enospc(error):
+                try:
+                    written = partial.stat().st_size
+                except OSError:
+                    written = 0
+                remaining = max(0, expected_size - written)
+                raise InsufficientSpaceError(
+                    destination,
+                    needed_bytes=remaining,
+                    free_bytes=free_disk_bytes(destination),
+                ) from error
+            raise
         # Keep the resumable inode private even if publication fails after chmod.
         # Copy into ordinary sibling staging; never expose persistent partials.
-        staged = None
-        try:
-            with download.open_staging_file(directory=Path(destination).parent) as handle:
-                staged = handle.name
-                with partial.open('rb') as source:
-                    download.copyfileobj(source, handle)
-            record = (provenance.describe(download_url, os.stat(staged), expected_sha256,
-                                          transport=metadata.get('validator'),
-                                          http_representation=http_representation)
-                      if record_provenance else None)
-            download.publish_file(staged, destination, record)
-        finally:
-            if staged is not None:
-                download.remove_staging_file(staged)
+        with translate_enospc(destination, needed_bytes=expected_size):
+            staged = None
+            try:
+                with download.open_staging_file(directory=Path(destination).parent) as handle:
+                    staged = handle.name
+                    with partial.open('rb') as source:
+                        download.copyfileobj(source, handle)
+                record = (provenance.describe(download_url, os.stat(staged), expected_sha256,
+                                              transport=metadata.get('validator'),
+                                              http_representation=http_representation)
+                          if record_provenance else None)
+                download.publish_file(staged, destination, record)
+            finally:
+                if staged is not None:
+                    download.remove_staging_file(staged)
         partial.unlink()
         metadata_path.unlink(missing_ok=True)

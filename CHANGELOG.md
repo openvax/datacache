@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.36.0
+
+- Add typed `InsufficientSpaceError(OSError)` carrying `path`, `needed_bytes`,
+  `free_bytes`, and `errno.ENOSPC`, and convert `ENOSPC` errors during
+  download, staging, decompression, publication, resume, archive/bundle
+  installation, and materialization while removing temporary staging files (or
+  retaining only a private resumable partial when `resume` is enabled) so a
+  disk-full failure never leaves a partial file at the final destination (#136).
+- Add strictly read-only `FetchPlan` and `plan_fetch(...)` (plus
+  `Cache.plan_fetch(...)`) reporting planned `action` (`"reuse"`, `"download"`,
+  or `"replace"`), `expected_size` (with opt-in `probe_remote_size=True` HTTP
+  `HEAD` probing), `partial_bytes`, `needed_bytes`, `free_bytes` on the
+  nearest existing parent directory, `sufficient`, and `FileInspection` (#135).
+
 ## 1.35.0
 
 - Promote cross-module internal helpers (including `integrity.validate_expectations`,
