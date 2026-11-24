@@ -7,22 +7,46 @@ import stat
 from typing import Dict, Optional
 
 from . import provenance
-from .integrity import FileValidationError, _validate_expectations, _validate_file
+from .integrity import FileValidationError, validate_expectations, validate_file_stat
 
 
 @dataclass(frozen=True)
 class FileInspection:
-    """File status: available, missing, corrupt, or inaccessible.
+    """Frozen read-only inspection result for one file.
 
-    available means readable, regular, and matching any supplied expectations.
-    verified is True only when a supplied SHA-256 expectation was checked.
-    error retains the validation or OS exception for unavailable files.
-    size (bytes) and mtime (seconds since the epoch) describe an available file.
-    source_url (without user name, password, query, or fragment), fetched_at
-    (UTC, ISO 8601), and recorded_sha256 are what fetch_file recorded when it
-    downloaded the file, reported only while the file's size and mtime are
-    unchanged since. recorded_sha256 is the digest verified at that download; it
-    is a record, not a check of the current bytes. None means unknown.
+    Returned by ``inspect_file`` and ``Cache.inspect``.
+
+    Attributes
+    ----------
+    path : str
+        Inspected path string.
+    status : {"available", "missing", "corrupt", "inaccessible"}
+        ``"available"`` (readable regular file matching supplied expectations),
+        ``"missing"`` (absent), ``"corrupt"`` (wrong file type or failed
+        expectations), or ``"inaccessible"`` (other filesystem error).
+    verified : bool
+        ``True`` only when a supplied ``expected_sha256`` matched the current
+        bytes. Readability, matching size alone, or a recorded provenance
+        digest leaves this ``False``.
+    error : Exception or None
+        Original validation or OS exception for an unavailable file, or
+        ``None`` when ``status == "available"``.
+    size : int or None
+        Size in bytes of an available file; otherwise ``None``.
+    mtime : float or None
+        Modification time of an available file (seconds since the epoch);
+        otherwise ``None``.
+    source_url : str or None
+        Source URL recorded by ``fetch_file(..., record_provenance=True)``
+        (without user name, password, query string, or fragment) while the
+        file's size and modification time remain unchanged; otherwise ``None``.
+    fetched_at : str or None
+        Recorded UTC ISO 8601 fetch timestamp under the same condition;
+        otherwise ``None``.
+    recorded_sha256 : str or None
+        SHA-256 verified at download time under the same condition; otherwise
+        ``None``. This is a record, not a fresh check of the current bytes;
+        pass it back as ``expected_sha256`` to verify now.
     """
 
     path: str
@@ -38,11 +62,26 @@ class FileInspection:
 
 @dataclass(frozen=True)
 class CacheInspection:
-    """Status of a directory and its required files, without manifest parsing.
+    """Frozen read-only status of a cache directory and its required files.
 
-    An absent root is missing; a present directory missing required files is
-    corrupt/incomplete. files contains per-file results when the root is readable.
-    verified requires supplied SHA-256 expectations for every required file.
+    Returned by ``inspect_files``.
+
+    Attributes
+    ----------
+    path : str
+        Inspected cache root path string.
+    status : {"available", "missing", "corrupt", "inaccessible"}
+        ``"available"`` (all required files available), ``"missing"`` (root
+        absent), ``"corrupt"`` (wrong root type or missing/corrupt required
+        files), or ``"inaccessible"`` (root or required file access error).
+    files : dict[str, FileInspection]
+        Per-file inspection results keyed by normalized relative name. Empty
+        if the root itself could not be inspected as a directory.
+    verified : bool
+        ``True`` only when every required file matched a supplied SHA-256.
+    error : Exception or None
+        Root failure or representative failing file's exception; ``None`` on
+        success. Inspect ``files`` for all individual failures.
     """
 
     path: str
@@ -66,18 +105,41 @@ def path_exists(path):
 
 
 def inspect_file(path, expected_sha256=None, expected_size=None):
-    """Report file availability without writes, network, locks, or recovery.
+    """Report file availability and integrity offline without writes, locks, or repair.
 
-    Invalid expectation arguments raise ValueError. Filesystem and integrity
-    problems are returned as distinct statuses with their original exceptions.
-    An available file's size and mtime are reported, taken from the same open
-    file that was validated, along with any provenance that
-    fetch_file(..., record_provenance=True) recorded for those bytes.
+    Filesystem and validation failures become result statuses rather than being
+    raised. For an available file, ``size`` and ``mtime`` are read from the
+    same open file descriptor that was validated, along with any provenance
+    recorded by ``fetch_file(..., record_provenance=True)`` while size and
+    modification time remain unchanged. Missing, unreadable, or malformed
+    provenance sidecars are ignored safely.
+
+    Parameters
+    ----------
+    path : str or os.PathLike
+        Path to inspect (symlinks are followed).
+    expected_sha256 : str or None, optional
+        Trusted 64-character hexadecimal SHA-256 digest (case-insensitive).
+    expected_size : int or None, optional
+        Expected non-negative integer size in bytes.
+
+    Returns
+    -------
+    FileInspection
+        Frozen inspection result describing availability, verification, and
+        optional provenance.
+
+    Raises
+    ------
+    ValueError
+        If ``expected_sha256`` or ``expected_size`` is invalid.
+    TypeError
+        If ``path`` is not path-like.
     """
-    _validate_expectations(expected_sha256, expected_size)
+    validate_expectations(expected_sha256, expected_size)
     path = os.fspath(path)
     try:
-        _, info = _validate_file(path, expected_sha256, expected_size)
+        _, info = validate_file_stat(path, expected_sha256, expected_size)
     except FileNotFoundError as error:
         return FileInspection(path, "missing", error=error)
     except (FileValidationError, NotADirectoryError, IsADirectoryError) as error:
@@ -92,12 +154,35 @@ def inspect_file(path, expected_sha256=None, expected_size=None):
 
 
 def inspect_files(cache_root, files):
-    """Inspect required relative files in a cache directory, entirely offline.
+    """Inspect a required-file inventory under ``cache_root``, entirely offline.
 
-    files maps relative names to dicts containing expected_sha256/expected_size;
-    use {} or None when integrity expectations are unavailable. Include a
-    manifest as a required file to detect incomplete installations. This does
-    not parse manifests or provide a snapshot across concurrent external edits.
+    Checks a caller-supplied inventory without writes, network access, manifest
+    parsing, or snapshots across concurrent edits. Symlinks are followed.
+    A missing root reports ``"missing"``; an existing root missing a required
+    file reports ``"corrupt"``; inaccessibility takes precedence over corrupt
+    or missing files. ``verified=True`` requires a matching SHA-256 for every
+    required file.
+
+    Parameters
+    ----------
+    cache_root : str or os.PathLike
+        Root directory containing the required files.
+    files : Mapping[str, dict or None]
+        Nonempty mapping from normalized relative POSIX file names (using
+        ``/``; no leading ``/``, ``..``, backslashes, redundant separators, or
+        colons) to dicts containing optional ``expected_sha256`` and/or
+        ``expected_size`` (or ``{}`` / ``None`` when unavailable).
+
+    Returns
+    -------
+    CacheInspection
+        Aggregate status and per-file ``FileInspection`` results.
+
+    Raises
+    ------
+    ValueError
+        If ``files`` is empty, contains invalid relative names, unexpected
+        metadata keys, or invalid integrity expectations.
     """
     root = os.fspath(cache_root)
     if not files:
@@ -112,7 +197,7 @@ def inspect_files(cache_root, files):
         metadata = {} if metadata is None else dict(metadata)
         if set(metadata) - {"expected_sha256", "expected_size"}:
             raise ValueError("Unexpected integrity metadata for %s" % name)
-        _validate_expectations(metadata.get("expected_sha256"), metadata.get("expected_size"))
+        validate_expectations(metadata.get("expected_sha256"), metadata.get("expected_size"))
         expectations[name] = metadata
     try:
         info = os.stat(root)

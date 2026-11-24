@@ -27,8 +27,8 @@ import zipfile
 import urllib.parse
 
 from . import common, provenance
-from .common import _source_suffix, build_local_filename
-from .integrity import FileValidationError, _validate_expectations, validate_file
+from .common import build_local_filename, source_suffix
+from .integrity import FileValidationError, validate_expectations, validate_file
 from .inspection import path_exists
 from .offline import offline_source, require_online
 from .progress import Progress, should_show_progress
@@ -122,8 +122,27 @@ def _content_length(header_value):
         return None
 
 
-def _http_chunks(response, chunk_size, http_representation):
-    """Stream one representation, preserving Requests' transport exceptions."""
+def http_chunks(response, chunk_size, http_representation):
+    """Stream chunks of one HTTP representation, preserving Requests transport errors.
+
+    Parameters
+    ----------
+    response : requests.Response
+        Streaming HTTP response object.
+    chunk_size : int
+        Maximum number of bytes per yielded chunk.
+    http_representation : {"decoded", "encoded"}
+        ``"decoded"`` yields ``response.iter_content`` chunks with HTTP
+        ``Content-Encoding`` decoded. ``"encoded"`` streams raw body bytes
+        via ``response.raw.stream(..., decode_content=False)`` (removing HTTP
+        chunk framing while keeping ``Content-Encoding`` intact) and translates
+        urllib3 transport exceptions to Requests exceptions.
+
+    Yields
+    ------
+    bytes
+        Consecutive chunks from the response body.
+    """
     if http_representation == "decoded":
         yield from response.iter_content(chunk_size=chunk_size)
         return
@@ -199,7 +218,7 @@ def _stream_to_file(
             if "Transfer-Encoding" in response.headers:
                 total_bytes = None
             refuse_if_over(total_bytes or 0, max_bytes)
-            for chunk in _http_chunks(response, chunk_size, http_representation):
+            for chunk in http_chunks(response, chunk_size, http_representation):
                 if not chunk:
                     # skip keep-alive chunks that carry no data
                     continue
@@ -304,7 +323,7 @@ def _download_to_temp_file(
                 raise
 
         try:
-            with Progress(show_progress, "Downloading") as progress, _open_staging_file(
+            with Progress(show_progress, "Downloading") as progress, open_staging_file(
                     directory=directory, suffix='.tmp', prefix=base_name) as tmp:
                 tmp_path = tmp.name
                 count = _stream_to_file(
@@ -323,7 +342,7 @@ def _download_to_temp_file(
             return tmp_path
         except BaseException:
             if tmp_path is not None:
-                _remove_staging_file(tmp_path)
+                remove_staging_file(tmp_path)
             raise
 
     return _with_retries(
@@ -369,16 +388,28 @@ def fetch_bytes(
         past it, and the body is read in chunks no larger than the limit. A
         larger body raises ValueError without retrying. Default None: no limit.
 
-    offline : bool, optional
+    offline : bool or None, optional
         Explicitly forbid (``True``) or allow (``False``) remote network
         transfers. Default ``None`` honors ``DATACACHE_OFFLINE`` and
-        ``OPENVAX_OFFLINE``. Remote URLs raise :class:`OfflineError` when
+        ``OPENVAX_OFFLINE``. Remote URLs raise ``OfflineError`` when
         offline; ``file://`` URLs are always allowed.
 
-    Raises ValueError for invalid options, an empty body or one larger than
-    max_bytes; OfflineError when offline mode forbids a remote transfer;
-    Requests exceptions for HTTP failures, preserved after retry exhaustion;
-    and urllib.error.URLError for file and FTP failures.
+    Returns
+    -------
+    bytes
+        Downloaded response body.
+
+    Raises
+    ------
+    ValueError
+        For invalid options, an empty body (unless ``allow_empty=True``), or a
+        body larger than ``max_bytes``.
+    OfflineError
+        When offline mode forbids a remote transfer.
+    requests.RequestException
+        For HTTP failures, preserved after retry exhaustion.
+    urllib.error.URLError
+        For file and FTP failures.
     """
     retry_backoff, retry_max_delay = validate_retry_options(max_retries, retry_backoff, retry_max_delay)
     if not isinstance(download_url, str) or not download_url:
@@ -409,12 +440,38 @@ def fetch_bytes(
         raise ValueError("%s returned %s" % (provenance.redact_url(download_url), error)) from error
 
 
-def _open_staging_file(directory=None, prefix=".datacache-", suffix="", mode=0o600):
-    """Create a unique sibling file exclusively, honoring umask for its mode.
+def open_staging_file(directory=None, prefix=".datacache-", suffix="", mode=0o600):
+    """Create a unique sibling staging file exclusively, honoring umask.
 
-    Unlike chmod after NamedTemporaryFile, exclusive creation with the desired
-    mode lets the OS apply umask without reading/changing process-global state.
-    Callers own cleanup after closing the returned binary file.
+    Unlike calling ``chmod`` after ``NamedTemporaryFile``, exclusive creation
+    with the desired ``mode`` lets the OS apply umask without reading or
+    changing process-global state. Callers own cleanup after closing the
+    returned binary file.
+
+    Parameters
+    ----------
+    directory : str or os.PathLike or None, optional
+        Directory in which to create the staging file. Defaults to the system
+        temporary directory.
+    prefix : str, optional
+        Filename prefix for the staging file. Default is ``".datacache-"``.
+    suffix : str, optional
+        Filename suffix for the staging file. Default is ``""``.
+    mode : int, optional
+        File creation permission bits passed to ``os.open``. Default is
+        ``0o600``.
+
+    Returns
+    -------
+    io.BufferedRandom
+        Open binary file object positioned at byte 0; its path is ``file.name``.
+
+    Raises
+    ------
+    FileExistsError
+        If a unique staging filename could not be allocated after 100 attempts.
+    OSError
+        If the staging file cannot be created in ``directory``.
     """
     directory = gettempdir() if directory is None else directory
     for _ in range(100):
@@ -426,7 +483,14 @@ def _open_staging_file(directory=None, prefix=".datacache-", suffix="", mode=0o6
     raise FileExistsError("Could not create a unique staging file in %s" % directory)
 
 
-def _remove_staging_file(path):
+def remove_staging_file(path):
+    """Remove a staging file if it exists, ignoring ``FileNotFoundError``.
+
+    Parameters
+    ----------
+    path : str or os.PathLike
+        Path to the staging file to unlink.
+    """
     try:
         os.remove(path)
     except FileNotFoundError:
@@ -441,13 +505,13 @@ def normal_creation_mode(directory):
     """
     probe_path = None
     try:
-        with _open_staging_file(
+        with open_staging_file(
                 directory=directory, prefix=".datacache-mode-", mode=0o666) as probe:
             probe_path = probe.name
             return stat.S_IMODE(os.fstat(probe.fileno()).st_mode) & 0o777
     finally:
         if probe_path is not None:
-            _remove_staging_file(probe_path)
+            remove_staging_file(probe_path)
 
 
 def _publish_staged_file(staged_path, full_path, mode=None):
@@ -474,15 +538,24 @@ def _publish_staged_file(staged_path, full_path, mode=None):
     return mode
 
 
-def _publish_file(staged_path, full_path, record=None):
-    """Publish a staged file, keeping its provenance record truthful.
+def publish_file(staged_path, full_path, record=None):
+    """Publish a validated staging file atomically, keeping its provenance record truthful.
 
-    Any record of the previous bytes is removed first, so an interruption
-    leaves the new file unrecorded, never misdescribed. record (JSON text from
-    provenance.describe) is then written with the file's own permissions,
-    without execute bits, so a private file keeps a private record. Records are
-    best effort: failing to write one, or to remove an old one, never fails the
-    publication.
+    Any provenance record of the previous bytes is removed first, so an
+    interruption leaves the new file unrecorded rather than misdescribed.
+    ``record`` (JSON text from ``provenance.describe``) is then written with
+    the file's own permissions without execute bits, so a private file keeps a
+    private record. Provenance updates are best effort: failing to write or
+    remove a sidecar never fails publication.
+
+    Parameters
+    ----------
+    staged_path : str or os.PathLike
+        Path to the validated private staging file to publish.
+    full_path : str or os.PathLike
+        Final destination path to replace atomically.
+    record : str or None, optional
+        Optional JSON provenance sidecar text to write after publication.
     """
     try:
         provenance.remove(full_path)
@@ -493,7 +566,7 @@ def _publish_file(staged_path, full_path, record=None):
         return
     staged_record = None
     try:
-        with _open_staging_file(
+        with open_staging_file(
                 directory=os.path.dirname(full_path) or ".",
                 prefix=".datacache-provenance-") as output:
             staged_record = output.name
@@ -503,7 +576,7 @@ def _publish_file(staged_path, full_path, record=None):
         logger.debug("Could not record provenance for %s: %s", full_path, error)
     finally:
         if staged_record is not None:
-            _remove_staging_file(staged_record)
+            remove_staging_file(staged_record)
 
 
 def _copy_with_progress(source, destination, show_progress, total=None, max_bytes=None):
@@ -588,18 +661,18 @@ def _download_and_decompress_if_necessary(
     full_path = os.fspath(full_path)
     filename = os.path.basename(full_path)
     out_dir = os.path.dirname(full_path) or "."
-    source_suffix = _source_suffix(download_url)
+    src_suffix = source_suffix(download_url)
     output_suffix = os.path.splitext(filename)[1].lower()
     if decompress is None:
         unzip = download_url.endswith("zip") and not filename.endswith("zip")
         gunzip = download_url.endswith("gz") and not filename.endswith("gz")
     else:
-        unzip = source_suffix == ".zip" and decompress
-        gunzip = source_suffix == ".gz" and decompress
+        unzip = src_suffix == ".zip" and decompress
+        gunzip = src_suffix == ".gz" and decompress
     if convert_html is None:
         html = download_url.endswith(("html", "htm")) and full_path.endswith(".csv")
     else:
-        html = convert_html and source_suffix in (".html", ".htm") and output_suffix == ".csv"
+        html = convert_html and src_suffix in (".html", ".htm") and output_suffix == ".csv"
     if html and max_bytes is not None:
         raise ValueError("max_bytes can't bound HTML-to-CSV conversion; use raw=True for the HTML itself")
     # expected_size=0 states that an empty file is the right result.
@@ -628,7 +701,7 @@ def _download_and_decompress_if_necessary(
     staged_path = tmp_path
     try:
         if unzip or gunzip or html:
-            with _open_staging_file(
+            with open_staging_file(
                     directory=out_dir, prefix=".datacache-install-") as tmp:
                 staged_path = tmp.name
             if unzip:
@@ -657,7 +730,7 @@ def _download_and_decompress_if_necessary(
                 validate_file(staged_path, expected_sha256, expected_size)
         except FileValidationError as error:
             raise FileValidationError(full_path, "downloaded file " + error.reason) from error
-        _run_validator(validator, staged_path, full_path, "downloaded file")
+        run_validator(validator, staged_path, full_path, "downloaded file")
         record = None
         if record_provenance:
             # Describe the private staged bytes, not whatever is at full_path
@@ -669,19 +742,37 @@ def _download_and_decompress_if_necessary(
                     http_representation=http_representation)
             except OSError as error:
                 logger.debug("Could not describe provenance for %s: %s", full_path, error)
-        _publish_file(staged_path, full_path, record)
+        publish_file(staged_path, full_path, record)
     except MaxBytesExceeded as error:
         # Only decompression writes here; the download was limited above.
         raise FileValidationError(full_path, "decompressed file has %s" % error) from error
     finally:
         if staged_path != tmp_path:
-            _remove_staging_file(staged_path)
-        _remove_staging_file(tmp_path)
+            remove_staging_file(staged_path)
+        remove_staging_file(tmp_path)
 
 
-def _run_validator(validator, path, reported_path, description):
-    """Raise FileValidationError for reported_path if validator(path) raises or
-    returns False."""
+def run_validator(validator, path, reported_path, description):
+    """Run an optional content validator callback and translate rejection into ``FileValidationError``.
+
+    Parameters
+    ----------
+    validator : callable or None
+        Optional callable ``validator(path)`` that rejects content by raising
+        an exception or returning ``False``. If ``None``, this is a no-op.
+    path : str or os.PathLike
+        Path to the staged or cached file or tree passed to ``validator``.
+    reported_path : str or os.PathLike
+        Destination path reported on any raised ``FileValidationError``.
+    description : str
+        Short human-readable label for the validated target (for example
+        ``"downloaded file"`` or ``"cached file"``).
+
+    Raises
+    ------
+    FileValidationError
+        If ``validator(path)`` raises an exception or returns ``False``.
+    """
     if validator is None:
         return
     try:
@@ -705,16 +796,41 @@ def _expiry_seconds(expire_after):
     return expire_after
 
 
-def _check_cached_file(full_path, expected_sha256, expected_size, reject_empty, validator,
-                       http_representation="decoded"):
-    """Raise unless full_path is a usable cache hit; FileNotFoundError if absent."""
+def check_cached_file(full_path, expected_sha256, expected_size, reject_empty, validator,
+                      http_representation="decoded"):
+    """Validate that an existing cached file is a usable cache hit.
+
+    Parameters
+    ----------
+    full_path : str or os.PathLike
+        Path to the cached file to check.
+    expected_sha256 : str or None
+        Optional expected 64-character hexadecimal SHA-256 digest.
+    expected_size : int or None
+        Optional expected non-negative byte size.
+    reject_empty : bool
+        If ``True``, raise ``FileValidationError`` when the cached file is
+        zero bytes.
+    validator : callable or None
+        Optional content validator callback run via ``run_validator``.
+    http_representation : {"decoded", "encoded"}, optional
+        Required HTTP representation compared against any recorded provenance.
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``full_path`` does not exist.
+    FileValidationError
+        If integrity checks, recorded HTTP representation, non-empty check, or
+        ``validator`` reject the cached file.
+    """
     validate_file(full_path, expected_sha256, expected_size)
     record = provenance.read(full_path, os.stat(full_path))
     if record is not None and record.get("http_representation", "decoded") != http_representation:
         raise FileValidationError(full_path, "cached HTTP representation differs from http_representation")
     if reject_empty and os.stat(full_path).st_size == 0:
         raise FileValidationError(full_path, "cached file is empty (pass allow_empty=True if an empty file is expected)")
-    _run_validator(validator, full_path, full_path, "cached file")
+    run_validator(validator, full_path, full_path, "cached file")
 
 
 def _age_seconds(full_path):
@@ -744,10 +860,41 @@ def expected_path(
         *,
         destination=None,
         cache_root=None):
-    """Resolve the fetch destination without filesystem access or mutations.
+    """Compute the path that ``fetch_file`` would use, without filesystem access.
 
-    cache_root overrides the platform location selected by subdir. destination
-    is an exact path and cannot be combined with filename, subdir, or cache_root.
+    No directories are created and no files are inspected. Either
+    ``download_url``, ``filename``, or ``destination`` must identify the
+    output.
+
+    Parameters
+    ----------
+    download_url : str or None, optional
+        Source URL used to derive a cache key when ``filename`` and
+        ``destination`` are omitted.
+    filename : str or None, optional
+        Cache key filename normalized by ``build_local_filename``.
+    decompress : bool, optional
+        Whether to compute the decompressed cache key. Default is ``False``.
+    subdir : str or None, optional
+        Application name selecting the platform cache directory when
+        ``cache_root`` and ``destination`` are omitted.
+    destination : str or os.PathLike or None, optional
+        Exact output path; mutually exclusive with ``filename``, ``subdir``,
+        and ``cache_root``.
+    cache_root : str or os.PathLike or None, optional
+        Exact cache directory overriding ``subdir``.
+
+    Returns
+    -------
+    str
+        Resolved path string (possibly relative if ``destination`` or
+        ``cache_root`` is relative).
+
+    Raises
+    ------
+    ValueError
+        If neither URL nor filename is provided, ``destination`` is empty, or
+        mutually exclusive path arguments are combined.
     """
     if destination is not None:
         if filename is not None or subdir is not None or cache_root is not None:
@@ -813,18 +960,38 @@ def validate_transfer_settings(
     return validate_retry_options(max_retries, retry_backoff, retry_max_delay)
 
 
-def _download_transform(download_url, full_path, *, decompress=False, raw=False, explicit_output=True):
-    """The installed-byte transformation selected by fetch_file's URL rules."""
+def download_transform(download_url, full_path, *, decompress=False, raw=False, explicit_output=True):
+    """Determine the installed-byte transformation selected by ``fetch_file`` URL rules.
+
+    Parameters
+    ----------
+    download_url : str
+        Source URL being fetched.
+    full_path : str or os.PathLike
+        Target destination path.
+    decompress : bool, optional
+        Whether decompression was explicitly requested. Default is ``False``.
+    raw : bool, optional
+        If ``True``, disable all decompression and HTML conversion.
+    explicit_output : bool, optional
+        Whether the caller supplied an explicit output filename or destination
+        (which enables suffix-mismatch decompression and HTML-to-CSV rules).
+
+    Returns
+    -------
+    {"none", "gunzip", "unzip", "html-to-csv"}
+        Name of the transformation applied before publication.
+    """
     if raw:
         return "none"
-    source_suffix = _source_suffix(download_url)
+    src_suffix = source_suffix(download_url)
     output_suffix = os.path.splitext(full_path)[1].lower()
-    if decompress or (explicit_output and output_suffix != source_suffix):
-        if source_suffix == ".gz":
+    if decompress or (explicit_output and output_suffix != src_suffix):
+        if src_suffix == ".gz":
             return "gunzip"
-        if source_suffix == ".zip":
+        if src_suffix == ".zip":
             return "unzip"
-    if explicit_output and source_suffix in (".htm", ".html") and output_suffix == ".csv":
+    if explicit_output and src_suffix in (".htm", ".html") and output_suffix == ".csv":
         return "html-to-csv"
     return "none"
 
@@ -1024,25 +1191,60 @@ def fetch_file(
         cancels the fetch. Default False.
 
     validator : callable, optional
-        validator(path) checks content that a successful transfer can still
+        ``validator(path)`` checks content that a successful transfer can still
         get wrong, such as an HTTP 200 error page. It rejects the file by
-        raising (normally ValueError) or returning False. It runs on the
-        installed bytes before publication, so a rejected download never
+        raising (normally ``ValueError``) or returning ``False``. It runs on
+        the installed bytes before publication, so a rejected download never
         replaces the cached file, and on cache hits. Rejection raises
-        FileValidationError, chained to any exception. Not supported with
-        resume=True.
+        ``FileValidationError``, chained to any exception. Not supported with
+        ``resume=True``.
 
-    A corrupt cache hit raises FileValidationError; use force=True for an
-    explicit repair. Missing files are downloaded. Transport, decompression
-    and filesystem exceptions propagate. Failed downloads leave an existing
-    destination unchanged and remove their staging files. Atomic replacement
-    requires a local filesystem supporting os.replace; concurrent writers
-    publish complete files with the last successful replacement winning.
-    Staging files remain private until publication. New files use normal
-    creation permissions (0666 filtered by umask); replacements preserve the
-    existing file's read/write/execute permission bits.
+    offline : bool or None, optional
+        Override ``DATACACHE_OFFLINE`` / ``OPENVAX_OFFLINE``. When offline,
+        cache hits and ``file://`` URLs still succeed, while remote transfers
+        raise ``OfflineError`` before modifying disk.
 
-    Returns the local path, which is relative when destination or cache_root is.
+    Returns
+    -------
+    str
+        Local path string (not necessarily absolute when given a relative
+        ``destination`` or ``cache_root``).
+
+    Raises
+    ------
+    ValueError
+        For conflicting paths or invalid expectations, chunk size, byte limit,
+        retry options, callback, or progress flag. Empty ZIP archives also
+        raise ``ValueError``.
+    FileValidationError
+        For non-regular files, empty responses (unless ``allow_empty=True``),
+        or size, digest, representation, or validator mismatches.
+    OfflineError
+        When offline mode forbids a remote transfer.
+    OSError
+        For filesystem access or publication failures.
+    requests.RequestException
+        For HTTP failures, preserved after retry exhaustion.
+    urllib.error.URLError
+        For URL-handler failures on file or FTP sources.
+    ImportError
+        If HTML-to-CSV conversion is requested without ``datacache[html]``
+        (``lxml``).
+
+    Notes
+    -----
+    A corrupt cache hit raises ``FileValidationError``; use ``force=True`` for
+    an explicit repair. Failed downloads leave any existing destination
+    unchanged and remove staging files. Atomic replacement requires a local
+    filesystem supporting ``os.replace``. Staging files remain private until
+    publication; new files use normal creation permissions (``0666`` filtered
+    by umask) and replacements preserve existing read/write/execute bits.
+
+    ZIP downloads install the member stored at the output name, otherwise a
+    member with that name ignoring letter case in any folder (nearest the
+    archive root, then exact-case match, then largest), or else the largest
+    non-directory member. HTML-to-CSV conversion is enabled by an explicit
+    ``.csv`` output for an HTML source and requires ``datacache[html]``.
     """
     retry_backoff, retry_max_delay = validate_transfer_settings(
         chunk_size=chunk_size, progress_callback=progress_callback, show_progress=show_progress,
@@ -1063,7 +1265,7 @@ def fetch_file(
     if resume:
         from .resume import validate_resume
         validate_resume(download_url, expected_sha256, expected_size)
-    _validate_expectations(expected_sha256, expected_size)
+    validate_expectations(expected_sha256, expected_size)
     validate_size_within_limit(expected_size, max_bytes)
     if max_bytes == 0 and not allow_empty and expected_size != 0:
         raise ValueError("max_bytes=0 allows only an empty file; pass allow_empty=True")
@@ -1090,7 +1292,7 @@ def fetch_file(
     full_path = expected_path(
         download_url, filename, decompress, subdir,
         destination=destination, cache_root=cache_root)
-    transform = _download_transform(download_url, full_path, decompress=decompress,
+    transform = download_transform(download_url, full_path, decompress=decompress,
                                     raw=raw, explicit_output=explicit_output)
     archive_decompression = transform in ("gunzip", "unzip")
     html_conversion = transform == "html-to-csv"
@@ -1108,7 +1310,7 @@ def fetch_file(
     refresh = force
     if not force:
         try:
-            _check_cached_file(full_path, expected_sha256, expected_size, reject_empty, validator,
+            check_cached_file(full_path, expected_sha256, expected_size, reject_empty, validator,
                                http_representation)
         except FileNotFoundError:
             pass
@@ -1200,7 +1402,7 @@ def fetch_file(
         if not cached:
             try:
                 # A failed download leaves the destination untouched.
-                _check_cached_file(full_path, expected_sha256, expected_size, reject_empty, validator,
+                check_cached_file(full_path, expected_sha256, expected_size, reject_empty, validator,
                                    http_representation)
                 cached = True
             except (OSError, ValueError):
@@ -1225,32 +1427,70 @@ def fetch_and_transform(
         download_options=None,
         show_progress=False,
         decompress=None):
-    """
-    Download a source and cache a successful single-file transformation.
+    """Download a source and cache a successful single-file transformation.
 
-    transformer(source_path, output_path) must create and close output_path.
-    It receives an absent path in a private sibling directory, with the final
-    basename and extension. Its result is returned on success; cache hits call
-    loader(final_path). A directly returned output path is remapped to the
-    final path. Prefer in-memory results over objects containing staged paths.
+    ``transformer(source_path, output_path)`` must create and close one regular
+    file at the supplied, initially absent path in a private sibling staging
+    directory (matching the final basename and extension). The output is
+    published atomically only after validation; cache hits call
+    ``loader(final_path)`` and ignore source options apart from the
+    ``decompress`` checks below. Failed transformations preserve any previous
+    transformed file and clean up staging files.
 
-    force rebuilds the transformed output while reusing the source. Set
-    download_options={"force": True} to refresh the source too. Other fetch_file
-    settings (timeouts, retries, hashes, callbacks) go in download_options.
-    cache_root selects the root for both artifacts. Existing sources misplaced
-    in the default cache by older versions can be reused without moving them.
-    Failed transformations preserve previous output and remove their partial
-    files.
+    Parameters
+    ----------
+    transformed_filename : str or os.PathLike
+        Output filename resolved under the cache directory.
+    transformer : callable
+        ``transformer(source_path, output_path)`` building the transformed file
+        and returning an object (prefer in-memory results over paths nested
+        inside objects).
+    loader : callable
+        ``loader(final_path)`` loading an existing cached transformed file.
+    source_filename : str
+        Download cache key passed as ``filename`` to ``fetch_file``.
+    source_url : str
+        Source URL passed to ``fetch_file``.
+    subdir : str or None, optional
+        Application name selecting the default output and source cache root.
+    force : bool, optional
+        Rebuild the transformed output while reusing the cached source. Pass
+        ``download_options={"force": True}`` to refresh the source too.
+    cache_root : str or os.PathLike or None, optional
+        Explicit cache directory for both output and source (unless overridden
+        inside ``download_options``).
+    download_options : dict or None, optional
+        Extra keyword arguments copied and forwarded to ``fetch_file``
+        (integrity expectations here validate the downloaded source, not the
+        transformed output). Do not duplicate ``download_url``, ``filename``,
+        or ``subdir``.
+    show_progress : bool, optional
+        Default ``show_progress`` passed to ``fetch_file``; arbitrary
+        transformer work has no automatic bar.
+    decompress : bool or None, optional
+        ``True`` requests decompressed ``.gz``/``.zip`` source contents;
+        ``False`` requests the source as downloaded. May also be given in
+        ``download_options["decompress"]`` (conflicting values raise
+        ``ValueError``). Omitting both does not request decompression except
+        when a nonempty ``subdir`` is passed (deprecated; emits
+        ``DeprecationWarning`` even on cache hits).
 
-    decompress=True requests the decompressed contents of a .gz or .zip
-    source for the transformer; decompress=False requests the source as
-    downloaded. As with fetch_file, a source_filename lacking the URL's
-    compression suffix still implies decompression unless download_options
-    sets raw=True. decompress may instead be set in download_options, but not
-    to a different truth value in both places. When it is set in neither,
-    decompression is not requested, except that a nonempty subdir still
-    requests it and emits a DeprecationWarning (on cache hits too): a future
-    major release will drop that exception, so pass decompress explicitly.
+    Returns
+    -------
+    object
+        The return value of ``transformer`` after a build, or of ``loader`` on
+        cache reuse. If ``transformer`` returns its staged output path directly
+        as a ``str`` or ``Path``, it is remapped to the final published path.
+
+    Raises
+    ------
+    ValueError
+        For conflicting ``decompress`` settings or invalid ``fetch_file``
+        options.
+    RuntimeError
+        If ``transformer`` does not create its output file.
+    FileValidationError
+        If the cached or generated output is not a valid regular file.
     """
     options = dict(download_options or {})
     if decompress is None:
@@ -1307,7 +1547,7 @@ def fetch_and_transform(
                 validate_file(staged_path)
             except FileNotFoundError as error:
                 raise RuntimeError("Transformer did not create %s" % transformed_path) from error
-            _publish_file(staged_path, transformed_path)
+            publish_file(staged_path, transformed_path)
             if isinstance(result, (str, os.PathLike)) and os.fspath(result) == staged_path:
                 result = type(result)(transformed_path)
     else:

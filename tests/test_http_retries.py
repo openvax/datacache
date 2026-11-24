@@ -111,7 +111,7 @@ def test_partial_stream_restarts_in_fresh_private_staging(http_server, tmp_path,
     server = http_server({"body": b"partial" * 100, "cut_after": 80}, {})
     destination = tmp_path / "data"
     destination.write_bytes(b"previous verified artifact")
-    real_open = download._open_staging_file
+    real_open = download.open_staging_file
     real_get = download.requests.get
     paths, responses, progress = [], [], []
 
@@ -129,7 +129,7 @@ def test_partial_stream_restarts_in_fresh_private_staging(http_server, tmp_path,
         responses.append(response)
         return response
 
-    monkeypatch.setattr(download, "_open_staging_file", open_staging)
+    monkeypatch.setattr(download, "open_staging_file", open_staging)
     monkeypatch.setattr(download.requests, "get", get)
     fetch_file(server.url, destination=destination, force=True, chunk_size=8, timeout=2,
                expected_sha256=hashlib.sha256(PAYLOAD).hexdigest(),

@@ -80,7 +80,7 @@ def test_explicit_destination_and_verified_offline_reuse(source, tmp_path, monke
             readonly.setattr(builtins, "open", read_only_open)
             for operation in ("makedirs", "mkdir", "replace", "remove"):
                 readonly.setattr(download.os, operation, reject_mutation)
-            readonly.setattr(download, "_open_staging_file", reject_mutation)
+            readonly.setattr(download, "open_staging_file", reject_mutation)
             assert fetch_file(
                 "https://unavailable.invalid/file", destination=destination,
                 expected_sha256=sha256(PAYLOAD), expected_size=len(PAYLOAD),
@@ -248,7 +248,7 @@ def test_staging_uses_destination_filesystem(source, tmp_path, monkeypatch, comp
         source = tmp_path / "source.gz"
         source.write_bytes(gzip.compress(PAYLOAD))
     destination = tmp_path / "cache" / "file"
-    real_temp = download._open_staging_file
+    real_temp = download.open_staging_file
     real_replace = os.replace
     staging_paths = []
 
@@ -265,7 +265,7 @@ def test_staging_uses_destination_filesystem(source, tmp_path, monkeypatch, comp
         assert Path(src).read_bytes() == PAYLOAD
         real_replace(src, dst)
 
-    monkeypatch.setattr(download, "_open_staging_file", checked_temp)
+    monkeypatch.setattr(download, "open_staging_file", checked_temp)
     monkeypatch.setattr(download.os, "replace", checked_replace)
     fetch_file(source.as_uri(), destination=destination, expected_sha256=sha256(PAYLOAD))
     # Download, optional decompression, and an empty creation-mode probe.

@@ -17,8 +17,8 @@ from .bundle_store import (
     private_directory, prune_bundles, require_directory, source_fingerprint, user_key, validate_distinct_paths, validate_no_sidecar_collisions,
     validate_path_component, validate_relative_name,
 )
-from .download import _download_transform, normal_creation_mode, validate_download_options, validate_size_within_limit
-from .integrity import FileValidationError, _validate_expectations
+from .download import download_transform, normal_creation_mode, validate_download_options, validate_size_within_limit
+from .integrity import FileValidationError, validate_expectations
 from .provenance import redact_url
 
 FORMAT = 1
@@ -46,7 +46,7 @@ def _assets(assets, verified=True):
         if not isinstance(url, str) or not url:
             raise ValueError('each asset requires a nonempty URL')
         digest, size = spec.get('sha256'), spec.get('size')
-        _validate_expectations(digest, size)
+        validate_expectations(digest, size)
         if verified and (digest is None or size is None):
             raise ValueError('verified bundles require sha256 and size for every asset')
         decompress = spec.get('decompress', False)
@@ -72,7 +72,7 @@ def _receipt_assets(receipt):
             fingerprints = receipt.get('source_fingerprints')
             if not isinstance(fingerprints, dict) or not fingerprints.get(name):
                 raise ValueError('declared source_identity requires a source URL fingerprint')
-            _validate_expectations(fingerprints[name], None)
+            validate_expectations(fingerprints[name], None)
             transforms = receipt.get('source_transforms')
             if ('source_transforms' in receipt and (not isinstance(transforms, dict) or
                     transforms.get(name) not in ('none', 'gunzip', 'unzip', 'html-to-csv'))):
@@ -82,12 +82,28 @@ def _receipt_assets(receipt):
 
 @dataclass(frozen=True)
 class BundleInspection:
-    """Read-only status of a store's current bundle; paths belong to that bundle.
+    """Frozen read-only status of a bundle store's current generation.
 
-    status is available, missing, invalid or inaccessible. bundle is the
-    current bundle's directory. verified means every file matched caller-supplied trusted hashes now;
-    receipt-only full inspection checks recorded hashes without asserting trust.
-    Metadata-only inspection checks readability and recorded sizes, not hashes.
+    Returned by ``inspect_bundle`` and ``VersionedDatasetRegistry.inspect``.
+    Paths inside ``bundle`` remain usable across refreshes until explicitly
+    pruned.
+
+    Attributes
+    ----------
+    path : str
+        Bundle store directory path string.
+    status : {"available", "missing", "invalid", "inaccessible"}
+        Overall status of the current bundle.
+    verified : bool
+        ``True`` only when every asset matched caller-supplied trusted hashes
+        during this inspection. Receipt-only inspection and
+        ``verify_files=False`` always leave this ``False``.
+    bundle : str or None
+        Directory path of the current bundle generation, or ``None``.
+    files : dict[str, FileInspection]
+        Per-asset ``FileInspection`` results from the current bundle.
+    error : Exception or None
+        Underlying validation or OS exception when unavailable.
     """
     path: str
     status: str
@@ -109,7 +125,7 @@ def _check_bundle(store, directory, assets, *, verify_files=True):
             if declared:
                 if not source_identity_matches(recorded[name], spec):
                     raise FileValidationError(directory, 'manifest source_identity is missing or disagrees with registry')
-                transform = _download_transform(spec['url'], name, decompress=spec['decompress'])
+                transform = download_transform(spec['url'], name, decompress=spec['decompress'])
                 recorded_transform = receipt.get('source_transforms', {}).get(name)
                 if recorded_transform is None:
                     # Older receipts lack query-derived transform information.
@@ -143,12 +159,26 @@ def _check_bundle(store, directory, assets, *, verify_files=True):
 
 
 def inspect_bundle(destination, assets=None, *, verify_files=True):
-    """Check the current bundle offline, without writes, locks or repair.
+    """Inspect a store's current bundle offline without writes, locks, or repair.
 
-    Optional assets is the caller's trusted mapping (url, sha256, size). Without
-    it, check consistency with the bundle's own manifest, verified=False.
-    verify_files=False checks the receipt, source expectations, required file
-    types, readability and sizes without reading payloads; verified stays False.
+    Parameters
+    ----------
+    destination : str or os.PathLike
+        Managed bundle store directory.
+    assets : Mapping[str, str or dict] or None, optional
+        Caller's trusted asset mapping (matching ``install_bundle``) to verify
+        against. Omit to check consistency against the bundle's own manifest
+        (returns ``verified=False``).
+    verify_files : bool, optional
+        If ``True`` (default), hash every asset payload. If ``False``, check
+        manifest metadata, source expectations, file types, readability, and
+        recorded sizes without reading payloads (``verified`` is always
+        ``False``).
+
+    Returns
+    -------
+    BundleInspection
+        Frozen inspection result for the current bundle.
     """
     if not isinstance(verify_files, bool):
         raise ValueError('verify_files must be a boolean')
@@ -192,26 +222,52 @@ def _paths(inspection):
 
 def install_bundle(destination, assets, *, force=False, verified=True, verify_files=True, download_options=None,
                    source_paths=None):
-    """Download every asset, then publish them together as a new bundle.
+    """Download every asset and publish them together atomically as a new bundle.
 
-    assets maps relative names to {url, sha256, size, decompress?, source_identity?}; path in
-    place of url names a local file. Trusted sha256 and size are mandatory
-    unless verified=False is explicit. source_paths maps asset names to local
-    files to read instead of downloading, such as files already downloaded by
-    hand; each asset keeps its declared URL as its identity, so later
-    installs treat the bundle exactly as if it had been downloaded. On a
-    valid cache hit this is read-only, including on a read-only filesystem.
-    An invalid current bundle requires force=True, which installs a new one.
-    Optional source_identity is a bounded JSON assertion permitting reuse
-    across URLs when the declared identity, decompression setting and effective
-    download transformation match.
-    It is stored verbatim, must contain no secrets, and never establishes trust.
+    Valid cache hits are completely read-only (including on read-only
+    filesystems). Old bundles are retained so returned paths survive later
+    forced refreshes. Works on local filesystems supporting atomic sibling
+    renames on Linux, macOS, and Windows.
 
-    Returns a dict of asset names to paths in the current bundle. Old bundles
-    are kept, so these paths survive later force installs. Generated outputs
-    belong outside this store. Installation works on local filesystems with
-    atomic sibling renames, on Linux, macOS and Windows. verify_files controls
-    checks of an existing bundle only; new downloads are always checked.
+    Parameters
+    ----------
+    destination : str or os.PathLike
+        Managed bundle store directory.
+    assets : Mapping[str, str or dict]
+        Nonempty mapping of relative asset names to URL strings or metadata
+        dicts ``{url | path, sha256?, size?, decompress?, source_identity?}``.
+        ``path`` names a local file (identified by its ``file://`` URL).
+        ``sha256`` and ``size`` are mandatory unless ``verified=False``.
+        Optional ``source_identity`` is a bounded JSON value enabling reuse
+        across URLs when identity, decompression setting, and effective
+        download transformation match; it is stored verbatim, must contain no
+        secrets, and never establishes trusted verification.
+    force : bool, optional
+        Install a new bundle generation even if the current bundle is valid or
+        invalid. Default is ``False``.
+    verified : bool, optional
+        Require caller-trusted ``sha256`` and ``size`` for every asset. Set
+        ``False`` explicitly for unpinned sources. Default is ``True``.
+    verify_files : bool, optional
+        Controls cache-hit validation cost only: ``False`` skips payload reads
+        on reuse (checking readability, types, and sizes). New bundles are
+        always hashed before publication. Default is ``True``.
+    download_options : dict or None, optional
+        Transfer options forwarded to ``fetch_file`` (``timeout``,
+        ``chunk_size``, ``progress_callback``, ``show_progress``,
+        ``max_retries``, ``retry_backoff``, ``retry_max_delay``, ``resume``,
+        ``max_bytes``, ``offline``).
+    source_paths : Mapping[str, str or os.PathLike] or None, optional
+        Optional mapping from asset names to local files to read instead of
+        downloading (such as files downloaded by hand). Each asset keeps its
+        declared URL as its identity so later installs treat the bundle as if
+        it had been downloaded.
+
+    Returns
+    -------
+    dict[str, str]
+        Mapping from asset names to installed file path strings inside the
+        current bundle.
     """
     from .download import fetch_file
     if not all(isinstance(value, bool) for value in (verified, force, verify_files)):
@@ -293,7 +349,7 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
             # from display URLs. Record the declared download policy separately;
             # source_paths continues to supply local replacements for that URL.
             receipt['source_transforms'] = {
-                name: _download_transform(spec['url'], name, decompress=spec['decompress'])
+                name: download_transform(spec['url'], name, decompress=spec['decompress'])
                 for name, spec in expected.items() if 'source_identity' in spec}
             # Remove DataCache's own temporary files: resume state and anything
             # an interrupted earlier attempt left. No asset is named .datacache-*.
@@ -314,15 +370,34 @@ def install_bundle(destination, assets, *, force=False, verified=True, verify_fi
 
 
 class VersionedDatasetRegistry:
-    """A plain mapping of dataset names, pinned defaults, versions and assets.
+    """Registry of versioned datasets backed by atomic per-version bundle stores.
 
-    Each dataset is {default_version, versions: {version: {asset: metadata}}}.
-    The single-file shape {filename, urls: {version: url}, default_version} is
-    also accepted with verified=False; its file is installed with
-    decompress=True. Give the root as cache_root, a path, or as cache_dir, a
-    zero-argument callable consulted on every lookup. Alternatively, store_path is
-    a two-argument (name, version) callback selecting an exact managed store.
-    Construction never writes or invokes either callback.
+    Construction validates dataset metadata without performing any writes,
+    network requests, or path-callback invocations. Path callbacks should be
+    pure path computations.
+
+    Parameters
+    ----------
+    datasets : Mapping[str, dict]
+        Mapping from dataset name to ``{"default_version": ..., "versions":
+        {version: {asset: metadata}}, "description": ...}``. The single-file
+        shape ``{"filename": ..., "urls": {version: url}, "default_version":
+        ...}`` is also accepted when ``verified=False`` (installed with
+        ``decompress=True``).
+    cache_root : str or os.PathLike or None, optional
+        Fixed root directory storing bundles under ``<root>/<name>/<version>``.
+        Provide exactly one of ``cache_root``, ``cache_dir``, or
+        ``store_path``.
+    cache_dir : callable or None, optional
+        Zero-argument callable returning the root directory (consulted on every
+        lookup).
+    store_path : callable or None, optional
+        Two-argument ``store_path(name, version)`` callback selecting the exact
+        managed store path per version (called once per version on first
+        lookup; each version requires its own distinct store).
+    verified : bool, optional
+        Require trusted ``sha256`` and ``size`` on every asset. Default is
+        ``True``.
     """
 
     def __init__(self, datasets, *, cache_root=None, cache_dir=None, store_path=None, verified=True):

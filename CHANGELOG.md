@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.35.0
+
+- Promote cross-module internal helpers (including `integrity.validate_expectations`,
+  `integrity.validate_file_stat`, `common.source_suffix`, `common.platform_cache_dir`,
+  `download.open_staging_file`, `download.remove_staging_file`, `download.publish_file`,
+  `download.run_validator`, `download.download_transform`, `download.http_chunks`,
+  `download.check_cached_file`, `resume.strong_etag`, `resume.valid_validator`, and
+  `_filesystem.unique_json_keys`) to documented public module functions with NumPy
+  docstrings, and add an AST test preventing cross-module private imports (#146).
+- Generate `docs/api.md` from NumPy docstrings with `mkdocstrings[python]`, removing
+  the hand-copied signature list and hardcoded release version, and move the runnable
+  API walkthrough examples to `docs/reference/examples.md` (#145).
+
 ## 1.34.1
 
 - Fix `datacache dirs` legacy detection for MHCflurry v4 caches by supporting

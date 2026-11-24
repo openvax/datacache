@@ -29,8 +29,8 @@ from .bundle_store import (
     validate_distinct_paths,
     validate_file_record, validate_relative_name,
 )
-from .download import _run_validator, normal_creation_mode, validate_download_options, validate_limit, validate_size_within_limit
-from .integrity import FileValidationError, _validate_expectations, sha256_stream
+from .download import normal_creation_mode, run_validator, validate_download_options, validate_limit, validate_size_within_limit
+from .integrity import FileValidationError, sha256_stream, validate_expectations
 from .provenance import redact_url
 
 
@@ -39,12 +39,38 @@ FORMAT = 1
 
 @dataclass(frozen=True)
 class ArchiveInspection:
-    """Read-only status of an archive store's current bundle, the extracted tree.
+    """Frozen read-only status of an archive store's current extracted tree bundle.
 
-    ``status`` is available, missing, invalid or inaccessible. ``bundle`` is
-    the extracted tree's directory. ``verified`` means caller-supplied trusted archive or part hashes identified
-    the installed bytes. Receipt-only inspection still hashes every installed
-    file, but an observed receipt is not an independent source of trust.
+    Returned by ``inspect_archive``.
+
+    Attributes
+    ----------
+    path : str
+        Archive store directory path string.
+    status : {"available", "missing", "invalid", "inaccessible"}
+        Overall store status.
+    verified : bool
+        ``True`` only when caller-supplied trusted archive or part hashes
+        vouched for the installed bytes and full file verification ran.
+        Receipt-only inspection still hashes every file, but an observed
+        receipt is not an independent source of trust.
+    bundle : str or None
+        Extracted tree directory applications should read from, or ``None``
+        when unavailable.
+    files : dict[str, FileInspection]
+        Mapping from every installed relative file name to its
+        ``FileInspection`` (empty when ``verify_files=False`` or unavailable).
+    error : Exception or None
+        Underlying validation or OS exception when unavailable.
+    source_urls : tuple[str, ...]
+        Redacted source URLs recorded in the archive receipt.
+    fetched_at : str or None
+        UTC ISO 8601 timestamp when the archive bundle was installed.
+    archive_size : int or None
+        Total assembled archive size in bytes.
+    recorded_sha256 : str or None
+        Observed archive SHA-256 recorded in the receipt (not independent
+        verification).
     """
 
     path: str
@@ -93,7 +119,7 @@ def _normalize_sources(sources):
             raise ValueError("each archive source requires url or path")
         identity = url if url is not None else local_file_identity(path)
         digest, size = source.get("sha256"), source.get("size")
-        _validate_expectations(digest, size)
+        validate_expectations(digest, size)
         result.append({
             "url": url,
             "path": path,
@@ -124,7 +150,7 @@ def _normalize_extra_files(extra_files):
 
 def _definition(sources, expected_sha256, expected_size, extra_files, require_verified=False):
     normalized = _normalize_sources(sources)
-    _validate_expectations(expected_sha256, expected_size)
+    validate_expectations(expected_sha256, expected_size)
     expected_sha256 = expected_sha256.lower() if expected_sha256 else None
     extras = _normalize_extra_files(extra_files)
     trusted = bool(expected_sha256 and expected_size is not None) or all(
@@ -255,12 +281,32 @@ def _check_bundle(store, directory, definition, verify_files=True):
 def inspect_archive(
         destination, sources=None, *, expected_sha256=None, expected_size=None,
         extra_files=None, verify_files=True):
-    """Check the current archive bundle without writes, locks, or network.
+    """Inspect the current archive bundle offline without writes, locks, or repair.
 
-    Omit ``sources`` for receipt-only consistency checking. Supplying sources
-    checks the requested ordered archive identity or trusted content hashes.
-    ``verify_files=False`` checks the manifest and source metadata without
-    reading the extracted tree; its result is never marked verified.
+    Parameters
+    ----------
+    destination : str or os.PathLike
+        Archive bundle store directory.
+    sources : str, os.PathLike, dict, sequence, or None, optional
+        Archive source definition matching ``install_archive`` to validate the
+        requested identity. Omit for receipt-only consistency checking
+        (``verified=False``).
+    expected_sha256 : str or None, optional
+        Expected SHA-256 digest of the assembled archive (requires ``sources``).
+    expected_size : int or None, optional
+        Expected byte size of the assembled archive (requires ``sources``).
+    extra_files : Mapping[str, str or bytes] or None, optional
+        Expected extra consumer receipt files (requires ``sources``).
+    verify_files : bool, optional
+        If ``True`` (default), hash every extracted file against the manifest.
+        Set ``False`` for a fast manifest and source-identity check that reads
+        none of the extracted tree (returns empty ``files`` and
+        ``verified=False``).
+
+    Returns
+    -------
+    ArchiveInspection
+        Frozen inspection record for the store's current bundle.
     """
     if not isinstance(verify_files, bool):
         raise ValueError("verify_files must be a boolean")
@@ -477,20 +523,73 @@ def install_archive(
         destination, sources, *, expected_sha256=None, expected_size=None,
         extra_files=None, force=False, verified=True, download_options=None,
         max_members=None, max_extracted_size=None, validator=None):
-    """Safely extract a complete tar archive and publish the tree as a new bundle.
+    """Safely extract a complete tar archive into a private directory and publish the tree as a new bundle.
 
-    ``sources`` is one URL/path or an ordered sequence. Source mappings accept
-    ``url``, ``path``, ``sha256``, and ``size``; supplying both URL and path uses
-    local bytes while retaining the URL as source identity. Split parts are
-    concatenated byte-for-byte in the supplied order. ``extra_files`` are
-    written after extraction and before the tree receipt, which lets consumers
-    publish their own source record in the same transaction.
+    Multiple sources are concatenated byte-for-byte in the supplied order,
+    supporting split archives. Benign leading ``./`` paths are normalized and
+    root ``.`` directory entries are ignored; symlinks, hard links, and local
+    special files such as FIFOs are rejected without blocking. A legacy or
+    otherwise foreign destination is never claimed, even with ``force=True``.
 
-    ``validator(tree)`` may inspect the extracted tree (including extra files)
-    and reject it by raising or returning False. It must not modify the tree.
-    Validation runs before publication and on reuse; rejection raises
-    FileValidationError and leaves the current bundle unchanged. It does not
-    change source identity or establish cryptographic verification.
+    Parameters
+    ----------
+    destination : str or os.PathLike
+        Managed archive bundle store directory.
+    sources : str, os.PathLike, dict, or sequence
+        One URL, one ``Path``, a mapping containing ``url``, ``path``,
+        ``sha256``, and/or ``size``, or an explicitly ordered sequence of
+        parts. Supplying both ``url`` and ``path`` reads local bytes while
+        retaining ``url`` as the logical source identity.
+    expected_sha256 : str or None, optional
+        Trusted SHA-256 hex digest of the assembled archive. Required (along
+        with ``expected_size``, or per-part ``sha256`` and ``size``) unless
+        ``verified=False``.
+    expected_size : int or None, optional
+        Trusted byte size of the assembled archive.
+    extra_files : Mapping[str, str or bytes] or None, optional
+        Safe relative filenames mapped to text or bytes written after
+        extraction and before publication (for example ``DOWNLOAD_INFO.csv``).
+        Collisions with archive content fail the installation; the extra-file
+        inventory is part of the archive's identity.
+    force : bool, optional
+        Install a fresh bundle generation even when the current bundle is valid
+        or invalid. Default is ``False``.
+    verified : bool, optional
+        Require trusted hashes and sizes on the assembled archive or every
+        part. Set ``False`` explicitly for historical sources without published
+        integrity metadata. Default is ``True``.
+    download_options : dict or None, optional
+        Transfer options forwarded to ``fetch_file`` (``timeout``,
+        ``chunk_size``, ``progress_callback``, ``show_progress``,
+        ``max_retries``, ``retry_backoff``, ``retry_max_delay``, ``resume``,
+        ``max_bytes``, ``offline``). Resumable URL parts require trusted
+        ``sha256`` and ``size``.
+    max_members : int or None, optional
+        Maximum archive member count checked as headers arrive.
+    max_extracted_size : int or None, optional
+        Maximum total extracted byte count checked as headers arrive.
+    validator : callable or None, optional
+        Optional ``validator(tree)`` receiving the extracted ``Path`` (after
+        ``extra_files`` are written, before publication, and on cache reuse).
+        Must leave the tree unchanged; raising or returning ``False`` rejects
+        the tree with ``FileValidationError``.
+
+    Returns
+    -------
+    pathlib.Path
+        Directory path of the extracted tree (the store's current bundle, not
+        the store root). Existing returned paths remain usable across forced
+        refreshes.
+
+    Raises
+    ------
+    ValueError
+        For invalid definitions, non-callable ``validator``, or unsupported
+        options.
+    FileValidationError
+        For integrity failures, unsafe members, malformed tar archives, extra
+        file collisions, validator rejection, or an invalid existing
+        installation without ``force=True``.
     """
     if not isinstance(force, bool) or not isinstance(verified, bool):
         raise ValueError("force and verified must be booleans")
@@ -523,7 +622,7 @@ def install_archive(
         expected_size=expected_size, extra_files=extra_files,
         verify_files=not force)  # A forced install replaces it unhashed.
     if store.can_reuse(inspection, force=force):
-        _run_validator(validator, Path(inspection.bundle), path, "archive tree")
+        run_validator(validator, Path(inspection.bundle), path, "archive tree")
         return Path(inspection.bundle)
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -533,7 +632,7 @@ def install_archive(
             path, sources, expected_sha256=expected_sha256,
             expected_size=expected_size, extra_files=extra_files, verify_files=not force)
         if store.can_reuse(inspection, force=force):
-            _run_validator(validator, Path(inspection.bundle), path, "archive tree")
+            run_validator(validator, Path(inspection.bundle), path, "archive tree")
             return Path(inspection.bundle)
 
         # Parts are kept across attempts only when each is pinned, so a kept
@@ -565,7 +664,7 @@ def install_archive(
                     raise FileValidationError(target, "extra file collides with archive content") from error
                 with os.fdopen(descriptor, "wb") as output:
                     output.write(value)
-            _run_validator(validator, tree, path, "archive tree")
+            run_validator(validator, tree, path, "archive tree")
             listing = list_tree(tree)
             files = {name: hash_file(file_path).record for name, file_path in listing.files.items()}
             receipt = {

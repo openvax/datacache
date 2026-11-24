@@ -30,15 +30,15 @@ class VersionedFileRegistry:
                 "description": "...",              # optional, for status()
             }
 
-    cache_dir
-        Zero-arg callable returning the cache root :class:`~pathlib.Path`
-        (created on demand by the caller). The on-disk layout is
-        ``<cache>/<name>/<version>/<filename>`` plus a ``<cache>/manifest.json``
-        provenance file.
-    error_cls
+    cache_dir : callable
+        Zero-argument callable returning the cache root ``pathlib.Path`` or
+        ``str`` (created on demand; construction creates nothing). The on-disk
+        layout is ``<cache>/<name>/<version>/<filename>`` plus a
+        ``<cache>/manifest.json`` provenance file.
+    error_cls : type, optional
         Exception type raised for unknown datasets/versions and download
-        failures. Defaults to :class:`RuntimeError`; consumers may pass
-        their own subclass to preserve their public error type.
+        failures. Defaults to ``RuntimeError``; consumers may pass their own
+        subclass to preserve their public error type.
     """
 
     def __init__(self, datasets, *, cache_dir, error_cls=RuntimeError):

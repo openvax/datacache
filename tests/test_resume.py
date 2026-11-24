@@ -267,16 +267,16 @@ def test_publication_failure_keeps_partial_private_and_reusable(server, tmp_path
     from datacache import download
     url, requests = server()
     dest = tmp_path / 'data'
-    original = download._publish_file
+    original = download.publish_file
     def fail(*args, **kwargs):
         raise OSError('publication failure')
-    monkeypatch.setattr(download, '_publish_file', fail)
+    monkeypatch.setattr(download, 'publish_file', fail)
     with pytest.raises(OSError):
         fetch(url, dest)
     partial = _state_directory(dest) / 'partial'
     assert partial.read_bytes() == PAYLOAD
     assert partial.stat().st_mode & 0o077 == 0
-    monkeypatch.setattr(download, '_publish_file', original)
+    monkeypatch.setattr(download, 'publish_file', original)
     fetch(url, dest)
     assert len(requests) == 1
     assert dest.read_bytes() == PAYLOAD

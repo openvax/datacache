@@ -124,7 +124,26 @@ def file_lock(path, *, private=False):
         yield
 
 
-def _unique_json_keys(pairs):
+def unique_json_keys(pairs):
+    """Build a dict from JSON object key/value pairs, rejecting duplicate keys.
+
+    Intended for use as ``json.loads(..., object_pairs_hook=unique_json_keys)``.
+
+    Parameters
+    ----------
+    pairs : iterable of tuple[str, object]
+        Sequence of ``(key, value)`` pairs decoded from a JSON object.
+
+    Returns
+    -------
+    dict
+        Mapping constructed from ``pairs``.
+
+    Raises
+    ------
+    ValueError
+        If any key appears more than once in ``pairs``.
+    """
     result = {}
     for key, value in pairs:
         if key in result:
@@ -140,7 +159,7 @@ def read_json(path, limit=1024 * 1024, *, unique_keys=False):
         data = handle.read() if limit is None else handle.read(limit + 1)
     if limit is not None and len(data) > limit:
         raise ValueError('JSON record is too large')
-    return json.loads(data, object_pairs_hook=_unique_json_keys if unique_keys else None)
+    return json.loads(data, object_pairs_hook=unique_json_keys if unique_keys else None)
 
 
 def write_json(path, value, mode=0o600):

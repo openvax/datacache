@@ -29,10 +29,10 @@ from .bundle_store import (
 )
 from .bundles import BundleInspection
 from .download import normal_creation_mode
-from .integrity import _validate_expectations
+from .integrity import validate_expectations
 from .offline import offline_source, require_online
 from .provenance import redact_url
-from .resume import _strong_etag
+from .resume import strong_etag
 
 
 def _positive(value, name):
@@ -118,7 +118,7 @@ class _HTTPFile(io.RawIOBase):
             if self.validator is None:
                 etag = response.headers.get("ETag")
                 modified = response.headers.get("Last-Modified")
-                if _strong_etag(etag):
+                if strong_etag(etag):
                     validator = {"header": "ETag", "value": etag}
                 elif modified:
                     # Last-Modified is a transport consistency check, not a hash.
@@ -167,8 +167,8 @@ def _definition(url, member, expected_sha256, expected_size, compressed_sha256):
     if not isinstance(url, str) or urlsplit(url).scheme not in ("http", "https"):
         raise ValueError("ZIP source must be an HTTP(S) URL")
     validate_relative_name(member)
-    _validate_expectations(expected_sha256, expected_size)
-    _validate_expectations(compressed_sha256, None)
+    validate_expectations(expected_sha256, expected_size)
+    validate_expectations(compressed_sha256, None)
     return dict(
         url=redact_url(url),
         url_identity=source_fingerprint(url),
@@ -289,20 +289,54 @@ def install_zip_member(
     force=False,
     offline=None,
 ):
-    """Fetch one named HTTP ZIP member into a shared, atomic bundle.
+    """Fetch one explicitly named HTTP ZIP member into a shared, atomic bundle.
 
-    Return paths named payload, compressed and receipt.json. The receipt records
-    the archive URL/validator/size, member metadata, CRC and both SHA-256 hashes.
-    Expected hashes are optional during discovery; observed hashes are not
-    independent verification. Pin expected_sha256 (and preferably compressed_sha256)
-    for subsequent reproduction. Last-Modified is weaker than a strong ETag.
+    Only stored and deflated, unencrypted regular members are supported (ZIP64
+    is supported). The server must support exact HTTP byte ranges, identity
+    encoding, and a strong ``ETag`` or ``Last-Modified`` (``Last-Modified`` is
+    weaker than a strong ``ETag``); there is no whole-archive fallback.
+    Duplicate names, malformed ranges, changed objects, CRC mismatches,
+    unsupported members, and size-limit violations fail before publication and
+    preserve previous generations. Cache hits verify all retained bytes
+    offline.
 
-    Only stored and deflated, unencrypted regular members are supported. Require
-    exact byte ranges; never fall back to a whole-archive transfer. Metadata and
-    compressed/expanded payloads have separate finite limits. Failed attempts
-    preserve previous generations; retries restart the selected member. Cache
-    hits verify all retained bytes offline. Corruption or changed identity requires
-    explicit force=True. No source is refreshed automatically.
+    Parameters
+    ----------
+    destination : str or os.PathLike
+        Managed bundle store directory.
+    url : str
+        HTTP or HTTPS URL of the remote ZIP archive.
+    member : str
+        Exact member path inside the ZIP archive.
+    expected_sha256 : str or None, optional
+        Trusted SHA-256 hex digest of the expanded payload (optional during
+        discovery; pin for reproducible builds).
+    expected_size : int or None, optional
+        Expected expanded payload size in bytes.
+    compressed_sha256 : str or None, optional
+        Optional trusted SHA-256 hex digest of the raw compressed member bytes.
+    max_compressed_bytes : int, optional
+        Maximum compressed bytes accepted for the member. Default is 512 MiB.
+    max_bytes : int, optional
+        Maximum expanded payload bytes accepted. Default is 4 GiB.
+    max_metadata_bytes : int, optional
+        Maximum HTTP byte-range metadata budget for ZIP directory parsing.
+        Default is 8 MiB.
+    timeout : float or tuple[float, float] or None, optional
+        Per-request timeout in seconds. Default is ``60``.
+    force : bool, optional
+        Re-download and publish a new bundle generation even when the current
+        bundle is valid, corrupt, or has a different dependency identity.
+        Default is ``False``.
+    offline : bool or None, optional
+        Override ``DATACACHE_OFFLINE`` / ``OPENVAX_OFFLINE``. Cache hits remain
+        offline-safe; remote acquisitions raise ``OfflineError`` when offline.
+
+    Returns
+    -------
+    dict[str, str]
+        Mapping with keys ``"payload"``, ``"compressed"``, and
+        ``"receipt.json"`` pointing to files inside the published bundle.
     """
     definition = _definition(
         url, member, expected_sha256, expected_size, compressed_sha256

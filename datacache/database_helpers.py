@@ -23,22 +23,44 @@ from .database import (
     require_iterable_of, require_string, tables_exist,
 )
 from .database_table import DatabaseTable
-from .download import _open_staging_file, _remove_staging_file, normal_creation_mode
+from .download import open_staging_file, remove_staging_file, normal_creation_mode
 
 
 logger = logging.getLogger(__name__)
 
 
 def connect_if_correct_version(db_path, version, *, read_only=False):
-    """Return a sqlite3 database connection if the version in the database's
-    metadata matches the version argument.
+    """Open an existing SQLite database if its DataCache metadata matches ``version``.
 
-    Also implicitly checks for whether the data in this database has
-    been completely filled, since we set the version last.
+    Implicitly checks that the database finished building, since version
+    metadata is written last. Never creates missing files and closes any
+    connection it rejects. Checks metadata only, not application tables, data
+    correctness, or a checksum.
 
-    Missing files and version mismatches return None, without creating files.
-    The caller owns the returned connection. Use read_only=True to explicitly
-    open a shared installation without write access.
+    Parameters
+    ----------
+    db_path : str or os.PathLike
+        Path to the SQLite database file.
+    version : int
+        Expected integer database version recorded in DataCache metadata.
+    read_only : bool, optional
+        If ``True``, open using SQLite's read-only mode so shared installations
+        work without write access. Default is ``False``.
+
+    Returns
+    -------
+    sqlite3.Connection or None
+        Open caller-owned connection on a version match, or ``None`` when the
+        file is missing, metadata is absent, or the version differs.
+
+    Raises
+    ------
+    OSError
+        For filesystem access failures other than ``FileNotFoundError``.
+    sqlite3.Error
+        For invalid or unreadable SQLite files or malformed metadata tables.
+    ValueError
+        For malformed stored version values.
     """
     try:
         os.stat(db_path)
@@ -143,7 +165,7 @@ def _replace_corrupt_database(db_path, tables, version=1, *, show_progress=False
     staged_path = None
     staged_db = None
     try:
-        with _open_staging_file(directory=directory, suffix=".db") as staged:
+        with open_staging_file(directory=directory, suffix=".db") as staged:
             staged_path = staged.name
         staged_db = Database(staged_path)
         staged_db.create(tables, version, show_progress=show_progress)
@@ -167,7 +189,7 @@ def _replace_corrupt_database(db_path, tables, version=1, *, show_progress=False
         if staged_db is not None:
             staged_db.connection.close()
         if staged_path is not None:
-            _remove_staging_file(staged_path)
+            remove_staging_file(staged_path)
 
 
 def _create_cached_db(
@@ -210,7 +232,7 @@ def _create_cached_db(
         staged_path = None
         db = None
         try:
-            with _open_staging_file(directory=directory, suffix=".db") as staged:
+            with open_staging_file(directory=directory, suffix=".db") as staged:
                 staged_path = staged.name
             db = Database(staged_path)
             db.create(tables, version, show_progress=show_progress)
@@ -227,7 +249,7 @@ def _create_cached_db(
             if db is not None:
                 db.connection.close()
             if staged_path is not None:
-                _remove_staging_file(staged_path)
+                remove_staging_file(staged_path)
 
     db = Database(db_path, must_exist=True)
 
@@ -321,33 +343,67 @@ def db_from_dataframes_with_absolute_path(
         version=1,
         *,
         show_progress=False):
-    """
-    Create a sqlite3 database from a collection of DataFrame objects.
+    """Create or reuse a SQLite database at ``db_path`` from pandas DataFrames.
 
-    Return an open connection owned by the caller. The parent directory must
-    already exist. Rebuilds of healthy databases roll back on failure without
-    unlinking the existing file. Explicit overwrite can replace corrupt files
-    atomically from a complete staged sibling; ordinary reads and version
-    changes do not repair corruption. show_progress enables tqdm row counts.
+    Uses ``db_path`` directly (relative paths resolve against the current
+    working directory) without selecting a platform cache directory. The parent
+    directory must already exist (for dangling symlinks, the target's parent
+    must exist; publication preserves the symlink).
+
+    A matching ``version`` and all requested tables permit reuse without
+    re-reading DataFrames or rewriting the file (table names match
+    ASCII-case-insensitively as in SQLite). New databases are staged before
+    publication. Rebuilds of healthy databases roll back on failure without
+    unlinking the existing file. Explicit ``overwrite=True`` also removes views
+    and can atomically rebuild corrupt or non-SQLite files from a private
+    staged replacement while preserving inode, links, permissions, and ACLs;
+    ordinary reads and version changes never trigger corruption recovery.
 
     Parameters
     ----------
-    db_path : str
-        Path to database file to create
-
-    table_names_to_dataframes : dict
-        Dictionary from table names to DataFrame objects
-
-    table_names_to_primary_keys : dict, optional
-        Name of primary key column for each table
-
-    table_names_to_indices : dict, optional
-        Dictionary from table names to list of column name tuples
-
+    db_path : str or os.PathLike
+        Target SQLite database file path.
+    table_names_to_dataframes : Mapping[str, pandas.DataFrame]
+        Mapping from nonempty table names (distinct ignoring ASCII case, not
+        ``_datacache_metadata`` or ``sqlite_*``) to DataFrames. DataFrame
+        column spaces become underscores; the pandas row index is not stored.
+    table_names_to_primary_keys : Mapping[str, str] or None, optional
+        Optional mapping from table name to primary-key column name.
+    table_names_to_indices : Mapping[str, Sequence[Sequence[str]]] or None, optional
+        Optional mapping from table name to sequences of nonempty column-name
+        tuples such as ``[("id",), ("id", "value")]``.
     overwrite : bool, optional
-        If the database already exists, overwrite it?
-
+        If ``True``, rebuild the database even if it already matches
+        ``version`` (or is corrupt). Default is ``False``.
     version : int, optional
+        Integer schema/data version stored in DataCache metadata. Default is
+        ``1``.
+    show_progress : bool, optional
+        If ``True``, display ``tqdm`` row-insertion progress bars; reuse is
+        quiet. Default is ``False``.
+
+    Returns
+    -------
+    sqlite3.Connection
+        Open caller-owned connection (opened with ``check_same_thread=False``;
+        wrap with ``contextlib.closing`` or call ``.close()``).
+
+    Raises
+    ------
+    ValueError
+        For invalid table/column names, constraints, versions, unsupported
+        dtypes, or filesystems without room for SQLite's ``<name>-journal``.
+    TypeError
+        For unsupported argument types.
+    sqlite3.IntegrityError
+        For duplicate or null primary keys.
+    OverflowError
+        For integers outside SQLite's signed 64-bit range.
+    sqlite3.Error
+        For database, schema, binding, or locking failures.
+    OSError
+        For filesystem or publication failures (including a missing parent
+        directory).
     """
     if not overwrite:
         connection = _cached_connection(db_path, table_names_to_dataframes, version)
