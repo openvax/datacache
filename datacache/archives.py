@@ -132,14 +132,14 @@ def _normalize_sources(sources):
     return tuple(result)
 
 
-def _normalize_extra_files(extra_files):
+def _normalize_extra_files(extra_files, *, portable_names=True):
     if extra_files is None:
         return {}
     if not isinstance(extra_files, dict):
         raise ValueError("extra_files must be a mapping of relative paths to text or bytes")
     result = {}
     for name, value in extra_files.items():
-        validate_relative_name(name)
+        validate_relative_name(name, portable_names=portable_names)
         if isinstance(value, str):
             value = value.encode("utf-8")
         elif not isinstance(value, bytes):
@@ -149,11 +149,13 @@ def _normalize_extra_files(extra_files):
     return result
 
 
-def _definition(sources, expected_sha256, expected_size, extra_files, require_verified=False):
+def _definition(
+        sources, expected_sha256, expected_size, extra_files,
+        require_verified=False, portable_names=True):
     normalized = _normalize_sources(sources)
     validate_expectations(expected_sha256, expected_size)
     expected_sha256 = expected_sha256.lower() if expected_sha256 else None
-    extras = _normalize_extra_files(extra_files)
+    extras = _normalize_extra_files(extra_files, portable_names=portable_names)
     trusted = bool(expected_sha256 and expected_size is not None) or all(
         source["sha256"] and source["size"] is not None for source in normalized)
     if require_verified and not trusted:
@@ -169,10 +171,14 @@ def _definition(sources, expected_sha256, expected_size, extra_files, require_ve
     }
 
 
-def _manifest(receipt):
+def _manifest(receipt, *, portable_names=None):
     if (not isinstance(receipt, dict) or receipt.get("format") != FORMAT or
             receipt.get("kind") != "archive-tree"):
         raise ValueError("unrecognized archive manifest")
+    recorded_portable = receipt.get("portable_names", True)
+    if not isinstance(recorded_portable, bool):
+        raise ValueError("invalid archive manifest")
+    effective_portable = recorded_portable if portable_names is None else portable_names
     archive = receipt.get("archive")
     sources = receipt.get("sources")
     files = receipt.get("files")
@@ -200,14 +206,16 @@ def _manifest(receipt):
         normalized_sources.append(source)
     normalized_files = {}
     for name, spec in files.items():
-        normalized_files[validate_relative_name(name)] = validate_file_record(spec)
+        normalized_files[
+            validate_relative_name(name, portable_names=effective_portable)
+        ] = validate_file_record(spec)
     for name, spec in extra_files.items():
         if name not in normalized_files or spec != normalized_files[name]:
             raise ValueError("consumer extra file receipt disagrees with tree manifest")
     normalized_directories = []
     folded = set()
     for name in directories:
-        validate_relative_name(name)
+        validate_relative_name(name, portable_names=effective_portable)
         key = name.casefold()
         if key in folded:
             raise ValueError("duplicate directory in archive manifest")
@@ -216,7 +224,10 @@ def _manifest(receipt):
     file_keys = {name.casefold() for name in normalized_files}
     if len(file_keys) != len(normalized_files) or file_keys & folded:
         raise ValueError("colliding paths in archive manifest")
-    return archive, normalized_sources, normalized_files, normalized_directories, fetched_at, extra_files
+    return (
+        archive, normalized_sources, normalized_files, normalized_directories,
+        fetched_at, extra_files, effective_portable,
+    )
 
 
 def _open_local_source(path):
@@ -255,11 +266,13 @@ def _matches_definition(receipt_archive, receipt_sources, receipt_extras, defini
             raise FileValidationError(name, "extra file disagrees with requested content")
 
 
-def _check_bundle(store, directory, definition, verify_files=True):
+def _check_bundle(store, directory, definition, verify_files=True, portable_names=None):
     """Check one bundle, or a tree staged to become one, against its manifest."""
     # Tree inventories grow with the archive; the writer has no fixed size cap.
     receipt = read_json(directory / MANIFEST, limit=None)
-    archive, sources, files, directories, fetched_at, extras = _manifest(receipt)
+    (
+        archive, sources, files, directories, fetched_at, extras, effective_portable,
+    ) = _manifest(receipt, portable_names=portable_names)
     if definition is not None:
         _matches_definition(archive, sources, extras, definition)
     metadata = {
@@ -271,7 +284,9 @@ def _check_bundle(store, directory, definition, verify_files=True):
     if not verify_files:
         # The manifest alone: path lookups stay one read, however large the tree.
         return ArchiveInspection(str(store.path), "available", False, str(directory), **metadata)
-    hashed = check_tree(directory, files, directories, ignore=(MANIFEST,))
+    hashed = check_tree(
+        directory, files, directories, ignore=(MANIFEST,),
+        portable_names=effective_portable)
     # Only hashes the caller supplied verify files; the manifest's own don't.
     verified = bool(definition and definition["trusted"])
     inspections = {name: value.inspection(verified=verified) for name, value in hashed.items()}
@@ -281,7 +296,7 @@ def _check_bundle(store, directory, definition, verify_files=True):
 
 def inspect_archive(
         destination, sources=None, *, expected_sha256=None, expected_size=None,
-        extra_files=None, verify_files=True):
+        extra_files=None, verify_files=True, portable_names=None):
     """Inspect the current archive bundle offline without writes, locks, or repair.
 
     Parameters
@@ -303,6 +318,12 @@ def inspect_archive(
         Set ``False`` for a fast manifest and source-identity check that reads
         none of the extracted tree (returns empty ``files`` and
         ``verified=False``).
+    portable_names : bool or None, optional
+        Whether member names must also be valid on Windows. ``None`` (default)
+        honors the policy recorded in the bundle manifest (``True`` for bundles
+        installed with the default policy, ``False`` for bundles installed with
+        ``portable_names=False``). Pass ``True`` to reject non-portable names
+        even in bundles installed with ``portable_names=False``.
 
     Returns
     -------
@@ -311,11 +332,14 @@ def inspect_archive(
     """
     if not isinstance(verify_files, bool):
         raise ValueError("verify_files must be a boolean")
+    if portable_names is not None and not isinstance(portable_names, bool):
+        raise ValueError("portable_names must be a boolean or None")
     definition = None
     if sources is not None:
         definition = _definition(
             sources, expected_sha256, expected_size, extra_files,
-            require_verified=False)
+            require_verified=False,
+            portable_names=(portable_names is not False))
     elif any(value is not None for value in (expected_sha256, expected_size, extra_files)):
         raise ValueError("sources are required with archive expectations or extra_files")
     path = Path(destination)
@@ -324,7 +348,9 @@ def inspect_archive(
         bundle = store.current_bundle()
         if bundle is None:
             return ArchiveInspection(str(path), "missing")
-        return _check_bundle(store, bundle, definition, verify_files=verify_files)
+        return _check_bundle(
+            store, bundle, definition, verify_files=verify_files,
+            portable_names=portable_names)
     except PermissionError as error:
         return ArchiveInspection(str(path), "inaccessible", error=error)
     except INVALID_STORE_ERRORS as error:
@@ -332,7 +358,8 @@ def inspect_archive(
 
 
 def _archive_members(
-        archive, max_members=None, max_extracted_size=None, extra_names=()):
+        archive, max_members=None, max_extracted_size=None, extra_names=(),
+        portable_names=True):
     nodes = {}
     planned = []
     total = 0
@@ -362,7 +389,7 @@ def _archive_members(
         if kind == "directory" and name == ".":
             continue
         try:
-            validate_relative_name(name)
+            validate_relative_name(name, portable_names=portable_names)
         except ValueError as error:
             raise FileValidationError(
                 archive.name, "unsafe archive member path: %s" % member.name) from error
@@ -410,11 +437,12 @@ def _archive_members(
 
 def _extract_tar(
         archive_path, destination, max_members=None, max_extracted_size=None,
-        extra_names=()):
+        extra_names=(), portable_names=True):
     try:
         with tarfile.open(archive_path, "r:*") as archive:
             planned = _archive_members(
-                archive, max_members, max_extracted_size, extra_names)
+                archive, max_members, max_extracted_size, extra_names,
+                portable_names=portable_names)
             directories = sorted(
                 {name for _, name, kind in planned if kind == "directory"} |
                 {"/".join(name.split("/")[:index])
@@ -523,7 +551,8 @@ def _assemble_archive(working, definition, options, keep_parts):
 def install_archive(
         destination, sources, *, expected_sha256=None, expected_size=None,
         extra_files=None, force=False, verified=True, download_options=None,
-        max_members=None, max_extracted_size=None, validator=None):
+        max_members=None, max_extracted_size=None, validator=None,
+        portable_names=True):
     """Safely extract a complete tar archive into a private directory and publish the tree as a new bundle.
 
     Multiple sources are concatenated byte-for-byte in the supplied order,
@@ -574,6 +603,13 @@ def install_archive(
         ``extra_files`` are written, before publication, and on cache reuse).
         Must leave the tree unchanged; raising or returning ``False`` rejects
         the tree with ``FileValidationError``.
+    portable_names : bool, optional
+        If ``True`` (default), require every archive member path to also be
+        valid on Windows. Set ``False`` on POSIX to permit POSIX-safe member
+        names containing characters forbidden on Windows (such as ``*`` or
+        ``:`` in historical archives) while keeping all path-traversal,
+        symlink, control-character, case-collision, and ``.datacache-*``
+        checks active. On Windows, Windows-illegal names are still rejected.
 
     Returns
     -------
@@ -594,13 +630,15 @@ def install_archive(
     """
     if not isinstance(force, bool) or not isinstance(verified, bool):
         raise ValueError("force and verified must be booleans")
+    if not isinstance(portable_names, bool):
+        raise ValueError("portable_names must be a boolean")
     if validator is not None and not callable(validator):
         raise ValueError("validator must be callable")
     validate_limit("max_members", max_members)
     validate_limit("max_extracted_size", max_extracted_size)
     definition = _definition(
         sources, expected_sha256, expected_size, extra_files,
-        require_verified=verified)
+        require_verified=verified, portable_names=portable_names)
     options = validate_download_options(download_options, "archive")
     for index, source in enumerate(definition["sources"]):
         if source["path"] is None:
@@ -621,7 +659,7 @@ def install_archive(
     inspection = inspect_archive(
         path, sources, expected_sha256=expected_sha256,
         expected_size=expected_size, extra_files=extra_files,
-        verify_files=not force)  # A forced install replaces it unhashed.
+        verify_files=not force, portable_names=portable_names)  # A forced install replaces it unhashed.
     if store.can_reuse(inspection, force=force):
         run_validator(validator, Path(inspection.bundle), path, "archive tree")
         return Path(inspection.bundle)
@@ -632,7 +670,8 @@ def install_archive(
             store.create()
             inspection = inspect_archive(
                 path, sources, expected_sha256=expected_sha256,
-                expected_size=expected_size, extra_files=extra_files, verify_files=not force)
+                expected_size=expected_size, extra_files=extra_files,
+                verify_files=not force, portable_names=portable_names)
             if store.can_reuse(inspection, force=force):
                 run_validator(validator, Path(inspection.bundle), path, "archive tree")
                 return Path(inspection.bundle)
@@ -654,7 +693,7 @@ def install_archive(
                     working, definition, options, keep_parts=resumable)
                 _extract_tar(
                     archive_path, tree, max_members, max_extracted_size,
-                    definition["extra_files"])
+                    definition["extra_files"], portable_names=portable_names)
                 for name, value in definition["extra_files"].items():
                     target = tree / Path(*name.split("/"))
                     target.parent.mkdir(parents=True, exist_ok=True)
@@ -667,7 +706,7 @@ def install_archive(
                     with os.fdopen(descriptor, "wb") as output:
                         output.write(value)
                 run_validator(validator, tree, path, "archive tree")
-                listing = list_tree(tree)
+                listing = list_tree(tree, portable_names=portable_names)
                 files = {name: hash_file(file_path).record for name, file_path in listing.files.items()}
                 receipt = {
                     "format": FORMAT,
@@ -679,10 +718,14 @@ def install_archive(
                     "extra_files": {name: files[name] for name in definition["extra_files"]},
                     "directories": listing.directories,
                 }
+                if not portable_names:
+                    receipt["portable_names"] = False
                 write_json(tree / MANIFEST, receipt, mode=normal_creation_mode(tree))
                 # Every file was just hashed into the manifest: read it back and
                 # check it against the tree, without hashing again.
-                _check_bundle(store, tree, definition, verify_files=False)
+                _check_bundle(
+                    store, tree, definition, verify_files=False,
+                    portable_names=portable_names)
                 bundle = store.publish(tree)
                 published = True
                 return bundle

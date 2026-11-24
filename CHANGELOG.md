@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.37.0
+
+- Add opt-in `portable_names=True` parameter on `install_archive`,
+  `inspect_archive`, and `bundle_store` path/tree validators
+  (`validate_relative_name`, `list_tree`, `check_tree`) so historical POSIX
+  tarballs containing POSIX-safe characters forbidden on Windows (such as `*`
+  and `:` in MHC allele filenames) can be installed and inspected on POSIX
+  with `portable_names=False` while keeping all path-traversal, symlink,
+  control-character, case-collision, and `.datacache-*` guards unconditional
+  and continuing to reject Windows-illegal names on Windows (#157).
+
 ## 1.36.0
 
 - Add typed `InsufficientSpaceError(OSError)` carrying `path`, `needed_bytes`,

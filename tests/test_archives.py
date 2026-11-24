@@ -727,3 +727,86 @@ def test_noncallable_archive_validator_rejected_before_writes(tmp_path, archive_
     with pytest.raises(ValueError, match='validator must be callable'):
         install_archive(destination, source, verified=False, validator=True)
     assert not destination.parent.exists()
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='POSIX-only filenames containing * and :')
+def test_non_portable_posix_archive_members_opt_in(tmp_path, monkeypatch):
+    member = 'models/weights_HLA-A*02:06-1-50c5f97331dc8241.npz'
+    source = make_tar(tmp_path / 'legacy_models.tar.bz2', [
+        ('models', None),
+        (member, b'npz-bytes'),
+        ('manifest.csv', b'allele,path\nHLA-A*02:06,weights\n'),
+    ])
+    data = source.read_bytes()
+    digest = sha256(data).hexdigest()
+    destination = tmp_path / 'models_class1'
+
+    # Default portable_names=True continues to reject * and :.
+    with pytest.raises(FileValidationError, match='unsafe archive member path'):
+        install_archive(destination, source, expected_sha256=digest, expected_size=len(data))
+    assert inspect_archive(destination).status == 'missing'
+
+    # Opt-in portable_names=False installs, hashes, and records policy in the manifest.
+    bundle = install_archive(
+        destination, source, expected_sha256=digest, expected_size=len(data),
+        portable_names=False)
+    assert (bundle / member).read_bytes() == b'npz-bytes'
+    manifest = json.loads((bundle / archives.MANIFEST).read_text())
+    assert manifest['portable_names'] is False
+
+    # Subsequent read-only inspections automatically honor the recorded policy.
+    inspected = inspect_archive(
+        destination, source, expected_sha256=digest, expected_size=len(data))
+    assert inspected.status == 'available' and inspected.verified
+    assert member in inspected.files
+    fast = inspect_archive(destination, verify_files=False)
+    assert fast.status == 'available' and Path(fast.bundle) == bundle
+
+    # Cache hit reuse works with portable_names=False without re-extracting.
+    assert install_archive(
+        destination, source, expected_sha256=digest, expected_size=len(data),
+        portable_names=False) == bundle
+
+    # Explicitly demanding portable_names=True rejects the non-portable bundle.
+    assert inspect_archive(destination, portable_names=True).status == 'invalid'
+    with pytest.raises(FileValidationError, match='force=True'):
+        install_archive(
+            destination, source, expected_sha256=digest, expected_size=len(data),
+            portable_names=True)
+
+    # On Windows, portable_names=False still rejects names Windows cannot store.
+    monkeypatch.setattr(bundle_store, '_is_windows', lambda: True)
+    with pytest.raises(FileValidationError, match='unsafe archive member path'):
+        install_archive(
+            tmp_path / 'win_models', source, expected_sha256=digest,
+            expected_size=len(data), portable_names=False)
+    monkeypatch.undo()
+
+    # Corrupting manifest portable_names to a non-boolean invalidates the bundle.
+    manifest['portable_names'] = 'yes'
+    (bundle / archives.MANIFEST).write_text(json.dumps(manifest))
+    assert inspect_archive(destination).status == 'invalid'
+
+
+@pytest.mark.parametrize('members', [
+    [('../escape', b'x')],
+    [('/absolute', b'x')],
+    [('a\\b', b'x')],
+    [('bad\nname', b'x')],
+    [('.datacache-manifest.json', b'forged')],
+    [('models/HLA-A*02:06.npz', b'a'), ('models/hla-a*02:06.npz', b'b')],
+])
+def test_non_portable_opt_in_keeps_security_and_collision_guards(tmp_path, members):
+    source = make_tar(tmp_path / 'unsafe.tar.bz2', members)
+    with pytest.raises(FileValidationError):
+        install_archive(tmp_path / 'download', source, verified=False, portable_names=False)
+
+
+def test_invalid_portable_names_option_rejected_before_writes(tmp_path, archive_file):
+    source, _, _ = archive_file
+    destination = tmp_path / 'absent' / 'download'
+    with pytest.raises(ValueError, match='portable_names must be a boolean'):
+        install_archive(destination, source, verified=False, portable_names='no')
+    with pytest.raises(ValueError, match='portable_names must be a boolean'):
+        inspect_archive(destination, portable_names='no')
+    assert not destination.parent.exists()
