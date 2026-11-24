@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.34.1
+
+- Fix `datacache dirs` legacy detection for MHCflurry v4 caches by supporting
+  versioned `data:<app>:<version>` specs (`data:mhcflurry:4` via
+  `platformdirs.user_data_dir("mhcflurry", version="4")`) (#154).
+- Sync `oncoref` environment variables (`ONCOREF_CACHE_DIR`,
+  `CANCERDATA_DATA_DIR`) and legacy cache roots in `datacache dirs` with
+  `pirl-unc/oncoref#759` (#154).
+
 ## 1.34.0
 
 - Add shared OpenVax cache resolution (`resolve_cache_dir`, `CacheLocation`,
