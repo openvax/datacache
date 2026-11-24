@@ -412,12 +412,14 @@ class TreeListing:
     directories: list
 
 
-def list_tree(root, *, ignore=()):
+def list_tree(root, *, ignore=(), portable_names=True):
     """List a directory tree without following links or reading any file.
 
     Names in ignore are skipped at the root, such as a bundle's manifest.
     Raises FileValidationError for a link or special file, and ValueError
-    for a name that validate_relative_name rejects.
+    for a name that validate_relative_name rejects. Pass
+    ``portable_names=False`` on POSIX to permit POSIX-safe names that
+    Windows cannot store (such as ``*`` or ``:``).
     """
     files, directories, pending = {}, [], [(Path(root), '')]
     while pending:
@@ -429,7 +431,7 @@ def list_tree(root, *, ignore=()):
             name = prefix + entry.name
             if name in ignore:
                 continue
-            validate_relative_name(name)
+            validate_relative_name(name, portable_names=portable_names)
             mode = entry.stat(follow_symlinks=False).st_mode
             if stat.S_ISDIR(mode):
                 directories.append(name)
@@ -441,7 +443,7 @@ def list_tree(root, *, ignore=()):
     return TreeListing(dict(sorted(files.items())), sorted(directories))
 
 
-def check_tree(root, files, directories, *, ignore=(), hash_contents=True, show_progress=False):
+def check_tree(root, files, directories, *, ignore=(), hash_contents=True, show_progress=False, portable_names=True):
     """Check that root holds exactly the recorded files and directories.
 
     files maps relative names to records with sha256 and size (None values
@@ -451,7 +453,7 @@ def check_tree(root, files, directories, *, ignore=(), hash_contents=True, show_
     anything. Then every file is hashed (see hash_file). Returns a dict of
     names to HashedFile.
     """
-    listing = list_tree(root, ignore=ignore)
+    listing = list_tree(root, ignore=ignore, portable_names=portable_names)
     for what, recorded, found in (('files', set(files), set(listing.files)),
                                   ('directories', set(directories), set(listing.directories))):
         if recorded != found:
@@ -467,20 +469,33 @@ def parent_directories(names):
             for index in range(1, len(parts))}
 
 
-def validate_relative_name(name):
+def _is_windows():
+    """Return True when running on Windows."""
+    return os.name == 'nt'
+
+
+def validate_relative_name(name, *, portable_names=True):
     """Return name if it is a safe relative POSIX path inside a bundle.
 
-    Rejects empty names and components, backslashes, '.' and '..', names
-    Windows can't store (reserved device names, control and punctuation
-    characters, trailing dots or spaces) and DataCache's own '.datacache-*'
-    names. Raises ValueError otherwise.
+    Always rejects empty names and components, backslashes, ``.`` and ``..``,
+    ASCII control characters (including NUL), and DataCache's own
+    ``.datacache-*`` names. When ``portable_names=True`` (the default) or on
+    Windows, also rejects names Windows cannot store (reserved device names,
+    ``<>:"|?*``, and trailing dots or spaces). Raises ValueError otherwise.
     """
+    if not isinstance(portable_names, bool):
+        raise ValueError('portable_names must be a boolean')
     if not isinstance(name, str) or not name or '\\' in name:
         raise ValueError('names must be nonempty relative POSIX paths')
+    enforce_windows = portable_names or _is_windows()
     for part in name.split('/'):
-        if (part in ('', '.', '..') or part.endswith((' ', '.')) or
-                re.search(r'[\x00-\x1f<>:"|?*]', part) or
-                part.lower().startswith('.datacache-') or
+        if (part in ('', '.', '..') or
+                re.search(r'[\x00-\x1f]', part) or
+                part.lower().startswith('.datacache-')):
+            raise ValueError('unsafe relative path: %r' % name)
+        if enforce_windows and (
+                part.endswith((' ', '.')) or
+                re.search(r'[<>:"|?*]', part) or
                 re.fullmatch(r'(?i:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?', part)):
             raise ValueError('unsafe relative path: %r' % name)
     return name

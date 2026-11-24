@@ -273,6 +273,39 @@ def test_name_validation():
         validate_no_sidecar_collisions(['a.txt', '.A.txt.datacache.json'])
 
 
+def test_non_portable_posix_names_opt_in(tmp_path, monkeypatch):
+    legacy = 'models/weights_HLA-A*02:06-1-50c5f97331dc8241.npz'
+    with pytest.raises(ValueError):
+        validate_relative_name(legacy)
+    assert validate_relative_name(legacy, portable_names=False) == legacy
+    # Security invariants remain unconditional even with portable_names=False.
+    for unsafe in ('', '/absolute', 'a//b', './a', 'a/..', 'back\\slash',
+                   'bad\x00name', 'bad\nname', '.datacache-manifest.json',
+                   'nested/.DataCache-x', 7):
+        with pytest.raises(ValueError):
+            validate_relative_name(unsafe, portable_names=False)
+    with pytest.raises(ValueError, match='portable_names must be a boolean'):
+        validate_relative_name('a.txt', portable_names='no')
+    # On Windows, NTFS-forbidden characters are still rejected.
+    monkeypatch.setattr(bundle_store, '_is_windows', lambda: True)
+    for windows_bad in (legacy, 'colon:', 'CON', 'trailing.', 'trailing '):
+        with pytest.raises(ValueError):
+            validate_relative_name(windows_bad, portable_names=False)
+    monkeypatch.undo()
+
+    root = tmp_path / 'tree'
+    (root / 'models').mkdir(parents=True)
+    target = root / legacy
+    target.write_bytes(b'weights')
+    with pytest.raises(ValueError):
+        list_tree(root)
+    listing = list_tree(root, portable_names=False)
+    assert list(listing.files) == [legacy]
+    record = {'sha256': sha256(b'weights').hexdigest(), 'size': 7}
+    hashed = check_tree(root, {legacy: record}, ['models'], portable_names=False)
+    assert hashed[legacy].record == record
+
+
 def test_local_identity_is_an_absolute_file_url(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     assert local_file_identity('data/a.fa') == (tmp_path / 'data' / 'a.fa').as_uri()
