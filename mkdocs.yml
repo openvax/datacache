@@ -22,6 +22,24 @@ validation:
     anchors: warn
 plugins:
 - search
+- mkdocstrings:
+    handlers:
+      python:
+        paths: ["."]
+        options:
+          docstring_style: numpy
+          show_root_heading: true
+          show_root_full_path: false
+          merge_init_into_class: true
+          show_bases: false
+          heading_level: 3
+          show_source: false
+          show_signature_annotations: true
+          separate_signature: true
+          members_order: source
+          inherited_members: true
+          show_if_no_docstring: true
+          filters: ["!^_"]
 markdown_extensions:
 - tables
 - toc:
@@ -46,6 +64,7 @@ nav:
 - Reference:
   - Choose an interface: reference/choosing.md
   - API reference: api.md
+  - API examples: reference/examples.md
 - Contributing:
   - Documentation style: dev/documentation-style.md
   - Release notes: https://github.com/openvax/datacache/blob/master/CHANGELOG.md

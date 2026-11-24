@@ -37,7 +37,7 @@ import unicodedata
 from ._filesystem import file_lock, open_regular, path_present, read_json, write_json
 from .download import normal_creation_mode
 from .inspection import FileInspection
-from .integrity import FileValidationError, _validate_expectations, sha256_stream
+from .integrity import FileValidationError, validate_expectations, sha256_stream
 from .provenance import sidecar_path
 
 FORMAT = 2
@@ -395,7 +395,7 @@ def validate_file_record(record):
     """
     if not isinstance(record, dict) or set(record) != {'sha256', 'size'}:
         raise ValueError('invalid file record: %r' % (record,))
-    _validate_expectations(record['sha256'], record['size'])
+    validate_expectations(record['sha256'], record['size'])
     if record['sha256'] is None or record['size'] is None:
         raise ValueError('a file record needs both sha256 and size')
     return record

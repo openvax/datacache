@@ -103,12 +103,12 @@ def _dir_stats(path):
 
 
 def _expand_legacy_specs(specs):
-    from .common import _platform_cache_dir
+    from .common import platform_cache_dir
 
     paths = []
     for spec in specs:
         if spec.startswith("platform:"):
-            paths.append(_platform_cache_dir(spec.split(":", 1)[1]))
+            paths.append(platform_cache_dir(spec.split(":", 1)[1]))
         elif spec.startswith("data:"):
             import platformdirs
             parts = spec.split(":", 2)

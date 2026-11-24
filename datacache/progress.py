@@ -4,6 +4,7 @@ from os import environ
 import sys
 
 NO_PROGRESS_ENV_KEYS = ("DATACACHE_NO_PROGRESS", "OPENVAX_NO_PROGRESS")
+"""Environment variable names checked in order by ``should_show_progress``."""
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 _FALSY = frozenset({"0", "false", "no", "off", ""})
 
@@ -36,8 +37,19 @@ def should_show_progress(show_progress=None, *, stream=None):
         - ``None`` or ``"auto"``: enabled when not disabled by environment
           variables and ``stream`` is an interactive TTY (or running in an
           already-imported IPython kernel).
-    stream : file-like, optional
+    stream : file-like or None, optional
         Output stream to inspect for TTY capability; defaults to ``sys.stderr``.
+
+    Returns
+    -------
+    bool
+        ``True`` if progress bars should render, ``False`` otherwise.
+
+    Raises
+    ------
+    ValueError
+        If ``show_progress`` is invalid or a ``NO_PROGRESS_ENV_KEYS`` variable
+        holds an unrecognized boolean value.
     """
     if show_progress is False:
         return False

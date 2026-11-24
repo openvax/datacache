@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 
 from ._filesystem import file_lock, open_regular, path_present, read_json, write_json
 from .common import USER_AGENT
-from .integrity import FileValidationError, _validate_expectations, validate_file
+from .integrity import FileValidationError, validate_expectations, validate_file
 from .offline import require_online
 from .progress import Progress
 from .retries import error_description, is_retryable_http_error, retry_delay
@@ -23,10 +23,12 @@ logger = logging.getLogger(__name__)
 class CannotResume(FileValidationError):
     """A resumable transfer isn't possible here, though a normal one may be.
 
-    The server may send no strong ETag when no trusted SHA-256 was given,
-    encode a response in decoded mode, or answer ranges inconsistently; or the destination's
-    filesystem can't keep private resume state or locks. fetch_file(resume=
-    "auto") then downloads the file in full instead.
+    Raised by ``fetch_file(..., resume=True)`` when the server sends no strong
+    ETag (without a trusted SHA-256), encodes a response in decoded mode,
+    answers ranges inconsistently or with an unexpected status, or when the
+    destination filesystem cannot keep private resume state or locks.
+    ``resume="auto"`` catches this exception and downloads the file in full
+    instead. The installed file is unchanged.
     """
 
 
@@ -48,7 +50,7 @@ def validate_resume(download_url, expected_sha256, expected_size):
     arguments and NotImplementedError on platforms without POSIX files. Use
     can_resume for the same check as a boolean.
     """
-    _validate_expectations(expected_sha256, expected_size)
+    validate_expectations(expected_sha256, expected_size)
     if expected_size is None:
         raise ValueError('resume=True requires expected_size')
     if urlsplit(download_url).scheme.lower() not in ('http', 'https'):
@@ -88,10 +90,21 @@ def _state_lock(directory):
 
 
 def discard_partial(destination):
-    """Discard this user's resumable bytes for an exact destination, under lock.
+    """Explicitly discard this user's resumable bytes for an exact destination, under lock.
 
-    Does not change the installed file. Missing state is a no-op. The small
-    private directory and permanent lock remain to coordinate concurrent calls.
+    The installed file is unchanged and absent state is a no-op. The small
+    private directory and permanent lock file remain to coordinate concurrent
+    calls. See [resumable downloads](downloads.md#resumable-http-downloads).
+
+    Parameters
+    ----------
+    destination : str or os.PathLike
+        Exact destination file path whose partial state should be discarded.
+
+    Raises
+    ------
+    NotImplementedError
+        On non-POSIX platforms where resumable downloads are unsupported.
     """
     if os.name != 'posix':
         raise NotImplementedError('Resumable downloads require a POSIX local filesystem')
@@ -104,18 +117,50 @@ def discard_partial(destination):
             (directory / name).unlink(missing_ok=True)
 
 
-def _valid_validator(validator):
-    """Whether a recorded transport validator is a usable If-Range value:
-    {header: ETag (strong) or Last-Modified, value: one header line}."""
+def valid_validator(validator):
+    """Check whether a recorded HTTP transport validator is a usable ``If-Range`` value.
+
+    A valid validator is a mapping with exactly the keys ``"header"`` and
+    ``"value"``, where ``"header"`` is ``"ETag"`` (with a strong entity tag per
+    ``strong_etag``) or ``"Last-Modified"``, and ``"value"`` is a single header
+    line containing no CR or LF characters.
+
+    Parameters
+    ----------
+    validator : object
+        Candidate validator mapping read from resume or receipt metadata.
+
+    Returns
+    -------
+    bool
+        ``True`` if ``validator`` is well-formed and safe to send in
+        ``If-Range``, ``False`` otherwise.
+    """
     return (
         isinstance(validator, dict) and set(validator) == {'header', 'value'}
         and validator['header'] in ('ETag', 'Last-Modified')
         and isinstance(validator['value'], str)
         and '\r' not in validator['value'] and '\n' not in validator['value']
-        and (validator['header'] != 'ETag' or _strong_etag(validator['value'])))
+        and (validator['header'] != 'ETag' or strong_etag(validator['value'])))
 
 
-def _strong_etag(value):
+def strong_etag(value):
+    """Check whether ``value`` is a syntactically valid strong HTTP ETag.
+
+    Follows RFC 9110 entity-tag syntax without the weak ``W/`` prefix;
+    embedded quotes, whitespace, and control characters are rejected because
+    they cannot authorize an ``If-Range`` request.
+
+    Parameters
+    ----------
+    value : object
+        Candidate ``ETag`` header value.
+
+    Returns
+    -------
+    bool
+        ``True`` if ``value`` is a quoted strong entity-tag string.
+    """
     # RFC 9110 entity-tag syntax, without the weak W/ prefix. Embedded quotes,
     # whitespace, and control characters cannot authorize an If-Range request.
     return isinstance(value, str) and re.fullmatch(r'"[\x21\x23-\x7e\x80-\xff]*"', value) is not None
@@ -123,7 +168,7 @@ def _strong_etag(value):
 
 def _validator(headers):
     etag = headers.get('ETag', '')
-    if _strong_etag(etag):
+    if strong_etag(etag):
         return {'header': 'ETag', 'value': etag}
     # Last-Modified is not always strong, but changes still invalidate a partial.
     modified = headers.get('Last-Modified')
@@ -167,8 +212,8 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
         # Another installer may have completed while we waited for its lock.
         if not force:
             try:
-                download._check_cached_file(destination, expected_sha256, expected_size,
-                                            expected_size != 0, None, http_representation)
+                download.check_cached_file(destination, expected_sha256, expected_size,
+                                           expected_size != 0, None, http_representation)
             except FileNotFoundError:
                 pass
             else:
@@ -182,9 +227,9 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
             # Unlink, never truncate an unknown path planted in the state dir.
             partial.unlink(missing_ok=True)
         validator = metadata.get('validator')
-        valid_validator = _valid_validator(validator)
-        strong_validator = (valid_validator and validator['header'] == 'ETag')
-        if ((validator is not None and not valid_validator)
+        is_valid_validator = valid_validator(validator)
+        strong_validator = (is_valid_validator and validator['header'] == 'ETag')
+        if ((validator is not None and not is_valid_validator)
                 or (expected_sha256 is None and not strong_validator)):
             metadata['validator'] = None
             partial.unlink(missing_ok=True)
@@ -275,7 +320,7 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
                                 metadata['validator'] = current_validator
                                 metadata['content_encoding'] = encoding
                                 write_json(metadata_path, metadata)
-                                for chunk in download._http_chunks(response, chunk_size, http_representation):
+                                for chunk in download.http_chunks(response, chunk_size, http_representation):
                                     if not chunk:
                                         continue
                                     if output.tell() + len(chunk) > expected_size:
@@ -319,7 +364,7 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
         # Copy into ordinary sibling staging; never expose persistent partials.
         staged = None
         try:
-            with download._open_staging_file(directory=Path(destination).parent) as handle:
+            with download.open_staging_file(directory=Path(destination).parent) as handle:
                 staged = handle.name
                 with partial.open('rb') as source:
                     download.copyfileobj(source, handle)
@@ -327,9 +372,9 @@ def download_resumable(download_url, destination, *, expected_sha256, expected_s
                                           transport=metadata.get('validator'),
                                           http_representation=http_representation)
                       if record_provenance else None)
-            download._publish_file(staged, destination, record)
+            download.publish_file(staged, destination, record)
         finally:
             if staged is not None:
-                download._remove_staging_file(staged)
+                download.remove_staging_file(staged)
         partial.unlink()
         metadata_path.unlink(missing_ok=True)

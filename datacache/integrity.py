@@ -19,7 +19,23 @@ from .progress import Progress, should_show_progress
 
 
 class FileValidationError(ValueError):
-    """A local file does not match its supplied integrity expectations."""
+    """A local file does not match its supplied integrity expectations.
+
+    Parameters
+    ----------
+    path : str or os.PathLike
+        Path that failed validation. Stored on the exception after
+        ``os.fspath``.
+    reason : str
+        Human-readable description of the validation failure.
+
+    Attributes
+    ----------
+    path : str
+        Path string passed to the constructor.
+    reason : str
+        Description of why validation failed.
+    """
 
     def __init__(self, path, reason):
         self.path = os.fspath(path)
@@ -27,7 +43,22 @@ class FileValidationError(ValueError):
         super().__init__("%s: %s" % (self.path, reason))
 
 
-def _validate_expectations(expected_sha256, expected_size):
+def validate_expectations(expected_sha256, expected_size):
+    """Validate optional SHA-256 and byte-size integrity expectations.
+
+    Parameters
+    ----------
+    expected_sha256 : str or None
+        Optional 64-character hexadecimal SHA-256 digest (case-insensitive).
+    expected_size : int or None
+        Optional non-negative integer byte count (booleans are rejected).
+
+    Raises
+    ------
+    ValueError
+        If ``expected_sha256`` is not a 64-character hexadecimal string or
+        ``expected_size`` is not a non-negative integer.
+    """
     if expected_sha256 is not None and (
             not isinstance(expected_sha256, str) or
             re.fullmatch(r"[0-9a-fA-F]{64}", expected_sha256) is None):
@@ -41,14 +72,43 @@ def _validate_expectations(expected_sha256, expected_size):
 def validate_file(path, expected_sha256=None, expected_size=None, *, show_progress=False):
     """Check a readable regular file without writes or network access.
 
-    Expectations describe the bytes at ``path`` (after any decompression).
-    Return the path as a string on success. Missing files raise
-    ``FileNotFoundError``; permission errors propagate; non-regular files and
-    size/hash mismatches raise ``FileValidationError``. Without expectations,
-    this only checks that the file is readable and regular, not its integrity.
-    show_progress=True displays optional tqdm progress during SHA-256 hashing.
+    Symlinks are followed. Expectations describe the installed bytes at
+    ``path`` (after any decompression or conversion). Without expectations,
+    this checks only that ``path`` is a readable regular file, not its
+    integrity. No download, directory creation, lock, permission change, or
+    repair occurs.
+
+    Parameters
+    ----------
+    path : str or os.PathLike
+        Path to the local file to validate.
+    expected_sha256 : str or None, optional
+        Trusted 64-character hexadecimal SHA-256 digest of the bytes at
+        ``path`` (case-insensitive).
+    expected_size : int or None, optional
+        Non-negative integer size of the bytes at ``path``; booleans are
+        rejected.
+    show_progress : bool, optional
+        If ``True``, display a ``tqdm`` progress bar during SHA-256 hashing,
+        including for an existing file. Default is ``False``.
+
+    Returns
+    -------
+    str
+        The supplied ``path`` converted with ``os.fspath``.
+
+    Raises
+    ------
+    ValueError
+        If ``expected_sha256`` or ``expected_size`` is invalid.
+    FileValidationError
+        If ``path`` is not a regular file or fails the size or SHA-256 check.
+    FileNotFoundError
+        If ``path`` does not exist.
+    OSError
+        For other filesystem access failures such as ``PermissionError``.
     """
-    return _validate_file(path, expected_sha256, expected_size, show_progress=show_progress)[0]
+    return validate_file_stat(path, expected_sha256, expected_size, show_progress=show_progress)[0]
 
 
 def sha256_stream(
@@ -86,13 +146,41 @@ def sha256_stream(
     return digest.hexdigest(), size
 
 
-def _validate_file(path, expected_sha256=None, expected_size=None, *, show_progress=False):
-    """validate_file, also returning the stat of the bytes that were checked.
+def validate_file_stat(path, expected_sha256=None, expected_size=None, *, show_progress=False):
+    """Validate a readable regular file and return both its path and ``os.stat_result``.
 
-    The stat comes from the open file, so callers reporting size or modification
-    time describe exactly the bytes validated, even if the path is replaced.
+    The ``stat`` result comes from the open file descriptor, so callers
+    reporting size or modification time describe the exact bytes that were
+    validated even if ``path`` is concurrently replaced.
+
+    Parameters
+    ----------
+    path : str or os.PathLike
+        Path to the local file to validate.
+    expected_sha256 : str or None, optional
+        Trusted 64-character hexadecimal SHA-256 digest (case-insensitive).
+    expected_size : int or None, optional
+        Non-negative integer byte count.
+    show_progress : bool, optional
+        If ``True``, display a ``tqdm`` progress bar while hashing.
+
+    Returns
+    -------
+    tuple of (str, os.stat_result)
+        ``(path_str, stat_result)`` for the validated file descriptor.
+
+    Raises
+    ------
+    ValueError
+        If ``expected_sha256`` or ``expected_size`` is invalid.
+    FileValidationError
+        If ``path`` is not a regular file or fails the size or SHA-256 check.
+    FileNotFoundError
+        If ``path`` does not exist.
+    OSError
+        For other filesystem access failures.
     """
-    _validate_expectations(expected_sha256, expected_size)
+    validate_expectations(expected_sha256, expected_size)
     path = os.fspath(path)
     if not stat.S_ISREG(os.stat(path).st_mode):
         raise FileValidationError(path, "expected a regular file")

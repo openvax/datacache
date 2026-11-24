@@ -1,11 +1,11 @@
 # Public API reference
 
 This reference covers every name exported in `datacache.__all__` and every
-public `Cache` method in DataCache 1.34.1. Import these names from `datacache`.
-Signatures below show all defaults; arguments after `*` are keyword-only.
-Method signatures omit `self` and are called on a `Cache` instance.
+public `Cache` method. Import these names from `datacache`. Signatures and
+parameter descriptions are generated directly from the source docstrings.
 
-Start with the [quickstart](index.md#cache-and-verify-a-file) for a first download.
+Start with the [quickstart](index.md#cache-and-verify-a-file) for a first download,
+or run through the self-contained [API examples](reference/examples.md).
 The [download guide](downloads.md), [archive guide](archives.md), [data guide](data.md),
 [progress guide](progress.md), and [shared-cache guide](shared-caches.md)
 explain the longer workflows and compatibility guarantees.
@@ -14,1363 +14,149 @@ explain the longer workflows and compatibility guarantees.
 
 | Area | APIs |
 | --- | --- |
-| Downloading | [fetch_file](#fetch_file), [fetch_bytes](#fetch_bytes), [fetch_and_transform](#fetch_and_transform), [discard_partial](#discard_partial) |
-| Paths and presence | [expected_path](#expected_path), [build_local_filename](#build_local_filename), [get_data_dir](#get_data_dir), [get_cache_root](#get_cache_root), [resolve_cache_dir](#resolve_cache_dir), [CacheLocation](#cachelocation), [SHARED_CACHE_ENV_KEY](#shared_cache_env_key), [format_bytes](#format_bytes), [build_path](#build_path), [ensure_dir](#ensure_dir), [clear_cache](#clear_cache) |
-| Offline and progress policy | [OfflineError](#offlineerror), [OFFLINE_ENV_KEYS](#offline_env_keys), [is_offline](#is_offline), [offline_source](#offline_source), [require_online](#require_online), [NO_PROGRESS_ENV_KEYS](#no_progress_env_keys), [should_show_progress](#should_show_progress) |
-| Integrity and permissions | [validate_file](#validate_file), [inspect_file](#inspect_file), [inspect_files](#inspect_files) |
-| Results and exceptions | [FileInspection](#fileinspection), [CacheInspection](#cacheinspection), [FileValidationError](#filevalidationerror), [CannotResume](#cannotresume) |
-| SQLite | [db_from_dataframes_with_absolute_path](#db_from_dataframes_with_absolute_path), [connect_if_correct_version](#connect_if_correct_version) |
-| Cache object | [Cache](#cache), [fetch](#cachefetch), [local_filename](#cachelocal_filename), [local_path](#cachelocal_path), [exists](#cacheexists), [inspect](#cacheinspect), [make_readable](#cachemake_readable), [delete_url](#cachedelete_url), [delete_all](#cachedelete_all) |
-| Complete archive trees | [install_archive](#install_archive), [inspect_archive](#inspect_archive), [ArchiveInspection](#archiveinspection) |
-| Versioned file bundles | [install_bundle](#install_bundle), [inspect_bundle](#inspect_bundle), [BundleInspection](#bundleinspection), [VersionedDatasetRegistry](#versioneddatasetregistry) |
-| Derived artifacts | [materialize](#materialize), [inspect_materialization](#inspect_materialization), [MaterializationInspection](#materializationinspection) |
-| Fixed-path file registry | [VersionedFileRegistry](#versionedfileregistry) |
-| Package version | [`__version__`](#__version__) |
-
-## Example setup
-
-The examples in this page use this shared setup. Run it once, then run the
-examples in order in the same Python session. All downloads use a local file;
-no external dataset server is needed. Explicit roots keep example writes in a
-temporary directory. Cleanup is shown at the end of the page.
-
-```python
-from contextlib import closing
-from pathlib import Path
-from tempfile import TemporaryDirectory
-import hashlib
-import io
-import os
-import tarfile
-
-import pandas as pd
-import datacache as dc
-
-temporary = TemporaryDirectory()
-root = Path(temporary.name)
-cache_root = root / "cache"
-source = root / "source.csv"
-contents = b"id,value\n1,10\n2,20\n"
-source.write_bytes(contents)
-url = source.as_uri()
-sha256 = hashlib.sha256(contents).hexdigest()
-frame = pd.DataFrame({"id": [1, 2], "value": [10, 20]})
-
-archive_source = root / "models.tar.bz2"
-with tarfile.open(archive_source, "w:bz2") as archive:
-    member_contents = b'{"model": "example"}\n'
-    member = tarfile.TarInfo("models/model.json")
-    member.size = len(member_contents)
-    archive.addfile(member, io.BytesIO(member_contents))
-archive_contents = archive_source.read_bytes()
-archive_sha256 = hashlib.sha256(archive_contents).hexdigest()
-```
+| Downloading | [fetch_file](#datacache.fetch_file), [fetch_bytes](#datacache.fetch_bytes), [fetch_and_transform](#datacache.fetch_and_transform), [discard_partial](#datacache.discard_partial) |
+| Paths and presence | [expected_path](#datacache.expected_path), [build_local_filename](#datacache.build_local_filename), [get_data_dir](#datacache.get_data_dir), [get_cache_root](#datacache.get_cache_root), [resolve_cache_dir](#datacache.resolve_cache_dir), [CacheLocation](#datacache.CacheLocation), [SHARED_CACHE_ENV_KEY](#datacache.SHARED_CACHE_ENV_KEY), [format_bytes](#datacache.format_bytes), [build_path](#datacache.build_path), [ensure_dir](#datacache.ensure_dir), [clear_cache](#datacache.clear_cache) |
+| Offline and progress policy | [OfflineError](#datacache.OfflineError), [OFFLINE_ENV_KEYS](#datacache.OFFLINE_ENV_KEYS), [is_offline](#datacache.is_offline), [offline_source](#datacache.offline_source), [require_online](#datacache.require_online), [NO_PROGRESS_ENV_KEYS](#datacache.NO_PROGRESS_ENV_KEYS), [should_show_progress](#datacache.should_show_progress) |
+| Integrity and inspection | [validate_file](#datacache.validate_file), [inspect_file](#datacache.inspect_file), [inspect_files](#datacache.inspect_files) |
+| Results and exceptions | [FileInspection](#datacache.FileInspection), [CacheInspection](#datacache.CacheInspection), [FileValidationError](#datacache.FileValidationError), [CannotResume](#datacache.CannotResume) |
+| SQLite | [db_from_dataframes_with_absolute_path](#datacache.db_from_dataframes_with_absolute_path), [connect_if_correct_version](#datacache.connect_if_correct_version) |
+| Cache object | [Cache](#datacache.Cache), [fetch](#datacache.Cache.fetch), [local_filename](#datacache.Cache.local_filename), [local_path](#datacache.Cache.local_path), [exists](#datacache.Cache.exists), [inspect](#datacache.Cache.inspect), [make_readable](#datacache.Cache.make_readable), [delete_url](#datacache.Cache.delete_url), [delete_all](#datacache.Cache.delete_all) |
+| Complete archive trees | [install_archive](#datacache.install_archive), [inspect_archive](#datacache.inspect_archive), [ArchiveInspection](#datacache.ArchiveInspection) |
+| Versioned file bundles | [install_bundle](#datacache.install_bundle), [inspect_bundle](#datacache.inspect_bundle), [BundleInspection](#datacache.BundleInspection), [VersionedDatasetRegistry](#datacache.VersionedDatasetRegistry) |
+| Derived artifacts | [materialize](#datacache.materialize), [inspect_materialization](#datacache.inspect_materialization), [MaterializationInspection](#datacache.MaterializationInspection) |
+| Fixed-path file registry | [VersionedFileRegistry](#datacache.VersionedFileRegistry) |
+| Individual HTTP ZIP members | [install_zip_member](#datacache.install_zip_member) |
+| Package version | [`__version__`](#datacache.__version__) |
 
 ## Downloading
 
-### `fetch_file`
+::: datacache.fetch_file
 
-```text
-fetch_file(
-    download_url, filename=None, decompress=False, subdir=None, force=False,
-    timeout=None, use_wget_if_available=None, chunk_size=1048576,
-    progress_callback=None, *, destination=None, cache_root=None, expected_sha256=None,
-    expected_size=None, max_bytes=None, max_retries=2, retry_backoff=1.0,
-    retry_max_delay=30.0, show_progress=False, record_provenance=False, allow_empty=False,
-    resume=False, raw=False, http_representation='decoded', expire_after=None, return_stale_on_error=False, validator=None, offline=None
-)
-```
+::: datacache.fetch_bytes
 
-Download a missing file or reuse a readable regular file at its cache path.
-On reuse, supplied integrity expectations are checked without a request. An
-invalid hit raises an error; `force=True` explicitly downloads a replacement.
-Successful new downloads are validated and published atomically. A failed
-replacement leaves the previous file intact.
+::: datacache.fetch_and_transform
 
-| Parameter | Meaning |
-| --- | --- |
-| `download_url` | Source URL string: HTTP, HTTPS, FTP, or `file://`. |
-| `filename` | Optional string cache key. Omitted names are inferred from the full URL. Names are normalized by [build_local_filename](#build_local_filename), not treated as exact paths. |
-| `decompress` | Request gzip/ZIP contents. With inferred filenames, `False` retains the archive and `True` selects a separate decompressed key. An explicit output lacking the source's compression suffix also implies decompression. |
-| `raw` | Boolean disabling archive decompression and HTML conversion regardless of the output name. Default `False` preserves legacy inference; cannot be combined with `decompress=True`. Expectations describe the unchanged payload in the selected HTTP representation. |
-| `http_representation` | `"decoded"` (default) applies HTTP `Content-Encoding` decoding. `"encoded"` requires `raw=True` and preserves encoded body bytes, excluding HTTP chunk framing. Integrity, limits, progress, provenance and resume offsets use those bytes. File/FTP mirrors are copied unchanged. Cache keys stay the same; recorded representation mismatches reject reuse and stale fallback. See [encoded source bytes](downloads.md#encoded-http-source-bytes). |
-| `subdir` | Application name selecting a platform cache directory; `None` selects `datacache`. See [get_data_dir](#get_data_dir). |
-| `force` | Download even when a cached file exists. Does not automatically broaden its permissions. |
-| `timeout` | Per-attempt timeout in seconds; `None` supplies no timeout. HTTP also accepts a Requests `(connect, read)` tuple. Timeouts limit connection/read inactivity, not overall elapsed time. |
-| `use_wget_if_available` | Deprecated and ignored. Passing a value other than `None` emits `DeprecationWarning`. |
-| `chunk_size` | Positive integer transfer chunk size in bytes; the default is 1 MiB. |
-| `progress_callback` | Optional callable receiving `(completed_bytes, total_bytes)` after each transfer chunk. The total can be `None`; retries restart counts. Callback exceptions propagate without retrying. |
-| `destination` | Exact output path, as a string or `Path`. Mutually exclusive with `filename`, `subdir`, and `cache_root`. Its spelling is kept even when decompressing. |
-| `cache_root` | Exact directory containing cached files, as a string or `Path`. Overrides `subdir`; relative roots stay relative to the working directory. |
-| `expected_sha256` | Optional trusted 64-character hexadecimal SHA-256 digest of the **installed bytes**, after decompression or conversion. Case-insensitive. |
-| `expected_size` | Optional non-negative integer size of those installed bytes; booleans are rejected. |
-| `max_bytes` | Optional non-negative integer: the most bytes any file this fetch writes may hold, checked before every write. It bounds the download (the selected HTTP body representation, whatever `Content-Length` says) and the installed file after `decompress=True`. A larger transfer raises `FileValidationError` without retrying, keeps any existing file and removes temporary files. Cache hits write nothing and are unaffected. `expected_size` must not exceed it; HTML-to-CSV conversion can't be bounded. See [byte limits](downloads.md#byte-limits). |
-| `max_retries` | Non-negative integer number of additional attempts after transient HTTP failures. Default `2` allows three total attempts; `0` disables retries. File and FTP downloads are not retried. |
-| `retry_backoff` | Initial retry delay in seconds, doubled for subsequent retries. Must be finite and non-negative. |
-| `retry_max_delay` | Maximum retry delay in seconds, finite and non-negative. A server `Retry-After` exceeding this limit stops retries. |
-| `show_progress` | Boolean enabling tqdm download, decompression, and hash bars. tqdm is installed with datacache; no extra is needed. Displays are opt-in and cache hits are quiet. |
-| `resume` | `True`, `False` or `"auto"`, retaining private partials for raw HTTP transfers. `"auto"` resumes whenever it can and otherwise downloads normally, including when the server turns out not to support resuming (no strong ETag, encoded responses in decoded mode); `True` raises in those cases. Requires size and a POSIX local filesystem. Without an expected SHA-256, every accepted response must supply a strong ETag. Size-only cache hits check only byte count. See [resumable downloads](downloads.md#resumable-http-downloads). |
-| `record_provenance` | Boolean; after publishing a download, also write a hidden `.<name>.datacache.json` record of the source URL (without user name, password, query string, or fragment; the path is kept as is, so avoid recording URLs with secrets in their path), the fetch time, the size, and the SHA-256 when `expected_sha256` verified it. [inspect_file](#inspect_file) reports these offline. The record has the file's permissions. Default `False`: a caller that downloads to a temporary name and then moves the file would leave the record behind. Cache hits never write one, any new download removes a previous record first, and a failure to write one never fails the download. |
-| `allow_empty` | Boolean accepting an empty installed file; default `False`. A complete but empty response, such as a withdrawn upstream record, is otherwise never published: HTTP retries it as transient, then raises `FileValidationError`. An empty cached file is likewise an invalid hit. `expected_size=0` also allows an empty file. |
-| `expire_after` | How long a cached file stays fresh: non-negative seconds or a `datetime.timedelta`, as in requests-cache. An older cached file is downloaded again, as is one that no longer validates; `0` refreshes every time. Age comes from the provenance record's fetch time when one describes the file, otherwise from its modification time; a future time counts as new. Default `None` reuses a valid file however old and raises for an invalid one. |
-| `return_stale_on_error` | Boolean; when a refresh (`force=True` or an expired `expire_after`) raises and a valid cached file exists, log a warning (without URL secrets) and return the cached path, like HTTP `stale-if-error`. Without a valid cached file the error propagates, as does an exception from `progress_callback`, which cancels the fetch. The cached file is checked only after a failed refresh. Default `False`. |
-| `validator` | Optional callable `validator(path)` for content a successful transfer can still get wrong, such as an HTTP 200 error page. It rejects the file by raising (normally `ValueError`) or returning `False`. It checks the installed bytes before publication, so a rejected download never replaces the cached file, and checks cache hits. Rejection raises `FileValidationError`, chained to any exception. Not supported with `resume=True`. |
-| `offline` | Optional boolean overriding `DATACACHE_OFFLINE` / `OPENVAX_OFFLINE`. When offline, cache hits and `file://` URLs still succeed, while remote transfers raise `OfflineError` before modifying disk. |
-
-ZIP downloads install the member stored at the output name; otherwise a member
-with that name, ignoring letter case, in any folder: the one nearest the archive
-root, then an exact-case match, then the largest. If none matches, the largest
-non-directory member is installed, with a logged warning when the output was
-named explicitly and the archive has several. HTML-to-CSV conversion is enabled
-by an explicit `.csv` output for an HTML source and requires `datacache[html]`.
-See [format selection](downloads.md#archives-and-decompression) and
-[HTTP retry behavior](downloads.md#transient-http-failures).
-
-**Returns:** local path string. It is not necessarily absolute when given a
-relative `destination` or `cache_root`.
-
-**Raises:** `ValueError` for conflicting paths or invalid expectations,
-chunk size, byte limit, retry options, callback, or progress flag;
-[`FileValidationError`](#filevalidationerror) for non-regular files or integrity
-mismatches; `OSError` subclasses for filesystem failures; Requests exceptions
-for HTTP failures; `urllib.error.URLError` for URL-handler failures; archive
-errors such as `zipfile.BadZipFile`, `gzip.BadGzipFile`, or `EOFError` for damaged
-input. Empty ZIPs raise `ValueError`. Missing optional dependencies raise
-`ImportError`. Parser and callback exceptions propagate. Transport exceptions
-are preserved after retry exhaustion.
-
-```python
-path = dc.fetch_file(
-    url, filename="records.csv", cache_root=cache_root,
-    expected_sha256=sha256, expected_size=len(contents), timeout=30,
-)
-assert dc.fetch_file(url, filename="records.csv", cache_root=cache_root) == path
-
-
-def has_header(path):
-    if not Path(path).read_bytes().startswith(b"id,value"):
-        raise ValueError("not the records table")
-
-
-# Refresh copies older than a day, keep the cached copy if the source is
-# unreachable, and never cache content without the expected header.
-fresh = dc.fetch_file(
-    url, filename="records.csv", cache_root=cache_root, expire_after=86400,
-    return_stale_on_error=True, validator=has_header,
-)
-assert fresh == path
-```
-
-### `fetch_bytes`
-
-```text
-fetch_bytes(
-    download_url, *, timeout=None, max_retries=2, retry_backoff=1.0,
-    retry_max_delay=30.0, allow_empty=False, max_bytes=None, offline=None
-)
-```
-
-Return a resource's bytes in memory, transferred and retried exactly as
-[fetch_file](#fetch_file) downloads are, without writing anything to disk. Use
-it for small resources such as directory listings and metadata, or where the
-cache is read-only.
-
-| Parameter | Meaning |
-| --- | --- |
-| `download_url` | Source URL string: HTTP, HTTPS, FTP, or `file://`. |
-| `timeout`, `max_retries`, `retry_backoff`, `retry_max_delay` | As for [fetch_file](#fetch_file). Only HTTP(S) transfers are retried. |
-| `allow_empty` | Boolean accepting an empty body; default `False`. An empty HTTP response is otherwise retried as transient, then rejected. |
-| `max_bytes` | Optional non-negative integer: the largest body to accept, after HTTP transfer decoding. Checked before each chunk is kept, so the returned bytes never grow past it, and the body is read in chunks no larger than the limit; a larger body raises `ValueError` without retrying. `0` requires `allow_empty=True`. |
-
-**Returns:** `bytes`. **Raises:** `ValueError` for invalid options, an empty
-body, or a body larger than `max_bytes`; Requests exceptions for HTTP failures, preserved after retry exhaustion;
-`urllib.error.URLError` for file and FTP failures.
-
-```python
-assert dc.fetch_bytes(url, timeout=30) == contents
-```
-
-### `fetch_and_transform`
-
-```text
-fetch_and_transform(
-    transformed_filename, transformer, loader, source_filename, source_url, subdir=None,
-    *, force=False, cache_root=None, download_options=None, show_progress=False,
-    decompress=None
-)
-```
-
-Cache one transformed file. `transformed_filename` is resolved under the cache
-directory (`build_path`); `source_filename` is a download cache key and
-`source_url` is the source URL. `subdir` and `cache_root` select the output root
-and the default source root.
-
-`transformer(source_path, output_path)` must write and close one regular file
-at the supplied, initially absent path. Its basename and extension match the
-final output, but it lives in a private staging directory. The result is
-published only after successful validation. `loader(final_path)` loads an
-existing readable output. A hit calls only the loader and ignores source
-options, apart from the `decompress` checks described below.
-
-`force=True` rebuilds the output while reusing the source; also pass
-`download_options={"force": True}` to refresh the source. The optional options
-dictionary is copied and passed to `fetch_file`; do not duplicate its supplied
-`download_url`, `filename`, or `subdir` arguments. Integrity expectations in
-this dictionary validate the downloaded source, not the transformed output.
-`show_progress` sets the source-download default; arbitrary transformer work
-has no automatic bar. Inner options can override source `cache_root` and
-`show_progress`.
-
-`decompress=True` requests the decompressed contents of a `.gz` or `.zip`
-source for the transformer; `decompress=False` requests the source as
-downloaded. It is passed to [`fetch_file`](#fetch_file), so a `source_filename`
-lacking the URL's compression suffix still implies decompression unless
-`download_options` sets `raw=True`. The same setting is accepted as
-`download_options["decompress"]`; giving opposite values raises `ValueError`.
-With neither, decompression is not requested, except that a nonempty `subdir`
-still requests it and emits a `DeprecationWarning`, on cache hits as well. A
-future major release will remove that exception, so pass `decompress`
-explicitly whenever you pass `subdir`.
-
-Without an explicit root, sources misplaced in the default
-cache by older releases can be reused without moving or changing them. See
-the [transformation guide](data.md#custom-single-file-transformations).
-
-**Returns:** the transformer's result after a build, or the loader's result
-on reuse. A transformer returning its output path directly as a string or
-`Path` receives the final path back. Paths nested inside other objects are not
-rewritten; prefer in-memory results and close files before returning.
-
-**Raises:** [fetch_file errors](#fetch_file), `ValueError` for conflicting
-`decompress` settings, `RuntimeError` if the transformer
-does not create its output, `FileValidationError` for invalid output, and any
-transformer/loader exception. Failures preserve the previous transformed file.
-
-```python
-def double_values(source_path, output_path):
-    result = pd.read_csv(source_path)
-    result["value"] *= 2
-    result.to_csv(output_path, index=False)
-    return result
-
-doubled = dc.fetch_and_transform(
-    "doubled.csv", double_values, pd.read_csv, "records.csv", url,
-    cache_root=cache_root,
-)
-assert doubled["value"].tolist() == [20, 40]
-```
-
-### `discard_partial`
-
-```text
-discard_partial(destination)
-```
-
-Explicitly discard this user's private resumable bytes for an exact destination,
-under its writer lock. The installed file is unchanged; absent state is a no-op.
-See [resumable downloads](downloads.md#resumable-http-downloads).
+::: datacache.discard_partial
 
 ## Paths and presence
 
-### `expected_path`
+::: datacache.expected_path
 
-```text
-expected_path(
-    download_url=None, filename=None, decompress=False, subdir=None, *,
-    destination=None, cache_root=None
-)
-```
+::: datacache.build_local_filename
 
-Compute the path that `fetch_file` would use, without filesystem access or
-directory creation. The parameters follow [fetch_file](#fetch_file); either
-`download_url`, `filename`, or `destination` must identify the output. A
-`destination` is used exactly and cannot be combined with `filename`, `subdir`,
-or `cache_root`. Otherwise, the name is normalized by `build_local_filename`.
+::: datacache.get_data_dir
 
-**Returns:** path string, possibly relative. **Raises:** `ValueError` for no
-URL/filename, an empty destination, or mutually exclusive path arguments.
+::: datacache.get_cache_root
 
-```python
-assert dc.expected_path(filename="records.csv", cache_root=cache_root) == path
-```
+::: datacache.resolve_cache_dir
 
-### `build_local_filename`
+::: datacache.CacheLocation
 
-```text
-build_local_filename(download_url=None, filename=None, decompress=False)
-```
+::: datacache.SHARED_CACHE_ENV_KEY
 
-Choose a string cache key from a URL string or an explicit filename string.
-At least one must be nonempty. An explicit name takes precedence. URL-derived
-names include an MD5 digest of the full URL for naming, not integrity checking.
-Special characters `/`, `\`, `;`, `:`, `?`, and `=` are replaced with underscores;
-long names are shortened with a digest, as is any name over 255 UTF-8 bytes,
-which keeps as much of its end (including the extension) as fits. This is a
-cache key, not an exact path.
+::: datacache.format_bytes
 
-`decompress=True` strips a final `.gz` or `.zip` suffix. Inferred archive
-endpoints without a removable suffix instead get `.decompressed`, so archive
-and decompressed keys differ. No filesystem or network access occurs.
+::: datacache.build_path
 
-**Returns:** filename string. **Raises:** `ValueError` if neither a URL nor
-a filename is supplied.
+::: datacache.ensure_dir
 
-```python
-assert dc.build_local_filename(filename="records.csv.gz", decompress=True) == "records.csv"
-```
-
-### `get_data_dir`
-
-```text
-get_data_dir(subdir=None, envkey=None)
-```
-
-Select a platform cache directory without creating it. `subdir` is an
-application name, defaulting to `datacache` when omitted or empty. It is not a
-directory nested under the default datacache cache.
-
-| Platform | Path for an application named `my-project` |
-| --- | --- |
-| Linux / Unix | `$XDG_CACHE_HOME/my-project`, or `~/.cache/my-project` when it is unset, empty or relative |
-| macOS | `~/Library/Caches/my-project`, even when `XDG_CACHE_HOME` is set |
-| Windows | `%LOCALAPPDATA%\my-project\my-project\Cache` |
-
-Paths follow `platformdirs.user_cache_dir`, including Windows' repeated
-application name, with two exceptions that keep a location the same whichever
-platformdirs version is installed. macOS ignores `XDG_CACHE_HOME`, as appdirs
-did before DataCache 1.25.0, so existing caches stay put; platformdirs 4.6 and
-later would honour it. `XDG_CACHE_HOME` is read as platformdirs 4.11.8 and
-later read it: surrounding whitespace is stripped, and a relative value is
-ignored, so the cache never depends on the working directory. The function's return value is authoritative for the current platform.
-If `envkey` names a nonempty environment variable, use that variable's value as
-the root and append `subdir` if supplied. `envkey` is opt-in for this helper;
-there is no implicit `DATACACHE_*` environment override for all APIs. Pass the
-returned path as `cache_root` to use that selection elsewhere.
-
-**Returns:** directory path string. **Raises:** platform directory lookup
-errors from platformdirs if it cannot determine the location, such as
-`RuntimeError` when there is no home directory; invalid argument types can
-raise `TypeError`. Does not require the directory to exist.
-
-```python
-print(dc.get_data_dir())  # Platform cache directory for datacache.
-print(dc.get_data_dir("my-project"))
-# For an application-specific override:
-selected_root = dc.get_data_dir("my-project", envkey="MY_PROJECT_CACHE_ROOT")
-```
-
-### `get_cache_root`
-
-```text
-get_cache_root(name, *envkeys, override=None, legacy=())
-```
-
-Find where a package's cached data lives, without creating anything. The first
-of these that applies is the root, with `~` expanded:
-
-1. `override`, when not `None`: an explicit choice, such as a command-line flag;
-2. the first environment variable in `envkeys` set to a non-blank value;
-3. the platform cache directory for `name` (the one `get_data_dir(name)`
-   selects), when it already holds data;
-4. the first path in `legacy` that already holds data, so a cache made before a
-   move keeps working;
-5. the platform cache directory for `name`.
-
-A directory holds data when it contains a file anywhere inside, other than
-files operating systems or DataCache leave on their own (`.DS_Store`,
-`Thumbs.db`, `desktop.ini`, `.datacache-*`); empty folders don't count, and
-unreadable entries are skipped. `legacy` paths must be absolute. The legacy
-check reads the disk, so resolve the root once and pass it on.
-
-Nothing is appended to an environment value, unlike `get_data_dir(subdir,
-envkey)`, so every package that reads the same variable agrees on one
-location. List a package-specific variable before a shared one so it can
-override it. Pass the result as `cache_root`. A relative value stays relative
-to the working directory. See [choosing where data lives](shared-caches.md#choosing-where-data-lives).
-
-**Returns:** directory path string. **Raises:** `ValueError` for an empty
-`name`, a non-string or empty variable name, an empty or non-text `override`,
-or a non-text, empty or relative `legacy` path (checked whichever rule
-applies), and platform directory lookup errors.
-
-```python
-os.environ["EXAMPLE_SHARED"] = str(root / "shared")
-shared_root = dc.get_cache_root("example", "EXAMPLE_OWN", "EXAMPLE_SHARED")
-assert shared_root == str(root / "shared")
-del os.environ["EXAMPLE_SHARED"]
-print(dc.get_cache_root("example"))  # Platform cache directory for example.
-```
-
-### `resolve_cache_dir`
-
-```text
-resolve_cache_dir(
-    name, *envkeys, override=None, legacy=(),
-    shared_envkey='OPENVAX_DATA_CACHE', shared_subdir='openvax',
-    append_package_to_env=False
-)
-```
-
-Resolve a package's cache directory and report why it was chosen, without
-creating any directories on disk. Precedence:
-
-1. `override`, when not `None`.
-2. The first non-blank variable in `envkeys` (with `name` appended when
-   `append_package_to_env=True`).
-3. `shared_envkey` (`OPENVAX_DATA_CACHE` by default): `<shared>/<name>`.
-4. The default platform directory (`<platform_cache(shared_subdir)>/<name>` or
-   `_platform_cache_dir(name)` when `shared_subdir=None`), if it already holds
-   data.
-5. The first populated absolute path in `legacy`.
-6. The default platform directory.
-
-**Returns:** [CacheLocation](#cachelocation). **Raises:** `ValueError` for
-invalid arguments or relative `legacy` paths.
-
-```python
-loc = dc.resolve_cache_dir("example", override=root / "resolved")
-assert isinstance(loc, dc.CacheLocation)
-assert loc.origin == "override"
-```
-
-### `CacheLocation`
-
-```text
-CacheLocation(path: str, origin: str, detail: str)
-```
-
-Frozen dataclass returned by [resolve_cache_dir](#resolve_cache_dir). `path` is
-the resolved directory string, `origin` is one of `"override"`, `"env"`,
-`"shared_env"`, `"platform"`, `"legacy"`, or `"default"`, and `detail` is a
-human-readable label for CLI tables.
-
-### `SHARED_CACHE_ENV_KEY`
-
-Constant `"OPENVAX_DATA_CACHE"`, the default shared cache-root environment
-variable honored by [resolve_cache_dir](#resolve_cache_dir) and the
-`datacache` CLI.
-
-### `format_bytes`
-
-```text
-format_bytes(num_bytes)
-```
-
-Format a non-negative byte count as a concise binary-prefixed string (`B`,
-`KiB`, `MiB`, `GiB`, `TiB`).
-
-```python
-assert dc.format_bytes(1536) == "1.5 KiB"
-```
+::: datacache.clear_cache
 
 ## Offline and progress policy
 
-### `OfflineError`
+::: datacache.OfflineError
 
-`OSError` subclass raised when a remote network transfer is attempted while
-offline mode is active. Cache hits and `file://` URLs are never blocked.
+::: datacache.OFFLINE_ENV_KEYS
 
-### `OFFLINE_ENV_KEYS`
+::: datacache.is_offline
 
-Tuple `("DATACACHE_OFFLINE", "OPENVAX_OFFLINE")` checked in order by
-[is_offline](#is_offline) and [offline_source](#offline_source).
+::: datacache.offline_source
 
-### `is_offline`
+::: datacache.require_online
 
-```text
-is_offline(offline=None)
-```
+::: datacache.NO_PROGRESS_ENV_KEYS
 
-Return `True` when remote downloads are forbidden by `offline` or environment
-variables in [OFFLINE_ENV_KEYS](#offline_env_keys).
+::: datacache.should_show_progress
 
-```python
-assert dc.is_offline(offline=True) is True
-assert dc.is_offline(offline=False) is False
-```
+## Integrity, inspection, and results
 
-### `offline_source`
+::: datacache.validate_file
 
-```text
-offline_source(offline=None)
-```
+::: datacache.inspect_file
 
-Return the reason offline mode is active (such as `"OPENVAX_OFFLINE=1"` or
-`"offline=True"`), or `None` when online transfers are permitted.
+::: datacache.inspect_files
 
-### `require_online`
+::: datacache.FileInspection
 
-```text
-require_online(url, *, offline=None)
-```
+::: datacache.CacheInspection
 
-Raise [OfflineError](#offlineerror) if offline mode is active and `url` uses a
-remote scheme (`http`, `https`, `ftp`, `ftps`). Local paths and `file://` URLs
-are always allowed.
+::: datacache.FileValidationError
 
-```python
-dc.require_online(url, offline=True)  # file:// URLs stay allowed offline.
-```
-
-### `NO_PROGRESS_ENV_KEYS`
-
-Tuple `("DATACACHE_NO_PROGRESS", "OPENVAX_NO_PROGRESS")` checked in order by
-[should_show_progress](#should_show_progress).
-
-### `should_show_progress`
-
-```text
-should_show_progress(show_progress=None, *, stream=None)
-```
-
-Return whether progress bars should render on `stream` (default `sys.stderr`),
-honoring `False`, `True`, `"auto"` / `None`, and
-[NO_PROGRESS_ENV_KEYS](#no_progress_env_keys).
-
-```python
-assert dc.should_show_progress(False) is False
-```
-
-### `build_path`
-
-```text
-build_path(filename, subdir=None, *, cache_root=None)
-```
-
-Resolve a cache path for `filename` under `subdir` or `cache_root` and
-create its parent directories if needed. Does not create or validate the file.
-Use `expected_path` or `Cache.local_path(download=False)` for lookup without writes.
-
-**Returns:** path string. **Raises:** `ValueError` for invalid paths and `OSError`
-subclasses from directory creation, including permission or path-type errors.
-
-```python
-writable_path = dc.build_path("nested/output.txt", cache_root=cache_root)
-assert Path(writable_path).parent.is_dir()
-```
-
-### `ensure_dir`
-
-```text
-ensure_dir(path)
-```
-
-Create `path` and its parents unless something already exists there. Accepts a
-string or `Path`. An existing path is left alone; this helper does not verify
-that an existing path is a directory. A directory another process creates at the
-same moment is accepted.
-
-**Returns:** `None`. **Raises:** `OSError` subclasses for directory creation
-failures, including `PermissionError`, and `FileExistsError` for a broken
-symlink or a file created at `path` concurrently.
-
-```python
-dc.ensure_dir(root / "extra" / "nested")
-assert (root / "extra" / "nested").is_dir()
-```
-
-### `clear_cache`
-
-```text
-clear_cache(subdir=None)
-```
-
-Recursively delete the **entire directory** selected by `get_data_dir(subdir)`,
-including its root. `subdir=None` selects the default `datacache` cache. This
-function has no `cache_root` argument. For an explicit root, use
-[`Cache.delete_all`](#cachedelete_all), which preserves the root directory.
-Deletion is explicit, is not transactional, and may partially complete on error.
-
-**Returns:** `None`. **Raises:** `OSError` subclasses such as
-`FileNotFoundError` when the root is missing, `PermissionError` on denied access,
-or a path-type error if the root is not a directory. A root symlink is rejected
-by `shutil.rmtree`; it is not followed.
-
-This example is commented out so running this page does not delete a real cache:
-
-```python
-# dc.clear_cache("my-project")  # Delete this application's platform cache and root.
-```
-
-## Integrity, inspection, and permissions
-
-### `validate_file`
-
-```text
-validate_file(path, expected_sha256=None, expected_size=None, *, show_progress=False)
-```
-
-Read-only validation of a string or `Path` pointing to a readable regular file;
-symlinks are followed. `expected_sha256` and `expected_size` have the same
-types and installed-byte meanings as in [fetch_file](#fetch_file). Without
-expectations, checks only readability and file type. `show_progress=True`
-enables a tqdm bar during SHA-256 hashing, including for an existing file.
-No download, directory creation, lock, permission change, or repair occurs.
-
-**Returns:** the supplied path as a string. **Raises:** `ValueError` for invalid
-expectations, `FileValidationError` for non-regular files or mismatched size/hash,
-`FileNotFoundError` for a missing file, other `OSError` subclasses for access
-failures, and `ImportError` if a requested hash bar requires missing tqdm.
-
-```python
-assert dc.validate_file(path, expected_sha256=sha256, expected_size=len(contents)) == path
-```
-
-### `inspect_file`
-
-```text
-inspect_file(path, expected_sha256=None, expected_size=None)
-```
-
-Inspect a string or `Path` using the same optional expectations as
-`validate_file`, entirely offline and without writes. Filesystem and validation
-failures become result statuses instead of being raised. An available file's
-size and modification time are reported, taken from the same open file that was
-validated. If `fetch_file(..., record_provenance=True)` recorded where it came
-from, and the file's size and modification time are unchanged since, its source
-URL, fetch time, and recorded SHA-256 are reported too. The recorded digest
-never sets `verified`, which still means a supplied SHA-256 matched the bytes
-now; pass it as `expected_sha256` to check them. A missing, unreadable, or
-malformed record is ignored, and a record is never opened in a way that could
-block.
-
-**Returns:** [`FileInspection`](#fileinspection). **Raises:** `ValueError` for
-invalid expectation arguments. Unsupported path types can raise `TypeError`.
-
-```python
-inspection = dc.inspect_file(path, expected_sha256=sha256)
-assert inspection.status == "available" and inspection.verified
-assert dc.inspect_file(root / "absent.csv").status == "missing"
-assert inspection.size == len(contents)
-```
-
-### `inspect_files`
-
-```text
-inspect_files(cache_root, files)
-```
-
-Inspect a required-file inventory under `cache_root` (string or `Path`), with no
-writes or network access. `files` must be a nonempty mapping of normalized
-relative names to dictionaries containing `expected_sha256` and/or
-`expected_size`. Use `{}` or `None` when expectations are unavailable. Nested
-names use `/`; absolute paths, `..`, redundant separators, backslashes, and
-colons (including drive-qualified names) are rejected. Symlinks are followed
-during inspection.
-This checks a caller-supplied inventory; it does not parse a manifest or take
-a snapshot across concurrent changes.
-
-**Returns:** [`CacheInspection`](#cacheinspection), including individual file
-results when the root is an accessible directory. A missing root is `missing`;
-an existing root missing a required file is `corrupt`. Inaccessibility takes
-precedence over corrupt or missing files. `verified=True` requires a matching
-SHA-256 for every required file.
-
-**Raises:** `ValueError` for an empty mapping, invalid names, unexpected metadata
-keys, or invalid expectations. Malformed mapping/metadata types can raise
-`TypeError` or `AttributeError`. Filesystem failures are returned in the result.
-
-```python
-inventory = dc.inspect_files(cache_root, {
-    "records.csv": {"expected_sha256": sha256, "expected_size": len(contents)},
-})
-assert inventory.status == "available" and inventory.verified
-assert inventory.files["records.csv"].path == path
-```
-
-### `FileInspection`
-
-```text
-FileInspection(
-    path: str, status: str, verified: bool = False,
-    error: Optional[Exception] = None, size: Optional[int] = None,
-    mtime: Optional[float] = None, source_url: Optional[str] = None,
-    fetched_at: Optional[str] = None, recorded_sha256: Optional[str] = None
-)
-```
-
-Frozen dataclass returned by `inspect_file` and `Cache.inspect`.
-
-| Field | Meaning |
-| --- | --- |
-| `path` | Inspected path string. |
-| `status` | `available` (readable regular file matching supplied expectations), `missing` (absent), `corrupt` (wrong type or failed expectations), or `inaccessible` (other filesystem error). |
-| `verified` | `True` only when a supplied SHA-256 matched. Readability or matching size alone leaves it `False`, and so does a recorded digest. |
-| `error` | Original exception for an unavailable file, or `None` on success. |
-| `size` | Size in bytes of an available file; otherwise `None`. |
-| `mtime` | Modification time of an available file, in seconds since the epoch; otherwise `None`. |
-| `source_url` | Source URL recorded by `fetch_file(..., record_provenance=True)`, without user name, password, query string, or fragment, while the file's size and modification time are unchanged since it was recorded; otherwise `None`. |
-| `fetched_at` | Recorded fetch time, UTC in ISO 8601, under the same condition; otherwise `None`. |
-| `recorded_sha256` | SHA-256 that `expected_sha256` verified when the file was downloaded, under the same condition; otherwise `None`. It is a record, not a check of the current bytes: a file edited in place without changing its size or modification time, or a record forged in a shared cache, still reports it. To check the bytes now, pass it back as `expected_sha256`. |
-
-**Construction:** returns a `FileInspection` instance; fields are assigned as
-given, with no validation of manually supplied status/type combinations.
-Incorrect constructor arguments raise `TypeError`. Assigning a field afterward
-raises `dataclasses.FrozenInstanceError`.
-
-```python
-assert isinstance(inspection, dc.FileInspection)
-manual_result = dc.FileInspection(path=path, status="available")
-assert not manual_result.verified
-```
-
-### `CacheInspection`
-
-```text
-CacheInspection(
-    path: str, status: str, files: Dict[str, FileInspection], verified: bool = False,
-    error: Optional[Exception] = None
-)
-```
-
-Frozen dataclass returned by `inspect_files`.
-
-| Field | Meaning |
-| --- | --- |
-| `path` | Inspected root path string. |
-| `status` | `available` (all required files available), `missing` (root absent), `corrupt` (wrong root type or incomplete/corrupt files), or `inaccessible` (root or required file access error). |
-| `files` | Dictionary from required relative names to `FileInspection` results. Empty if the root could not be inspected as a directory. |
-| `verified` | `True` only when every required file has a matching SHA-256. |
-| `error` | Root failure or a representative failing file's exception; `None` on success. Inspect `files` for all individual failures. |
-
-**Construction:** returns a `CacheInspection` instance; manually supplied fields
-are not validated. Incorrect constructor arguments raise `TypeError`. Field
-assignment raises `dataclasses.FrozenInstanceError`; the contained `files`
-dictionary itself is not frozen.
-
-```python
-assert isinstance(inventory, dc.CacheInspection)
-manual_inventory = dc.CacheInspection(
-    path=str(cache_root), status="available", files={"records.csv": manual_result},
-)
-assert not manual_inventory.verified
-```
-
-### `FileValidationError`
-
-```text
-FileValidationError(path, reason)
-```
-
-`ValueError` subclass for a non-regular file, an integrity mismatch, or another
-file validation failure. `path` accepts a string or `Path`; `reason` describes
-the failure. Attributes are `path` (converted with `os.fspath`) and `reason`.
-The message is `"<path>: <reason>"`. No filesystem access occurs in construction.
-
-**Construction:** returns an exception instance; an invalid path type raises
-`TypeError`. It is raised by validation/download helpers and retained in
-inspection results when applicable.
-
-```python
-try:
-    dc.validate_file(path, expected_size=0)
-except dc.FileValidationError as error:
-    assert error.path == path
-    assert "size mismatch" in error.reason
-```
-
-### `CannotResume`
-
-A `FileValidationError` subclass raised by `resume=True` when a resumable
-transfer isn't possible but a normal one may be: the server sends no strong
-ETag (without a trusted SHA-256), encodes the response, answers ranges
-inconsistently or with an unexpected status, or the destination's filesystem
-can't keep private resume state or locks. `resume="auto"` catches it and
-downloads the file in full instead. The installed file is unchanged.
+::: datacache.CannotResume
 
 ## SQLite
 
-### Shared database behavior
+All database builders return an open `sqlite3.Connection` owned by the caller
+(opened with `check_same_thread=False`). Use `contextlib.closing` or call
+`.close()` explicitly. See the [data guide](data.md#reuse-and-replacement) for
+locking, symlink, type mapping, and filesystem requirements.
 
-All database builders return an open `sqlite3.Connection` owned by the caller.
-Use `contextlib.closing` or call `.close()` explicitly: `with connection:`
-commits/rolls back transactions but does not close the connection. Connections
-are opened with `check_same_thread=False`, so Python does not reject cross-thread
-use: applications must serialize simultaneous use of one connection and should
-give independent concurrent workers their own.
+::: datacache.db_from_dataframes_with_absolute_path
 
-A matching version and all requested tables permit reuse without parsing or
-validating new DataFrames, changing old constraints, or rewriting the file.
-Table names match as SQLite compares them, ignoring the case of ASCII letters.
-Data changes are not detected automatically. Change `version` (an integer) or
-use `overwrite=True` where available to rebuild. A rebuild replaces the
-database's tables, not just the named table, and rolls back on failure. Explicit
-overwrites also remove views; version-only rebuilds retain views. New databases
-are staged before publication. A rebuild writes SQLite's `<name>-journal` file
-beside the database; where the filesystem has no room for that name, rebuilding
-raises a `ValueError` that says so, while creating and reusing the database
-still work. See [reuse and replacement](data.md#reuse-and-replacement) for
-locking, symlink, and filesystem requirements.
-
-Explicit `overwrite=True` can also rebuild a corrupt or non-SQLite cache. It
-builds and validates a private replacement before restoring the existing file
-under SQLite's locks, preserving its inode, links, permissions, and ACLs.
-Reads and version changes alone never trigger corruption recovery.
-
-Table names must be nonempty strings, distinct ignoring the case of ASCII
-letters (as SQLite compares names), and must not be the reserved metadata name
-`_datacache_metadata` or start with `sqlite_`, in any case. They are checked
-before any reuse. DataFrame column names must be nonempty strings; spaces become
-underscores and names must remain distinct ignoring the case of ASCII letters.
-Primary keys name one column; index specifications are sequences of nonempty
-column-name sequences, such as `[("id",), ("id", "value")]`, not bare strings.
-Original and normalized column spellings are accepted. The pandas row index is
-not stored.
-
-`show_progress=True` enables optional tqdm row-insertion bars; reuse is quiet.
-Signed integers preserve precision, missing values become SQL `NULL`, and
-dates/datetimes become ISO text. See [types and constraints](data.md) for details.
-
-**Shared errors:** `ValueError` for invalid names, constraints, versions, or
-unsupported dtypes; `TypeError` for unsupported argument types;
-`sqlite3.IntegrityError` for duplicate or null primary keys; `OverflowError` for
-integers outside SQLite's signed 64-bit range; other `sqlite3.Error` subclasses
-for binding, database, schema, or locking failures; `OSError` subclasses for
-filesystem/publication failures; and `ImportError` for missing tqdm when a
-progress bar is needed. Existing malformed databases are not silently repaired.
-
-### `db_from_dataframes_with_absolute_path`
-
-```text
-db_from_dataframes_with_absolute_path(
-    db_path, table_names_to_dataframes, table_names_to_primary_keys=None,
-    table_names_to_indices=None, overwrite=False, version=1, *, show_progress=False
-)
-```
-
-Use `db_path` directly (string or `Path`), without selecting a platform cache
-directory. Despite the name, relative paths also work relative to the current
-directory. The parent directory must already exist. For dangling symlinks,
-the target's parent must exist; publication preserves the symlink.
-
-`table_names_to_dataframes`, `table_names_to_primary_keys`, and
-`table_names_to_indices` have the same mapping meanings as `dataframes`,
-`primary_keys`, and `indices` in `db_from_dataframes`. `overwrite`, `version`,
-and `show_progress` follow the shared database behavior.
-
-**Returns:** open `sqlite3.Connection`. **Raises:** the shared database errors,
-including filesystem errors if the parent is absent.
-
-```python
-with closing(dc.db_from_dataframes_with_absolute_path(
-    root / "direct.db", {"records": frame},
-    table_names_to_primary_keys={"records": "id"},
-)) as connection:
-    assert connection.execute("SELECT COUNT(*) FROM records").fetchone() == (2,)
-```
-
-### `connect_if_correct_version`
-
-```text
-connect_if_correct_version(db_path, version, *, read_only=False)
-```
-
-Open an existing `db_path` (string or `Path`) when its DataCache metadata matches
-the requested integer `version`. `read_only=True` uses SQLite's read-only open
-mode. Never creates a missing database; closes connections it rejects. This
-checks metadata only, not application tables, data correctness, or a checksum.
-
-**Returns:** an open caller-owned `sqlite3.Connection` on a match, or `None`
-when the path is missing, metadata is absent, or the version differs.
-
-**Raises:** `OSError` subclasses for filesystem access failures,
-`sqlite3.Error` subclasses for invalid/unreadable databases or malformed
-metadata tables, and conversion errors such as `ValueError` for malformed
-stored versions.
-
-```python
-connection = dc.connect_if_correct_version(root / "direct.db", 1, read_only=True)
-assert connection is not None
-with closing(connection):
-    assert connection.execute("SELECT COUNT(*) FROM records").fetchone() == (2,)
-assert dc.connect_if_correct_version(root / "absent.db", 1) is None
-```
+::: datacache.connect_if_correct_version
 
 ## Cache object
 
-### `Cache`
-
-```text
-Cache(subdir='datacache', *, cache_root=None)
-```
-
-Select a root once for file, inspection, database, and deletion operations.
-`subdir` must be a nonempty application name; `cache_root` optionally supplies
-the exact string/`Path` root, overriding the platform location selected by
-`subdir`. Construction performs no directory creation or download.
-
-**Returns:** a `Cache` instance. Public attributes are `subdir` (the supplied
-name) and `cache_directory_path` (the selected root as a string). Relative roots
-remain relative to the working directory; use an absolute root if that directory
-may change. **Raises:** `ValueError` for an empty `subdir`, invalid path-type
-errors, or platform directory lookup errors from `get_data_dir`.
-
-```python
-cache = dc.Cache("reference-example", cache_root=root / "object-cache")
-assert cache.cache_directory_path == str(root / "object-cache")
-```
-
-### `Cache.fetch`
-
-```text
-Cache.fetch(
-    url, filename=None, decompress=False, force=False, timeout=None,
-    use_wget_if_available=None, *, chunk_size=1048576, progress_callback=None,
-    expected_sha256=None, expected_size=None, max_bytes=None, max_retries=2,
-    retry_backoff=1.0, retry_max_delay=30.0, show_progress=False, record_provenance=False,
-    allow_empty=False, resume=False, raw=False, http_representation='decoded', expire_after=None, return_stale_on_error=False,
-    validator=None, offline=None
-)
-```
-
-Instance form of [fetch_file](#fetch_file), with `url` as the source URL and
-the instance's root as `cache_root`. Every other parameter has the same meaning
-and default as its `fetch_file` counterpart. Explicit names are remembered for
-this instance's `delete_url` calls; this association is not written to disk.
-
-**Returns:** local path string. **Raises:** the errors documented for `fetch_file`.
-
-```python
-cached_path = cache.fetch(url, filename="records.csv", expected_sha256=sha256)
-assert Path(cached_path).read_bytes() == contents
-```
-
-### `Cache.local_filename`
-
-```text
-Cache.local_filename(url=None, filename=None, decompress=False)
-```
-
-Instance form of [build_local_filename](#build_local_filename). `url` is its
-`download_url`; `filename` and `decompress` have identical meanings. Does not
-access the filesystem or include the root directory in the result.
-
-**Returns:** filename string. **Raises:** `ValueError` if neither a URL nor
-a filename is supplied.
-
-```python
-assert cache.local_filename(filename="records.csv.gz", decompress=True) == "records.csv"
-```
-
-### `Cache.local_path`
-
-```text
-Cache.local_path(url=None, filename=None, decompress=False, download=False)
-```
-
-Instance form of [expected_path](#expected_path). `url`, `filename`, and
-`decompress` select a cache key under this instance's root. With the default
-`download=False`, only computes the path. With `download=True`, delegates to
-`Cache.fetch` with its defaults; use `Cache.fetch` directly for timeouts,
-integrity expectations, or other download options.
-
-**Returns:** path string. **Raises:** naming/path argument errors, plus
-`Cache.fetch` errors when `download=True`.
-
-```python
-assert cache.local_path(filename="records.csv") == cached_path
-```
-
-### `Cache.exists`
-
-```text
-Cache.exists(url=None, filename=None, decompress=False)
-```
-
-Check presence at `Cache.local_path(url, filename, decompress)`, using the
- contract: no download, repair, or directory creation;
-directories count as present and dangling symlinks as absent.
-
-**Returns:** `bool`. **Raises:** naming/path argument errors and filesystem
-errors other than missing files, such as `PermissionError`.
-
-```python
-assert cache.exists(filename="records.csv")
-```
-
-### `Cache.inspect`
-
-```text
-Cache.inspect(
-    url=None, filename=None, decompress=False, *, expected_sha256=None,
-    expected_size=None
-)
-```
-
-Call [inspect_file](#inspect_file) on the path selected by `url`, `filename`,
-and `decompress`. Both expectations have the same meanings as in `inspect_file`.
-No network access or writes occur.
-
-**Returns:** `FileInspection`. **Raises:** naming/path argument errors and
-`ValueError` for invalid expectations; filesystem failures are in the result.
-
-```python
-assert cache.inspect(filename="records.csv", expected_sha256=sha256).verified
-```
-
-### `Cache.make_readable`
-
-```text
-Cache.make_readable(
-    url=None, filename=None, decompress=False, *, group=True, others=False
-)
-```
-
-Call  on the path selected by `url`,
-`filename`, and `decompress`. `group` and `others` have that function's meanings.
-Explicit POSIX maintenance only: does not download or recurse into directories.
-
-**Returns:** path string. **Raises:** naming/path argument errors and the
-errors documented for `make_file_readable`.
-
-```python
-if hasattr(os, "fchmod") and hasattr(os, "O_NOFOLLOW"):
-    cache.make_readable(filename="records.csv", group=True)
-```
-
-### `Cache.delete_url`
-
-```text
-Cache.delete_url(url)
-```
-
-Remove local files for a URL string. Includes paths successfully fetched by this
-`Cache` instance (including explicit filenames), plus the URL-derived
-raw/decompressed paths that may have been created by other instances, along with
-their provenance records. Missing files are ignored. Explicit filenames used by
-earlier instances are not recorded persistently and cannot be rediscovered by
-URL alone. Files unrelated to those paths are left alone. A symlink at a
-selected file path is unlinked without deleting its target.
-
-**Returns:** `None`. **Raises:** naming errors and `OSError` subclasses such as
-`PermissionError` or a directory-removal error. Deletion is not transactional:
-some files may already have been removed when another removal fails.
-
-```python
-cache.delete_url(url)
-assert not cache.exists(filename="records.csv")
-```
-
-### `Cache.delete_all`
-
-```text
-Cache.delete_all()
-```
-
-Remove **all contents** of this cache root recursively, including files not
-created by DataCache. Use only a dedicated directory. Preserves the root and
-its permissions. A root symlink is followed to the selected directory, while
-symlinks inside the cache are unlinked without clearing their external targets.
-The instance's remembered download paths are cleared after success.
-
-**Returns:** `None`. **Raises:** `FileNotFoundError` if the root is absent,
-`NotADirectoryError` for a non-directory root, and other `OSError` subclasses
-on access/removal failure. Deletion is not transactional and may partially
-complete on error. Unlike `clear_cache`, this method preserves the root and
-works with an explicit `cache_root`.
-
-```python
-cache.delete_all()  # Safe here: object-cache is inside our temporary example directory.
-assert Path(cache.cache_directory_path).is_dir()
-assert not list(Path(cache.cache_directory_path).iterdir())
-```
+::: datacache.Cache
 
 ## Complete archive trees
-
-### `install_archive`
-
-```text
-install_archive(
-    destination, sources, *, expected_sha256=None, expected_size=None,
-    extra_files=None, force=False, verified=True, download_options=None,
-    max_members=None, max_extracted_size=None, validator=None
-)
-```
-
-Safely extract a complete tar archive into a private directory and publish the
-tree as a new bundle. `sources` is one URL, one `Path`, or an
-explicitly ordered sequence. A mapping may contain `url`, `path`, `sha256`, and
-`size`; supplying both `url` and `path` reads local bytes while retaining the URL
-as the logical source identity. Multiple sources are concatenated byte-for-byte,
-which supports historical split archives.
-
-By default the assembled archive needs trusted `expected_sha256` and
-`expected_size`, or every part needs `sha256` and `size`. Set `verified=False`
-explicitly for historical sources without published integrity metadata. Observed
-hashes are still recorded and checked, but do not authenticate the source.
-
-`extra_files` maps safe relative names to text or bytes written after extraction
-and before publication. It is intended for consumer receipts such as
-`DOWNLOAD_INFO.csv`; collisions with archive content fail the installation.
-The complete metadata inventory is part of the archive's identity: additions,
-removals, and content changes require an explicit refresh.
-`download_options` accepts timeout, chunk size, progress, retry, resume, and
-`max_bytes` settings from `fetch_file`. Resumable URL parts each require a trusted hash and
-size. Optional `max_members` and `max_extracted_size` limits are checked before
-files are extracted, as headers arrive; scanning stops when a limit is exceeded.
-Benign leading `./` paths are normalized and root `.` directory entries ignored.
-Local special files such as FIFOs are rejected without blocking.
-
-`validator(tree)` optionally checks application requirements after extraction
-and extra-file creation, before publication, and on cache reuse. It receives a
-`Path` and must leave the tree unchanged. Raising or returning `False` rejects
-the tree with `FileValidationError`; a failed refresh leaves the old bundle
-active. A cached tree rejected by the callback requires an explicit
-`force=True` repair. The callback does not alter source identity or establish
-cryptographic verification. Non-callable validators raise `ValueError` before
-any filesystem writes.
-
-**Returns:** the `Path` of the extracted tree, the store's current bundle; not
-the store path. Existing returned paths remain usable across forced refreshes.
-
-**Raises:** `ValueError` for invalid definitions or options;
-`FileValidationError` for integrity failures, unsafe members, malformed tar
-archives, or invalid installations; transport and filesystem errors otherwise.
-An invalid current installation requires `force=True`. A legacy or otherwise
-foreign destination is never claimed, even with force.
-
-```python
-archive_store = root / "archive-store"
-archive_bundle = dc.install_archive(
-    archive_store,
-    archive_source,
-    expected_sha256=archive_sha256,
-    expected_size=len(archive_contents),
-    extra_files={"DOWNLOAD_INFO.csv": "url\n" + archive_source.as_uri() + "\n"},
-)
-assert (archive_bundle / "models/model.json").is_file()
-```
 
 See the [archive installation guide](archives.md) for split sources, safe-member
 rules, publication semantics, and an MHCflurry adapter.
 
-### `inspect_archive`
+::: datacache.install_archive
 
-```text
-inspect_archive(
-    destination, sources=None, *, expected_sha256=None, expected_size=None,
-    extra_files=None, verify_files=True
-)
-```
+::: datacache.inspect_archive
 
-Inspect the current archive bundle without writes, locks, repair, or
-network access. Omit `sources` for receipt-only consistency checking, which
-returns `verified=False`. Supply the same source definition, expectations, and
-consumer metadata used for installation to validate the requested identity.
-Set `verify_files=False` for a fast check of the manifest and source identity
-that reads none of the extracted tree. Fast results have an empty `files`
-mapping and `verified=False`; use the default before asserting content integrity.
-
-### `ArchiveInspection`
-
-A frozen record with `path`, `status`, `verified`, `bundle`, `files`,
-`error`, `source_urls`, `fetched_at`, `archive_size`, and `recorded_sha256`.
-Status is `available`, `missing`, `invalid` or `inaccessible`. `bundle` is the
-extracted tree applications should use;
-`files` maps every installed relative file name to a `FileInspection`; a file
-is `verified` only when a hash the caller supplied vouched for it. Source URLs
-are redacted for display. The recorded digest is observed receipt data, not trusted verification.
+::: datacache.ArchiveInspection
 
 ## Versioned file bundles
 
-### `install_bundle`
+See the [bundle guide](bundles.md) and [integration guide](integration.md#notes-for-specific-libraries)
+for complete multi-file dataset examples.
 
-```text
-install_bundle(destination, assets, *, force=False, verified=True, verify_files=True, download_options=None,
-               source_paths=None)
-```
+::: datacache.install_bundle
 
-Download a mapping of relative asset names to `{url, sha256, size,
-decompress?, source_identity?}` metadata and publish the files together as a new bundle. `path`
-in place of `url` names a local file, identified by its `file://` URL.
-`source_paths` maps asset names to local files to read instead of downloading,
-such as files downloaded by hand; each asset keeps its declared URL as its
-identity, so later installs treat the bundle as if it had been downloaded. Returns a
-dict of asset names to paths in the current bundle. An invalid current bundle
-requires `force=True`. `verified=False` explicitly permits
-unpinned sources; their observed hashes are recorded without authenticating them.
-`verify_files=False` avoids payload reads when checking an existing bundle; it
-checks readability, file types and recorded sizes but cannot detect same-size
-corruption. New bundles are always hashed before publication, regardless of
-this cache-hit setting.
-Optional `source_identity` is a caller-declared JSON value enabling reuse across
-URLs when identity, decompression settings and effective download transformations
-match. It is stored verbatim,
-must contain no secrets, and never establishes trusted verification. See the
-[identity contract](bundles.md#reuse-across-urls-with-a-declared-identity) for
-validation, limits and legacy-receipt refresh requirements.
-`download_options` accepts timeout, chunk size, progress, retry, resume and `max_bytes` settings.
-Works on Linux, macOS and Windows local filesystems. [Complete guide](bundles.md).
+::: datacache.inspect_bundle
 
-### `inspect_bundle`
+::: datacache.BundleInspection
 
-```text
-inspect_bundle(destination, assets=None, *, verify_files=True)
-```
-
-Return a `BundleInspection` of the current bundle without writes, network, locks
-or repair. Supply trusted assets to verify against the registry; omit them to
-check consistency against the bundle's own recorded hashes (`verified=False`).
-`verify_files=False` validates metadata, source expectations, required file types,
-readability and recorded sizes without reading payloads. Its bundle and file
-results always have `verified=False`, even with trusted hashes in the registry.
-
-### `BundleInspection`
-
-A frozen record with `path`, `status`, `verified`, `bundle`, `files`, and
-`error`. Status is `available`, `missing`, `invalid` or `inaccessible`. `bundle`
-is the current bundle's directory, and `files` maps asset names to
-`FileInspection` values from it. Paths remain usable across refreshes until
-explicitly removed.
-
-### `VersionedDatasetRegistry`
-
-```text
-VersionedDatasetRegistry(datasets, *, cache_root=None, cache_dir=None, store_path=None, verified=True)
-```
-
-Select exactly one root path, zero-argument `cache_dir` callable, or
-`store_path(name, version)` callback selecting the exact store path; it is called once per dataset version on first lookup, and each version needs its own store.
-Root strategies keep `<root>/<name>/<version>`; the exact-path callback owns
-the consumer layout but not the layout inside each store. Each dataset
-specifies a `default_version` and `versions`, mapping concrete versions to asset
-mappings. Construction validates metadata and performs no writes or networking,
-and does not invoke callbacks. Path callbacks should be pure path computations.
-The [bundle guide](bundles.md) includes an example; notes for specific libraries are in the [integration guide](integration.md#notes-for-specific-libraries).
-
-| Method | Result |
-| --- | --- |
-| `resolve_version(name, version=None)` | Concrete version label, applying the pinned default. Unknown names/versions raise `ValueError`. |
-| `store_path(name, version=None)` | Store `Path`, without creating it. |
-| `inspect(name, version=None, *, verify_files=True)` | Read-only `BundleInspection`; full payload verification by default. |
-| `download(name, version=None, *, force=False, verify_files=True, source_paths=None, **download_options)` | Install/reuse and return a dict of asset paths in the current bundle; the flag selects cache-hit cost only. `source_paths` reads named assets from local files while keeping their declared URLs as identity. |
-| `local_path(name, version=None, *, asset=None, verify_files=True)` | Installed single asset's `Path`, or the current bundle's directory for several assets; select one asset by name. Assets are hashed by default; `verify_files=False` checks metadata and sizes only. Missing raises `FileNotFoundError`; invalid raises `FileValidationError`. |
-| `ensure(name, version=None, **download_options)` | Download/reuse, then return what `local_path` would, from the paths the download validated. `verify_files=False` among the options skips hashing on reuse. |
-| `is_cached(name, version=None, *, verify_files=True)` | Whether inspection reports `available`; `verify_files=False` skips hashing. |
-| `status(*, verify_files=True)` | One row per pinned default: name, version, description, available_versions and inspection. `verify_files=False` skips hashing. |
-| `prune(name, version=None, *, keep=1)` | Delete all but the newest `keep` bundles of one version, as  does. |
+::: datacache.VersionedDatasetRegistry
 
 ## Derived artifacts
 
-### `materialize`
+See the [materialization guide](materialization.md) for receipts, resume,
+callback contracts, retention, and disk usage.
 
-```text
-materialize(destination, sources, *, transform, outputs, builder, force=False,
-            retain_sources=False, verify_files=True, download_options=None)
-```
+::: datacache.materialize
 
-Build outputs with a caller's builder and publish them, with their dependency
-receipt, as a new bundle. Sources map relative names to `{url: ...}` or `{path: ...}`, plus
-optional raw-byte `sha256`/`size` and `source_identity`; outputs map names to optional output-byte
-`sha256`/`size`. Transform is `{version: nonempty_string, options: JSON_value}`.
-The builder receives private `(source_paths, output_paths)` mappings, must leave
-inputs unchanged and create/close exactly the declared regular output files.
-Returns name-to-string paths in the new bundle; builder return values are ignored.
-Equal declared source identities allow reuse across URLs while preserving the
-actual acquisition provenance. Integrity expectations, transformation settings
-and output inventory must still match. Identity assertions never establish
-trusted verification; [the bundle identity contract](bundles.md#reuse-across-urls-with-a-declared-identity)
-also applies here.
+::: datacache.inspect_materialization
 
-Dependency mismatch/corruption requires explicit `force=True`. Completed inputs
-survive failures; successful publication removes owned inputs unless retention
-is requested. Caller-owned local inputs and old bundles are never deleted.
-Cache hits are offline/read-only. Fast reuse is opt-in; new outputs are always
-hashed. Download/copy/verification progress defaults on, configurable
-through download options. Works on Linux, macOS and Windows local storage.
-See the [materialization guide](materialization.md) for receipts, resume, callback
-contracts, retention and peak/retained disk use.
-
-### `inspect_materialization`
-
-```text
-inspect_materialization(destination, sources=None, *, transform=None, outputs=None,
-                        verify_files=True)
-```
-
-Return `MaterializationInspection` offline without writes, locks, original
-input access or repair. Supply all of sources/transform/outputs for requested
-dependency checks, or omit all three for receipt-only consistency checks.
-`verify_files=False` validates inventory, types and sizes without payload reads
-and never claims trusted verification.
-
-### `MaterializationInspection`
-
-A read-only record with `path`, `status`, `verified`, `bundle`, `files`,
-`sources`, `transform` and `error`. Status is available, missing, invalid or
-inaccessible. `bundle` is the current bundle's directory. `verified` means all output files matched
-caller-trusted hashes now. Source records separately report raw observed hashes,
-sizes, redacted origins, URL identity fingerprints, optional caller-declared
-`source_identity`, acquisition time, acquisition-time trusted
-verification and available validated transport metadata.
+::: datacache.MaterializationInspection
 
 ## Fixed-path file registry
 
-### `VersionedFileRegistry`
-
-`VersionedFileRegistry(datasets, *, cache_dir, error_cls=RuntimeError)`
-
-Fixed-path single-file compatibility registry. Definitions contain `filename`,
-`urls` (version to URL), `default_version`, and optional `description`. The
-zero-argument root callable may return a string or Path. Construction creates
-nothing. See the [fixed-path guide](file_registry.md) for legacy receipt semantics,
+See the [fixed-path guide](file_registry.md) for legacy receipt semantics,
 trust boundaries, and the distinction from bundles.
 
-| Method | Result |
-| --- | --- |
-| `resolve_version(name, version=None)` | Concrete version; unknown names/versions raise the caller's error_cls. |
-| `local_path(name, version=None)` | Expected fixed Path, even when absent, without writes. |
-| `is_cached(name, version=None)` | Presence only, not verified integrity. |
-| `download(name, version=None, *, force=False, **download_options)` | One fixed Path; fetch_file options control acquisition. Ordinary cache hits do not hash or write; explicit size/hash expectations are checked. |
-| `ensure(name, version=None, **download_options)` | Same download/reuse behavior and Path result. |
-| `status()` | Legacy status dicts with name, description, default_version, available_versions, cached, cached_version, URL, bytes, observed SHA-256, downloaded_at and path. |
+::: datacache.VersionedFileRegistry
 
 ## Individual HTTP ZIP members
 
-### `install_zip_member`
+See the [member guide](zip-members.md) for a complete example and storage costs.
 
-```text
-install_zip_member(destination, url, member, *, expected_sha256=None, expected_size=None,
-                   compressed_sha256=None, max_compressed_bytes=536870912,
-                   max_bytes=4294967296, max_metadata_bytes=8388608, timeout=60, force=False,
-                   offline=None)
-```
-
-Download one explicitly named, regular, unencrypted stored/deflated ZIP member.
-Returns a mapping with paths `payload`, `compressed` and `receipt.json` in one
-atomic bundle. The receipt records source URL, archive length, HTTP validator,
-member offset, compression method, CRC32, sizes and SHA-256 hashes. ZIP64 is
-supported. Duplicate names, malformed ranges, changed objects, CRC mismatches,
-unsupported members and size-limit violations fail before publication.
-
-The server must support exact HTTP byte ranges, identity encoding and a strong
-ETag or Last-Modified. Last-Modified is weaker than a strong ETag. There is no
-whole-archive fallback. Metadata, compressed input and expanded output have
-separate finite byte limits. Downloads restart the selected member after failure.
-Hashes recorded during discovery describe observed bytes; only caller-supplied
-hashes verify independently expected content. Pin them for subsequent builds.
-
-Cache hits verify all retained bytes offline. Changed dependency identity or
-corruption requires `force=True`, which publishes a new generation and retains
-old paths. `list_bundles` and `prune_bundles` also support these stores. See the
-[member guide](zip-members.md) for a complete example and storage costs.
+::: datacache.install_zip_member
 
 ## Package version
 
-### `__version__`
-
-String containing the installed DataCache package version. This is a constant,
-not a callable; it has no parameters, defaults, or API-specific exceptions.
-It is independent of the integer `version` used to identify a SQLite cache.
-
-```python
-print(dc.__version__)
-```
-
-## Cleanup
-
-After finishing the examples, remove their temporary files:
-
-```python
-temporary.cleanup()
-```
+::: datacache.__version__

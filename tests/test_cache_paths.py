@@ -210,7 +210,7 @@ def test_cache_root_prefers_an_override_then_variables_then_legacy_data(tmp_path
         monkeypatch.setenv(home, str(tmp_path))
     monkeypatch.delenv("EXAMPLE_ROOT", raising=False)
     platform = tmp_path / "platform"
-    monkeypatch.setattr(common, "_platform_cache_dir", lambda name: str(platform))
+    monkeypatch.setattr(common, "platform_cache_dir", lambda name: str(platform))
     old, older = tmp_path / ".example", tmp_path / ".older"
     assert get_cache_root("example", "EXAMPLE_ROOT", legacy=["~/.example"]) == str(platform)
 
@@ -255,7 +255,7 @@ def test_cache_root_rejects_bad_locations_wherever_they_are(monkeypatch, options
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX symlinks and permissions")
 def test_unreadable_legacy_entries_are_skipped(tmp_path, monkeypatch):
-    monkeypatch.setattr(common, "_platform_cache_dir", lambda name: str(tmp_path / "platform"))
+    monkeypatch.setattr(common, "platform_cache_dir", lambda name: str(tmp_path / "platform"))
     old = tmp_path / "old"
     old.mkdir()
     (old / "loop").symlink_to(old / "loop")

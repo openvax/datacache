@@ -110,3 +110,42 @@ def test_monkeypatching_a_public_name_is_undone(monkeypatch):
         patch.setattr("datacache.get_cache_root", "replacement")
         assert datacache.get_cache_root == "replacement"
     assert datacache.get_cache_root is datacache.common.get_cache_root
+
+
+def test_no_cross_module_private_imports():
+    """No datacache module imports or accesses another datacache module's private ``_name``."""
+    package_dir = Path(datacache.__file__).parent
+    sibling_modules = {p.stem for p in package_dir.glob("*.py")}
+    violations = []
+
+    def is_private(name):
+        return name.startswith("_") and not (name.startswith("__") and name.endswith("__"))
+
+    for path in sorted(package_dir.glob("*.py")):
+        tree = ast.parse(path.read_text(), filename=str(path))
+        imported_modules = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                mod = node.module or ""
+                is_internal = node.level > 0 or mod == "datacache" or mod.startswith("datacache.")
+                if not is_internal:
+                    continue
+                for alias in node.names:
+                    if is_private(alias.name):
+                        violations.append(
+                            "%s:%d: imports private %s from %s%s"
+                            % (path.name, node.lineno, alias.name, "." * node.level, mod))
+                    elif node.module is None and alias.name in sibling_modules:
+                        imported_modules[alias.asname or alias.name] = alias.name
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name.startswith("datacache."):
+                        imported_modules[alias.asname or alias.name] = alias.name
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Attribute) and is_private(node.attr)
+                    and isinstance(node.value, ast.Name) and node.value.id in imported_modules):
+                violations.append(
+                    "%s:%d: accesses private attribute %s.%s"
+                    % (path.name, node.lineno, node.value.id, node.attr))
+
+    assert not violations, "Cross-module private references found:\n" + "\n".join(violations)

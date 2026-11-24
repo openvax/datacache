@@ -18,7 +18,7 @@ from .bundle_store import (
     validate_no_sidecar_collisions, validate_relative_name,
 )
 from .download import normal_creation_mode, validate_download_options, validate_size_within_limit
-from .integrity import FileValidationError, _validate_expectations, sha256_stream
+from .integrity import FileValidationError, validate_expectations, sha256_stream
 from . import provenance
 
 INPUTS = '.datacache-inputs.json'
@@ -47,7 +47,7 @@ def _expectations(spec):
     if not isinstance(spec, dict) or set(spec) - {'sha256', 'size'}:
         raise ValueError('output expectations must contain only sha256 and size')
     digest, size = spec.get('sha256'), spec.get('size')
-    _validate_expectations(digest, size)
+    validate_expectations(digest, size)
     return dict(sha256=digest.lower() if digest else None, size=size)
 
 
@@ -99,7 +99,7 @@ def _recorded_definition(value):
         if not isinstance(spec, dict) or set(spec) - {'source_identity'} != {'origin', 'identity', 'sha256', 'size'}:
             raise ValueError('invalid source dependency definition')
         _expectations({key: spec[key] for key in ('sha256', 'size')})
-        _validate_expectations(spec['identity'], None)
+        validate_expectations(spec['identity'], None)
         if spec['identity'] is None or not isinstance(spec['origin'], str):
             raise ValueError('source identity and origin are required')
         if 'source_identity' in spec:
@@ -140,19 +140,40 @@ def _source_records(value, definition):
             raise ValueError('source receipt identity or trust disagrees with definition')
         transport = record.get('transport')
         if transport is not None:
-            from .resume import _valid_validator
-            if not _valid_validator(transport):
+            from .resume import valid_validator
+            if not valid_validator(transport):
                 raise ValueError('invalid validated transport metadata')
     return value
 
 
 @dataclass(frozen=True)
 class MaterializationInspection:
-    """Read-only status of the current bundle of built outputs, with its sources.
+    """Frozen read-only status of the current bundle of derived outputs and its sources.
 
-    status is available, missing, invalid or inaccessible. bundle is the
-    current bundle's directory. verified refers only to outputs matched against caller-trusted hashes now.
-    Source records distinguish acquisition-time trusted hashes from observation.
+    Returned by ``inspect_materialization``.
+
+    Attributes
+    ----------
+    path : str
+        Materialization store directory path string.
+    status : {"available", "missing", "invalid", "inaccessible"}
+        Overall store status.
+    verified : bool
+        ``True`` only when every output file matched caller-trusted hashes
+        during this inspection.
+    bundle : str or None
+        Directory path of the current bundle generation, or ``None``.
+    files : dict[str, FileInspection]
+        Per-output ``FileInspection`` results.
+    sources : dict[str, dict]
+        Per-source receipt records reporting raw observed hashes, sizes,
+        redacted origins, URL identity fingerprints, optional caller-declared
+        ``source_identity``, acquisition time, acquisition-time trusted
+        verification flag, and any validated transport metadata.
+    transform : dict or None
+        Recorded transform metadata (``{"version": ..., "options": ...}``).
+    error : Exception or None
+        Underlying validation or OS exception when unavailable.
     """
     path: str
     status: str
@@ -191,11 +212,32 @@ def _check_bundle(store, directory, expected=None, *, verify_files=True):
 
 
 def inspect_materialization(destination, sources=None, *, transform=None, outputs=None, verify_files=True):
-    """Check the current bundle offline, without writes, locks or source access.
+    """Inspect a materialization store's current bundle offline without writes, locks, or source access.
 
-    Supply all of sources/transform/outputs to check dependency identity; omit
-    all three for receipt-only consistency checks. Metadata-only inspection
-    checks regular files and sizes, never claims verification of payload hashes.
+    Supply all three of ``sources``, ``transform``, and ``outputs`` to validate
+    the requested dependency identity, or omit all three for receipt-only
+    consistency checks.
+
+    Parameters
+    ----------
+    destination : str or os.PathLike
+        Managed materialization store directory.
+    sources : Mapping[str, dict] or None, optional
+        Source definitions (must be supplied together with ``transform`` and
+        ``outputs``, or all three omitted).
+    transform : dict or None, optional
+        Transform specification ``{"version": str, "options": JSON}``.
+    outputs : Mapping[str, dict or None] or None, optional
+        Declared output inventory with optional ``sha256`` / ``size``.
+    verify_files : bool, optional
+        If ``True`` (default), hash output payloads. If ``False``, check
+        inventory, file types, and sizes without reading payloads
+        (``verified`` is always ``False``).
+
+    Returns
+    -------
+    MaterializationInspection
+        Frozen inspection result for the current bundle.
     """
     if not isinstance(verify_files, bool):
         raise ValueError('verify_files must be a boolean')
@@ -343,26 +385,55 @@ def _acquire_inputs(directory, definition, acquisition, options, *, force=False)
 
 def materialize(destination, sources, *, transform, outputs, builder, force=False,
                 retain_sources=False, verify_files=True, download_options=None):
-    """Build all declared outputs, then publish them together as a new bundle.
+    """Build declared outputs with ``builder`` and publish them atomically as a new bundle.
 
-    builder(source_paths, output_paths) must create/close exactly the declared
-    outputs and leave inputs unchanged. Source definitions contain url or path
-    plus optional raw sha256/size and source_identity; outputs map names to
-    optional sha256/size. source_identity is a bounded JSON assertion enabling
-    cross-URL reuse, stored verbatim without establishing trusted verification.
-    transform is {version: nonempty string, options: opaque JSON value}.
-    Changed dependencies and a corrupt bundle require explicit force=True.
-    Force rebuilds outputs while reusing any complete matching private inputs.
+    Cache hits are offline and read-only. Completed inputs survive build
+    failures (even without HTTP resume); successful publication removes owned
+    private inputs unless ``retain_sources=True``. Caller-owned local inputs
+    and previous bundle generations are never deleted. Works on Linux, macOS,
+    and Windows local storage (``resume=True`` requires POSIX).
 
-    Inputs survive failures, including without HTTP resume. resume=True enables
-    existing raw HTTP resume rules for remote sources; local inputs are copied.
-    Successful publication removes owned inputs unless retain_sources=True.
-    Caller-owned inputs and old bundles are never deleted. Cache hits are
-    offline and read-only; verify_files=False skips payload hashing only on
-    reuse. New outputs are always hashed before publication.
-    Download/copy/verification progress is on by default; builder progress is
-    caller-owned. Installation needs atomic local renames, on Linux, macOS
-    and Windows; resume=True needs POSIX.
+    Parameters
+    ----------
+    destination : str or os.PathLike
+        Managed materialization store directory.
+    sources : Mapping[str, str or dict]
+        Mapping of relative source names to ``{url: ...}`` or ``{path: ...}``
+        plus optional raw-byte ``sha256``, ``size``, and bounded JSON
+        ``source_identity`` (which enables reuse across URLs while preserving
+        acquisition provenance without establishing trusted verification).
+    transform : dict
+        Mapping ``{"version": nonempty_str, "options": json_value}`` recording
+        the build definition in the dependency receipt.
+    outputs : Mapping[str, dict or None]
+        Mapping of relative output names to optional output-byte ``sha256`` and
+        ``size`` expectations (or ``{}`` / ``None``).
+    builder : callable
+        ``builder(source_paths, output_paths)`` receiving private dicts of
+        source and output path strings. Must leave inputs unchanged and create
+        and close exactly the declared regular output files; its return value
+        is ignored.
+    force : bool, optional
+        Rebuild outputs even on dependency mismatch, corruption, or an existing
+        valid bundle (reusing any complete matching private inputs). Default is
+        ``False``.
+    retain_sources : bool, optional
+        Keep private acquired inputs after successful publication. Default is
+        ``False``.
+    verify_files : bool, optional
+        Controls cache-hit hashing cost only (``False`` skips payload reads on
+        reuse). Newly built outputs are always hashed before publication.
+        Default is ``True``.
+    download_options : dict or None, optional
+        Transfer options forwarded to ``fetch_file`` (download/copy/hash
+        progress defaults to ``True`` here and can be overridden in
+        ``download_options``).
+
+    Returns
+    -------
+    dict[str, str]
+        Mapping from declared output names to path strings inside the published
+        bundle.
     """
     if not all(isinstance(value, bool) for value in (force, retain_sources, verify_files)):
         raise ValueError('force, retain_sources and verify_files must be booleans')

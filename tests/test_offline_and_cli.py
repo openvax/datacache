@@ -49,7 +49,7 @@ def _clean_env(monkeypatch):
 class TestResolveCacheDir:
     def test_precedence_override_env_shared_platform_legacy_default(self, tmp_path, monkeypatch):
         platform_root = tmp_path / "platform"
-        monkeypatch.setattr(datacache.common, "_platform_cache_dir", lambda name: str(platform_root / name))
+        monkeypatch.setattr(datacache.common, "platform_cache_dir", lambda name: str(platform_root / name))
 
         legacy = tmp_path / "legacy_pkg"
         override = tmp_path / "override_pkg"
@@ -94,7 +94,7 @@ class TestResolveCacheDir:
 
     def test_shared_subdir_none_uses_package_platform_dir(self, tmp_path, monkeypatch):
         platform_root = tmp_path / "platform"
-        monkeypatch.setattr(datacache.common, "_platform_cache_dir", lambda name: str(platform_root / name))
+        monkeypatch.setattr(datacache.common, "platform_cache_dir", lambda name: str(platform_root / name))
         loc = resolve_cache_dir("standalone", shared_subdir=None)
         assert loc == CacheLocation(str(platform_root / "standalone"), "default", "default")
 
@@ -339,7 +339,7 @@ class TestCLI:
         monkeypatch.setenv("ONCOREF_CACHE_DIR", str(oncoref_override))
         monkeypatch.setattr(
             dc_common,
-            "_platform_cache_dir",
+            "platform_cache_dir",
             lambda app: str(shared_platform if app == "openvax" else tmp_path / "cache" / app),
         )
         monkeypatch.setattr(

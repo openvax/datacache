@@ -275,7 +275,7 @@ def test_csv_contents_remain_private_until_validated(
 def test_creation_mode_probe_never_contains_data(tmp_path, monkeypatch, output_source, failed, kind):
     url, expected = output_source(kind)
     destination = tmp_path / "data.csv"
-    original_open = download._open_staging_file
+    original_open = download.open_staging_file
     original_fstat = os.fstat
     readers = []
     probe_fd = None
@@ -296,7 +296,7 @@ def test_creation_mode_probe_never_contains_data(tmp_path, monkeypatch, output_s
             raise OSError("injected mode-probe failure")
         return original_fstat(fd)
 
-    monkeypatch.setattr(download, "_open_staging_file", observed_open)
+    monkeypatch.setattr(download, "open_staging_file", observed_open)
     monkeypatch.setattr(download.os, "fstat", checked_fstat)
     try:
         if failed:

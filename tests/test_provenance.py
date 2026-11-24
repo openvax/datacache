@@ -13,7 +13,7 @@ import pytest
 from datacache import (
     Cache, download, fetch_file, inspect_file, inspect_files, provenance)
 from datacache.permissions import make_file_readable
-from datacache.integrity import _validate_file
+from datacache.integrity import validate_file_stat
 
 
 DATA = b"id,value\n1,10\n"
@@ -47,7 +47,7 @@ def test_available_files_report_size_and_mtime(source, tmp_path):
 
 def test_size_and_mtime_come_from_the_validated_bytes(source):
     # The stat is taken from the open file that was checked, not a second stat.
-    _, info = _validate_file(source, SHA256)
+    _, info = validate_file_stat(source, SHA256)
     assert info.st_size == len(DATA)
 
 
