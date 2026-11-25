@@ -17,12 +17,17 @@ Keep module-level imports stdlib-only so ``datacache --help`` and tab completion
 stay instantaneous.
 """
 
-import argparse
 import json
 import os
 from pathlib import Path
 import sys
 
+from .cli_help import (
+    HelpArgumentParser,
+    color_enabled,
+    enable_argcomplete,
+    style_table_header,
+)
 from .version import __version__
 
 
@@ -46,15 +51,14 @@ _KNOWN_PACKAGES = (
     ("mhcflurry", ("MHCFLURRY_DATA_DIR", "MHCFLURRY_DOWNLOADS_DIR"), False,
      ("data:mhcflurry:4", "data:mhcflurry")),
     ("mhcseqs", ("MHCSEQS_DATA",), False, ("~/.cache/mhcseqs",)),
+    ("mhctools", ("MHCTOOLS_DATA_DIR",), False, ("~/.mhctools", "platform:mhctools")),
+    ("mhcgnomes", ("MHCGNOMES_DATA_CACHE",), False, ("platform:mhcgnomes",)),
     ("pepdata", (), False, ("platform:pepdata",)),
 )
 
 
 def _use_color(stream=None):
-    target = sys.stdout if stream is None else stream
-    if os.environ.get("NO_COLOR"):
-        return False
-    return getattr(target, "isatty", lambda: False)()
+    return color_enabled(sys.stdout if stream is None else stream)
 
 
 def _display_path(path):
@@ -66,17 +70,14 @@ def _display_path(path):
 
 
 def _format_table(headers, rows, *, use_color=None):
-    if use_color is None:
-        use_color = _use_color()
     str_rows = [[str(cell) for cell in row] for row in rows]
     widths = [max(len(h), *(len(r[i]) for r in str_rows)) if str_rows else len(h)
               for i, h in enumerate(headers)]
-    bold, reset = ("\x1b[1m", "\x1b[0m") if use_color else ("", "")
 
     def fmt(cells):
         return "  ".join(cell.ljust(w) for cell, w in zip(cells, widths)).rstrip()
 
-    lines = [bold + fmt(headers) + reset]
+    lines = [style_table_header(fmt(headers), use_color=use_color)]
     lines.extend(fmt(row) for row in str_rows)
     return "\n".join(lines)
 
@@ -281,7 +282,7 @@ def prune_root(root, *, keep=1, apply=False):
 
 
 def build_parser():
-    parser = argparse.ArgumentParser(
+    parser = HelpArgumentParser(
         prog="datacache",
         description=(
             "Inspect and maintain local OpenVax / datacache data caches.\n\n"
@@ -290,7 +291,6 @@ def build_parser():
             "  OPENVAX_OFFLINE=1      Forbid all remote downloads (alias: DATACACHE_OFFLINE=1)\n"
             "  OPENVAX_NO_PROGRESS=1  Disable download progress bars (alias: DATACACHE_NO_PROGRESS=1)"
         ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--version", action="version", version="datacache %s" % __version__)
     subparsers = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
@@ -299,7 +299,10 @@ def build_parser():
         "dirs",
         help="Show where OpenVax/datacache caches live, why each resolved there, and disk usage",
     )
-    p_dirs.add_argument("--root", default=None, help="Inspect an explicit shared cache root")
+    p_dirs.add_argument(
+        "--cache-root", "--root", dest="root", default=None,
+        help="Inspect an explicit shared cache root",
+    )
     p_dirs.add_argument("--all", action="store_true", help="Include packages with no local cache yet")
     p_dirs.add_argument("--json", action="store_true", help="Print machine-readable JSON")
 
@@ -308,13 +311,20 @@ def build_parser():
         help="Print the resolved cache directory for a package (or the shared root)",
     )
     p_path.add_argument("package", nargs="?", default=None, help="Package name (e.g. pyensembl, orfdata)")
-    p_path.add_argument("--root", default=None, help="Override shared cache root")
+    p_path.add_argument(
+        "--cache-root", "--root", dest="root", default=None,
+        help="Override shared cache root",
+    )
 
     p_scan = subparsers.add_parser(
         "scan",
         help="Scan a cache root for datacache bundle stores and reclaimable old generations",
     )
     p_scan.add_argument("root", nargs="?", default=None, help="Cache directory to scan (default: shared OpenVax root)")
+    p_scan.add_argument(
+        "--cache-root", dest="cache_root", default=None,
+        help="Cache directory to scan (alternative to positional root)",
+    )
     p_scan.add_argument("--json", action="store_true", help="Print machine-readable JSON")
 
     p_prune = subparsers.add_parser(
@@ -322,6 +332,10 @@ def build_parser():
         help="Remove stale bundle generations from datacache stores (dry-run by default)",
     )
     p_prune.add_argument("root", nargs="?", default=None, help="Cache directory to prune (default: shared OpenVax root)")
+    p_prune.add_argument(
+        "--cache-root", dest="cache_root", default=None,
+        help="Cache directory to prune (alternative to positional root)",
+    )
     p_prune.add_argument("--keep", type=int, default=1, help="Generations to keep per store (default: 1)")
     p_prune.add_argument("--yes", action="store_true", help="Actually delete stale generations (default is dry-run)")
     p_prune.add_argument("--json", action="store_true", help="Print machine-readable JSON")
@@ -331,11 +345,7 @@ def build_parser():
 
 def run(argv=None):
     parser = build_parser()
-    try:
-        import argcomplete
-        argcomplete.autocomplete(parser)
-    except ImportError:
-        pass
+    enable_argcomplete(parser)
     args = parser.parse_args(argv)
 
     from .common import format_bytes, resolve_cache_dir
@@ -401,7 +411,8 @@ def run(argv=None):
         return
 
     if args.command == "scan":
-        target = os.path.expanduser(args.root) if args.root else _shared_root()
+        raw_target = args.cache_root or args.root
+        target = os.path.expanduser(raw_target) if raw_target else _shared_root()
         records = scan_stores(target)
         if args.json:
             print(json.dumps(dict(
@@ -437,7 +448,8 @@ def run(argv=None):
         return
 
     if args.command == "prune":
-        target = os.path.expanduser(args.root) if args.root else _shared_root()
+        raw_target = args.cache_root or args.root
+        target = os.path.expanduser(raw_target) if raw_target else _shared_root()
         results = prune_root(target, keep=args.keep, apply=args.yes)
         total_removed = sum(r["removed_count"] for r in results)
         if args.json:
