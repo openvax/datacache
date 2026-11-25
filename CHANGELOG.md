@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.38.0
+
+- Add shared stdlib-only `datacache.cli_help` module (`HelpArgumentParser`,
+  `HelpFormatter`, `color_enabled`, `style_help`, `style_table_header`,
+  `classify_status`, `style_status`, `enable_argcomplete`, and ANSI/status
+  constants) so OpenVax CLIs can reuse one canonical subtle cyan help and
+  tab-completion implementation instead of copy-pasting per-repo modules.
+- Adopt `datacache.cli_help` and `--cache-root` (retaining `--root` as an
+  alias) in `datacache.cli`, add `mhctools` and `mhcgnomes` to
+  `datacache dirs`, declare `argcomplete>=3,<4` in `requirements.txt`, and
+  switch `pyproject.toml` to PEP 639 SPDX `license = "Apache-2.0"`.
+
 ## 1.37.0
 
 - Add opt-in `portable_names=True` parameter on `install_archive`,

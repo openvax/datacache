@@ -26,6 +26,7 @@ explain the longer workflows and compatibility guarantees.
 | Derived artifacts | [materialize](#datacache.materialize), [inspect_materialization](#datacache.inspect_materialization), [MaterializationInspection](#datacache.MaterializationInspection) |
 | Fixed-path file registry | [VersionedFileRegistry](#datacache.VersionedFileRegistry) |
 | Individual HTTP ZIP members | [install_zip_member](#datacache.install_zip_member) |
+| CLI help and completion | [datacache.cli_help](#datacache.cli_help) |
 | Package version | [`__version__`](#datacache.__version__) |
 
 ## Downloading
@@ -162,6 +163,14 @@ trust boundaries, and the distinction from bundles.
 See the [member guide](zip-members.md) for a complete example and storage costs.
 
 ::: datacache.install_zip_member
+
+## CLI help and completion
+
+Shared stdlib-only argparse formatting, optional subtle cyan terminal styling,
+status-cell styling, and `argcomplete` registration used by `datacache` and
+downstream OpenVax CLIs.
+
+::: datacache.cli_help
 
 ## Package version
 
