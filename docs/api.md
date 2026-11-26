@@ -172,14 +172,6 @@ downstream OpenVax CLIs.
 
 ::: datacache.cli_help
 
-## FASTA readers and writers
-
-Shared stdlib-only streaming FASTA readers and writers supporting plain text,
-gzipped files, strict validation, comment/pipe-header options, and line-wrapped
-output.
-
-::: datacache.fasta
-
 ## Package version
 
 ::: datacache.__version__
